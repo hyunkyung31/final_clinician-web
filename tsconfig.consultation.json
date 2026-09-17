@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.app.json",
+  "include": ["src/components/ConsultationWorkspace.tsx", "src/components/consultationWorkflow.ts", "src/consultation-qa.tsx", "src/vite-env.d.ts"]
+}

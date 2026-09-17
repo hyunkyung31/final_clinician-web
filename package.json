@@ -1,0 +1,32 @@
+{
+  "name": "angiocad-clinician-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test:consultation": "node --test scripts/consultation-workflow.test.mjs scripts/consultation-api.test.mjs",
+    "typecheck:consultation": "tsc --project tsconfig.consultation.json --noEmit"
+  },
+  "dependencies": {
+    "@cornerstonejs/core": "^5.10.4",
+    "@cornerstonejs/dicom-image-loader": "^5.10.4",
+    "@cornerstonejs/tools": "^5.10.4",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "latest",
+    "dicom-parser": "^1.8.21",
+    "events": "^3.3.0",
+    "lucide-react": "^1.43.0",
+    "react": "latest",
+    "react-dom": "latest",
+    "three": "^0.186.0",
+    "typescript": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest"
+  }
+}

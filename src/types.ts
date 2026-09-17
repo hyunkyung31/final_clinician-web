@@ -1,0 +1,672 @@
+export type RiskLevel = 'high' | 'medium' | 'normal'
+export type WorkStatus = 'waiting' | 'running' | 'complete' | 'urgent'
+
+export interface PatientSummary {
+  backendId?: number
+  id: string
+  name: string
+  sex: 'M' | 'F'
+  age: number
+  exam: string
+  risk: RiskLevel
+  score?: number
+  status: WorkStatus
+  note: string
+}
+
+export interface TimelineItem {
+  date: string
+  title: string
+  detail: string
+  active?: boolean
+
+  eventType?:
+    | 'ENCOUNTER'
+    | 'EXAMINATION'
+    | 'AI_ANALYSIS'
+    | 'REPORT'
+
+    referenceId?: number
+    status?: string
+}
+
+export interface DashboardSummary {
+  date: string
+  patientCount: number
+  examinationPendingCount: number
+  aiPendingCount: number
+  consultationPendingCount: number
+  signoffPendingCount: number
+  totalPendingCount: number
+}
+
+export interface DashboardAIStatus {
+  date: string
+  queued: number
+  running: number
+  failed: number
+  completed: number
+  cancelled: number
+  total: number
+}
+
+export interface DashboardWorkItem {
+  id: number
+  patientId?: number
+  workType: string
+  referenceType: string
+  referenceId?: number
+  priority: string
+  status: string
+  dueAt: string
+  createdAt: string
+  completedAt: string
+}
+
+export interface DashboardConsultationItem {
+  id: number
+  patientId?: number
+  patientName: string
+  requestedById?: number
+  assignedDoctorId?: number
+  subject: string
+  priority: string
+  status: string
+  dueAt: string
+  createdAt: string
+  opinionCount: number
+  hasResponse: boolean
+}
+
+export interface DashboardRecentPatient {
+  patientId: number
+  medicalRecordNo: string
+  name: string
+  birthDate: string
+  gender: string
+  status: string
+  lastViewedAt: string
+}
+
+export interface DashboardExaminationStats {
+  scheduled: number
+  inProgress: number
+  completed: number
+}
+
+export interface StaffReservation {
+  id: number
+  patientId?: number
+  doctorId?: number
+  applicantName: string
+  reservedAt: string
+  status: string
+}
+
+export interface StaffTodo {
+  id: number
+  title: string
+  status: string
+  priority: string
+  dueAt: string
+  completedAt: string
+  description: string
+}
+
+export interface StaffTodoInput {
+  title: string
+  priority?: 'LOW' | 'NORMAL' | 'HIGH'
+  dueAt?: string | null
+  description?: string
+}
+
+export interface LesionResult {
+  vessel: string
+  location: string
+  stenosis: number
+  confidence: number
+  status: 'review' | 'observe'
+}
+
+export interface AnalysisResult {
+  studyId: string
+  modelVersion: string
+  analyzedAt: string
+  predictedFfr: number
+  lesionLengthMm: number
+  referenceDiameterMm: number
+  frame: number
+  totalFrames: number
+  lesions: LesionResult[]
+  draftImpression: string
+}
+
+export interface PatientDetail {
+  backendId : number
+  medicalRecordNo : string
+  name : string
+  birthDate : string
+  sex : 'M' | 'F'
+  age : number
+  contact : string
+  status : string
+  registeredAt : string
+}
+
+export interface ImagingStudySummary {
+  id: number
+  examinationId?: number
+  studyInstanceUid: string
+  orthancStudyId?: string
+  modality: string
+  description: string
+  studyDate: string
+  status: string
+  seriesCount?: number
+  instanceCount?: number
+}
+
+export interface ImagingSeriesSummary {
+  id: number
+  studyId: number
+  seriesInstanceUid: string
+  orthancSeriesId: string
+  seriesNumber?: number
+  modality: string
+  bodySite: string
+  description: string
+  instanceCount: number
+}
+
+export interface ImagingFileAssetSummary {
+  id: number
+  storageBackend: string
+  bucketName: string
+  objectKey: string
+  orthancResourceId: string
+  mimeType: string
+}
+
+export interface ImagingInstanceSummary {
+  id: number
+  seriesId: number
+  sopInstanceUid: string
+  orthancInstanceId: string
+  sopClassUid: string
+  instanceNumber?: number
+  fileAsset?: ImagingFileAssetSummary
+  createdAt: string
+}
+
+export interface ImagingInstancePreview {
+  instanceId: number
+  orthancInstanceId: string
+  fileAsset?: ImagingFileAssetSummary
+  previewUrl: string
+}
+
+export interface ImagingDicomManifestInstance {
+  id: number
+  sopInstanceUid: string
+  instanceNumber?: number
+  dicomUrl: string
+  imagePositionPatient?: number[]
+  imageOrientationPatient?: number[]
+  sliceLocation?: number
+}
+
+export interface ImagingSeriesViewerManifest {
+  studyId: number
+  seriesId: number
+  studyInstanceUid: string
+  seriesInstanceUid: string
+  modality: string
+  instanceCount: number
+  instances: ImagingDicomManifestInstance[]
+}
+
+export interface ImagingViewerAccess {
+  studyId: number
+  orthancStudyId: string
+  viewerToken: string
+  expiresIn: number
+  viewerUrl: string
+}
+
+export interface ImagingStudyDetail extends ImagingStudySummary {
+  series: ImagingSeriesSummary[]
+}
+
+export interface ImagingStudyComparison {
+  current: ImagingStudySummary
+  candidates: ImagingStudySummary[]
+}
+
+export interface LabObservation {
+  id: string
+  measurementId?: number
+  clinicalVariableId?: number
+  resultId?: number
+  resultStatus?: string
+  examinationId?: number
+  stageLabel?: string
+  code: string
+  name: string
+  value?: number
+  textValue: string
+  unit: string
+  measuredAt: string
+  referenceLow?: number
+  referenceHigh?: number
+  referenceRangeText: string
+  referenceRangeId?: number
+  specimenType?: string
+  method?: string
+  fasting?: boolean
+  interpretationCode?: string
+  sourceWarning?: string
+  flag: 'NORMAL' | 'HIGH' | 'LOW' | 'CRITICAL_HIGH' | 'CRITICAL_LOW' | 'ABNORMAL' | 'UNKNOWN'
+}
+
+export type PatientApiScope = 'ALL_ACCESSIBLE' | 'ASSIGNED_TO_ME' | 'CONSULTATION' | 'RECENT'
+export interface PatientPage {
+  results: PatientSummary[]
+  count: number
+  page: number
+  hasNext: boolean
+}
+
+export interface ImagingAnnotationInput {
+  imaging_series?: number | null
+  imaging_instance?: number | null
+  rendering_3d?: number | null
+  viewer_type: '2D' | '3D_ORIGINAL' | '3D_RENDERED'
+  tool_type: 'FREEHAND' | 'RECTANGLE' | 'TEXT'
+  geometry_json: Record<string, unknown>
+  text_content?: string | null
+  color?: string
+  frame_index?: number | null
+  slice_index?: number | null
+  camera_state_json?: Record<string, unknown> | null
+}
+export interface ImagingAnnotationRecord extends ImagingAnnotationInput {
+  id: number
+  version: number
+  created_by_name?: string
+}
+
+export interface BackendCapabilities {
+  patientScope: boolean
+  referenceAdministration: boolean
+}
+
+export interface AngiographySequenceSummary {
+  id: number
+  sequenceNo: number
+  frameCount: number
+  examinationId?: number
+  labels: unknown
+}
+
+export interface AngiographyFrame {
+  index: number
+  filename: string
+  url: string
+  expiresIn?: number
+}
+
+export interface Rendering3DSummary {
+  id: number
+  studyId: number
+  fileAssetId?: number
+  aiAnalysisJobId?: number
+  generationType: string
+  renderingType: string
+  fileFormat: 'GLB' | 'VTK' | 'STL' | string
+  version: number
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | string
+  generatedAt: string
+  createdAt: string
+  renderingConfig?: Record<string, unknown>
+}
+
+export interface Rendering3DViewerSource {
+  renderingId: number
+  fileId: number
+  fileFormat: string
+  downloadUrl: string
+  expiresIn?: number
+  sourceRole?: string
+}
+
+export interface Rendering3DSourceSummary {
+  id: number
+  renderingId: number
+  aiSegmentationResultId?: number
+  sourceFileAssetId?: number
+  imagingSeriesId?: number
+  sourceRole: string
+}
+
+export interface StaffNotification {
+  recipientId: number
+  notificationId: number
+  type: string
+  title: string
+  body: string
+  referenceType: string
+  referenceId?: number
+  priority: string
+  isRead: boolean
+  createdAt: string
+}
+
+export interface PatientMemo {
+  id: number
+  content : string
+  authorName : string
+  createdAt : string
+  updatedAt : string
+}
+
+export interface ExaminationTypeSummary {
+  id: number
+  code: string
+  name: string
+  category: string
+  modality: string
+  description: string
+}
+
+export interface ExaminationOrderSummary {
+  id: number
+  encounterId: number
+  examinationTypeId: number
+  orderedById?: number
+  priority: 'NORMAL' | 'URGENT'
+  status: 'ORDERED' | 'SCHEDULED' | 'COMPLETED' | 'CANCELED'
+  clinicalNote: string
+  orderedAt: string
+  scheduledAt: string
+  scheduledLocation: string
+
+  canceledAt: string
+  cancelReason: string
+  canceledById?: number
+}
+
+export interface ExaminationExecutionSummary {
+  id: number
+  orderId: number
+  attemptNumber?: number
+  status: string
+  performedAt: string
+  location: string
+}
+
+export interface MedicationSummary {
+  id: number
+  code: string
+  name: string
+  ingredient: string
+  defaultUnit: string
+  ingredientCode: string
+  manufacturer: string
+  dosageForm: string
+  strength: string
+}
+
+export interface MedicationFavoriteSummary {
+  id: number
+  medicationId: number
+  displayOrder: number
+  medication: MedicationSummary
+}
+
+export type PrescriptionStatus =
+  | 'DRAFT'
+  | 'SIGNED'
+  | 'CANCELED'
+
+export interface PrescriptionSummary {
+  id: number
+  encounterId: number
+  patientId: number
+  prescribedById?: number
+  status: PrescriptionStatus
+  notes: string
+  prescribedAt: string
+  signedAt: string
+  canceledAt: string
+  cancelReason: string
+  updatedAt: string
+}
+
+export interface PrescriptionItemSummary {
+  id: number
+  prescriptionId: number
+  medicationId: number
+  medication?: MedicationSummary
+  status: string
+  doseValue?: number
+  doseUnit: string
+  frequencyPerDay?: number
+  durationDays?: number
+  route: string
+  instructions: string
+  note: string
+  startDate: string
+  endDate: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PrescriptionDetail {
+  prescription: PrescriptionSummary
+  items: PrescriptionItemSummary[]
+}
+
+export interface PrescriptionItemInput {
+  medicationId?: number
+  doseValue?: number
+  doseUnit?: string
+  frequencyPerDay?: number
+  durationDays?: number
+  route?: string
+  instructions?: string
+  note?: string
+  startDate?: string
+  endDate?: string
+}
+
+export interface StaffIdentity {
+  id: number
+  username: string
+  name: string
+  departmentName: string
+  title: string
+  roles: string[]
+}
+
+export interface StaffDoctor {
+  id: number
+  userId: number
+  name: string
+  departmentName: string
+  title: string
+  isActive: boolean
+}
+
+export type StaffScheduleType =
+  | 'PERSONAL'
+  | 'CLINICAL'
+  | 'CONSULTATION'
+  | 'ON_CALL'
+  | 'OFF'
+
+export interface StaffSchedule {
+  id: number
+  title: string
+  type: StaffScheduleType
+  startsAt: string
+  endsAt: string
+  description: string
+  isAllDay: boolean
+  color: string
+  status: string
+  ownerName: string
+}
+
+export interface StaffScheduleInput {
+  title: string
+  type: StaffScheduleType
+  startsAt: string
+  endsAt: string
+  description?: string
+  isAllDay?: boolean
+  color?: string
+}
+
+export interface ScheduleChangeRequest {
+  id: number
+  scheduleId?: number
+  requestType: 'UPDATE' | 'CANCEL'
+  requestedScheduleType?: StaffScheduleType
+  requestedStartsAt: string
+  requestedEndsAt: string
+  reason: string
+  status: string
+  requesterName: string
+  reviewComment: string
+  rejectionReason: string
+  createdAt: string
+}
+
+export interface ConsultationSummary {
+  id: number
+  patientId?: number
+  patientName: string
+  subject: string
+  requestNote: string
+  requestedByName: string
+  requestedById?: number
+  requestedDepartmentName?: string
+  patientNumber?: string
+  patientLocation?: string
+  assignedDoctorId?: number
+  assignedDoctorName: string
+  assignedDepartmentName?: string
+  priority: 'NORMAL' | 'URGENT'
+  status: 'REQUESTED' | 'ACCEPTED' | 'COMPLETED' | 'CANCELED'
+  dueAt: string
+  createdAt: string
+}
+
+export interface ConsultationOpinion {
+  id: number
+  doctorName: string
+  opinionText: string
+  isFinal: boolean
+  createdAt: string
+}
+
+export interface ConsultationDetail {
+  consultation: ConsultationSummary
+  opinions: ConsultationOpinion[]
+}
+
+export interface ChatMember {
+  id: number
+  userId: number
+  name: string
+  username?: string
+  departmentName?: string
+  title?: string
+  role: string
+  status: string
+}
+
+export interface ChatMessage {
+  id: number
+  senderId?: number
+  senderName: string
+  messageType: string
+  text: string
+  createdAt: string
+  deliveryStatus: string
+  isDeleted: boolean
+}
+
+export interface ChatRoom {
+  id: number
+  title: string
+  roomType: 'DIRECT' | 'GROUP' | 'CONSULTATION'
+  status: string
+  consultationId?: number
+  createdAt: string
+  members: ChatMember[]
+  latestMessage?: ChatMessage
+  unreadCount: number
+}
+
+export interface FollowUpMeasurement {
+  id: number
+  code: string
+  name: string
+  valueNumeric?: number
+  valueText: string
+  valueBoolean?: boolean
+  unit: string
+  abnormalFlag: 'NORMAL' | 'HIGH' | 'LOW' | string
+  measuredAt: string
+  referenceLow?: number
+  referenceHigh?: number
+  referenceRangeText?: string
+}
+
+export interface FollowUpExamination {
+  orderId: number
+  examinationId: number
+  examinationType: ExaminationTypeSummary
+  status: string
+  performedAt: string
+  location: string
+  clinicalInput?: Record<string, number | string>
+  result?: {
+    id: number
+    resultType: string
+    status: string
+    collectedAt: string
+    summaryText: string
+    measurements: FollowUpMeasurement[]
+  }
+}
+
+export interface FollowUpVisit {
+  stage: string
+  stageLabel: string
+  encounterId: number
+  visitDate: string
+  status: string
+  doctor?: {
+    id: number
+    name: string
+    departmentName: string
+  }
+  note: string
+  examinations: FollowUpExamination[]
+}
+
+export interface PatientFollowUpRecords {
+  patient: {
+    id: number
+    medicalRecordNo: string
+    name: string
+    sex?: 'M' | 'F'
+    age?: number
+  }
+  programGroup: string
+  isSyntheticDemo: boolean
+  visitCount: number
+  visits: FollowUpVisit[]
+}
