@@ -57,10 +57,44 @@ import type {
   TimelineItem,
   WorkStatus,
 } from '../types'
+import { coronarySideLabels, normalizeCoronarySide } from './angiographyGrouping'
+import { fetchXCABridgeHealth, requestXCAAnalysis } from './xcaAnalysis'
+import { listXCADetails, listXCAFrames, readXCAFrame, type XCADetailResult } from './xcaDetails'
+import { prepareXCAReportTarget, readXCAReportTarget, attachXCAReportDraft, fetchXCAPDF, finalizeXCAReport, type XCAReportTarget, type XCAPDFPreview } from './xcaReport'
+export function getXCAReportPDF(target: XCAReportTarget) {
+  return fetchXCAPDF(API_BASE_URL, sessionStorage.getItem(ACCESS_TOKEN_KEY), target)
+}
+export function signXCAReport(target: XCAReportTarget, preview: XCAPDFPreview, reauth: string, confirmed: boolean) {
+  return finalizeXCAReport(API_BASE_URL, sessionStorage.getItem(ACCESS_TOKEN_KEY), target, preview, reauth, confirmed)
+}
+export type { XCAAnalysisResult, XCABridgeHealth } from './xcaAnalysis'
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
 const ACCESS_TOKEN_KEY = 'angiocad.staff.accessToken'
 const REFRESH_TOKEN_KEY = 'angiocad.staff.refreshToken'
+
+export const getXCABridgeHealth = fetchXCABridgeHealth
+export function getSavedXCADetails(patientId: number, examinationId: number) {
+  return listXCADetails(API_BASE_URL, sessionStorage.getItem(ACCESS_TOKEN_KEY), patientId, examinationId)
+}
+export function getSavedXCAFrames(detail: XCADetailResult, sequenceId: number) {
+  return listXCAFrames(API_BASE_URL, sessionStorage.getItem(ACCESS_TOKEN_KEY), detail, sequenceId)
+}
+export function getSavedXCAFrame(detail: XCADetailResult, frameId: number) {
+  return readXCAFrame(API_BASE_URL, sessionStorage.getItem(ACCESS_TOKEN_KEY), detail, frameId)
+}
+export function prepareXCAReport(patientId: number, encounterId: number) {
+  return prepareXCAReportTarget(API_BASE_URL, sessionStorage.getItem(ACCESS_TOKEN_KEY), patientId, encounterId)
+}
+export function reloadXCAReport(target: XCAReportTarget) {
+  return readXCAReportTarget(API_BASE_URL, sessionStorage.getItem(ACCESS_TOKEN_KEY), target.id, target.patientId, target.encounterId)
+}
+export function saveXCAReportDraft(detail: XCADetailResult, target: XCAReportTarget, frameIds: number[], reviewNote: string, reauthToken?: string) {
+  return attachXCAReportDraft(API_BASE_URL, sessionStorage.getItem(ACCESS_TOKEN_KEY), detail, target, frameIds, reviewNote, reauthToken)
+}
+export function analyzeXCAExamination(patientId: number, examinationId: number) {
+  return requestXCAAnalysis(patientId, examinationId, sessionStorage.getItem(ACCESS_TOKEN_KEY))
+}
 
 interface ApiErrorPayload {
   detail?: string
@@ -232,7 +266,7 @@ async function request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
   const token = sessionStorage.getItem(ACCESS_TOKEN_KEY)
   const headers = new Headers(requestInit.headers)
   headers.set('Accept', 'application/json')
-  if (requestInit.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+  if (requestInit.body && !(requestInit.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
   if (token) headers.set('Authorization', `Bearer ${token}`)
 
   let response = await fetch(`${API_BASE_URL}${path}`, {
@@ -253,6 +287,10 @@ async function request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
 
   if (response.status === 401 && clearSessionOnUnauthorized) clearSession()
   return parseResponse<T>(response)
+}
+
+export function postFormData<T>(path: string, body: FormData): Promise<T> {
+  return request<T>(path, { method: 'POST', body })
 }
 
 function calculateAge(birthDate: string): number {
@@ -1009,19 +1047,20 @@ function resolveBinaryApiUrl(url: string) {
   return url.startsWith('/api/') ? `${API_BASE_URL}${url}` : url
 }
 
-export async function getImagingDicomBlob(dicomUrl: string): Promise<Blob> {
+export async function getImagingDicomBlob(dicomUrl: string, signal?: AbortSignal): Promise<Blob> {
   const targetUrl = resolveBinaryApiUrl(dicomUrl)
   let token = sessionStorage.getItem(ACCESS_TOKEN_KEY)
   const createHeaders = () => {
-    const headers = new Headers({ Accept: 'application/dicom, application/octet-stream' })
+    // DRF negotiates its API renderer before the view returns the binary HttpResponse.
+    const headers = new Headers({ Accept: '*/*' })
     if (token) headers.set('Authorization', `Bearer ${token}`)
     return headers
   }
 
-  let response = await fetch(targetUrl, { headers: createHeaders() })
+  let response = await fetch(targetUrl, { headers: createHeaders(), signal })
   if (response.status === 401) {
     token = await refreshAccessToken()
-    if (token) response = await fetch(targetUrl, { headers: createHeaders() })
+    if (token) response = await fetch(targetUrl, { headers: createHeaders(), signal })
   }
   if (response.status === 401) clearSession()
   if (!response.ok) {
@@ -1261,9 +1300,13 @@ async function getFhirObservationBundle(patientId: number): Promise<UnknownRecor
 export async function getPatientAngiographySequences(
   patientId: number,
 ): Promise<AngiographySequenceSummary[]> {
-  const payload = await request<unknown>(
-    `/api/patients/${patientId}/integrated-data/`,
-  )
+  let payload: unknown
+  try {
+    payload = await request<unknown>(`/api/patients/${patientId}/integrated/`)
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 404) throw error
+    payload = await request<unknown>(`/api/patients/${patientId}/integrated-data/`)
+  }
 
   if (!isRecord(payload) || !Array.isArray(payload.angiography_sequences)) return []
 
@@ -1272,11 +1315,17 @@ export async function getPatientAngiographySequences(
     .map((sequence): AngiographySequenceSummary | null => {
       const id = readNumber(sequence, 'id')
       if (id === undefined) return null
+      const coronarySide = normalizeCoronarySide(sequence.coronary_side)
+      const sequenceNo = readNumber(sequence, 'sequence_no') ?? id
       return {
         id,
-        sequenceNo: readNumber(sequence, 'sequence_no') ?? id,
+        sequenceNo,
         frameCount: readNumber(sequence, 'frame_count') ?? 0,
         examinationId: readNumber(sequence, 'examination_id'),
+        coronarySide,
+        coronarySideLabel: readString(sequence, 'coronary_side_label') || coronarySideLabels[coronarySide],
+        displayName: readString(sequence, 'display_name') || `${coronarySideLabels[coronarySide]} 촬영 ${sequenceNo}`,
+        performedAt: readString(sequence, 'performed_at'),
         labels: sequence.labels,
       }
     })
@@ -3325,6 +3374,32 @@ export async function getPatientFollowUpRecords(patientId: number): Promise<Pati
 }
 
 export type ClinicalInputPayload = Record<string, number | string>
+
+export interface CTAIAnalysis {
+  analysis: { id: number; status: string }
+  jobs: Array<{ id: number; status: string; error_message?: string | null; progress_percent?: number | string | null }>
+  results?: Array<{ id: number; result_type: string; summary_text: string; status: string; generated_at: string }>
+}
+
+export const CT_AI_READY = import.meta.env.VITE_CT_AI_PIPELINE_READY === 'true'
+export const CT_AI_VERSION_ID = Number(import.meta.env.VITE_CT_AI_MODEL_VERSION_ID ?? '')
+
+export function createCTAIAnalysis(examinationId: number, studyId: number, seriesId: number): Promise<CTAIAnalysis> {
+  if (![examinationId, studyId, seriesId].every((id) => Number.isSafeInteger(id) && id > 0)) {
+    return Promise.reject(new ApiError('분석할 검사와 CT 원본 Series를 선택해주세요.', 400))
+  }
+  if (!CT_AI_READY || !Number.isSafeInteger(CT_AI_VERSION_ID) || CT_AI_VERSION_ID <= 0) {
+    return Promise.reject(new ApiError('CT AI 분석 서버가 아직 연결되지 않았습니다.', 503))
+  }
+  return request<CTAIAnalysis>(`/api/examinations/${examinationId}/ai-analyses/`, {
+    method: 'POST',
+    body: JSON.stringify({ analysis_type: 'CCTA', model_version_ids: [CT_AI_VERSION_ID], input_refs: [{ input_type: 'IMAGING_SERIES', imaging_study_id: studyId, imaging_series_id: seriesId }] }),
+  })
+}
+
+export function getCTAIAnalysis(id: number): Promise<CTAIAnalysis> {
+  return request<CTAIAnalysis>(`/api/ai-analyses/${id}/`)
+}
 
 export interface ClinicalAIResult {
   id: number

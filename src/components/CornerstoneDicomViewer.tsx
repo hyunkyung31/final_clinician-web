@@ -21,6 +21,7 @@ import {
 import * as dicomParser from 'dicom-parser'
 import { useEffect, useRef, useState } from 'react'
 import { getImagingDicomBlob } from '../api/client'
+import { withDicomTimeout } from '../api/dicomLoading'
 import type { ImagingDicomManifestInstance } from '../types'
 
 interface PreparedInstance {
@@ -55,6 +56,8 @@ function initializeCornerstone() {
   cornerstoneInitialization = (async () => {
     await initCornerstone()
     initDicomImageLoader({
+      // Our stack uses local Part-10 blobs and dicom-parser metadata.
+      useLegacyMetadataProvider: true,
       maxWebWorkers: Math.max(1, Math.min(4, Math.floor((navigator.hardwareConcurrency || 4) / 2))),
     })
     initCornerstoneTools()
@@ -65,6 +68,10 @@ function initializeCornerstone() {
     }
   })()
 
+  cornerstoneInitialization = cornerstoneInitialization.catch((error) => {
+    cornerstoneInitialization = null
+    throw error
+  })
   return cornerstoneInitialization
 }
 
@@ -92,8 +99,10 @@ function projectedSlicePosition(position?: number[], orientation?: number[]) {
 async function prepareInstance(
   instance: ImagingDicomManifestInstance,
   sourceIndex: number,
+  signal: AbortSignal,
+  onManagedFile: (imageId: string) => void,
 ): Promise<PreparedInstance> {
-  const blob = await getImagingDicomBlob(instance.dicomUrl)
+  const blob = await getImagingDicomBlob(instance.dicomUrl, signal)
   const bytes = new Uint8Array(await blob.arrayBuffer())
   const dataSet = dicomParser.parseDicom(bytes, { untilTag: 'x7fe00010' })
   const position = instance.imagePositionPatient ?? parseNumberList(dataSet.string('x00200032'))
@@ -101,6 +110,7 @@ async function prepareInstance(
   const sliceLocation = instance.sliceLocation ?? dataSet.floatString('x00201041')
   const instanceNumber = instance.instanceNumber ?? dataSet.intString('x00200013')
   const imageId = wadouri.fileManager.add(blob)
+  onManagedFile(imageId)
 
   return {
     instance: {
@@ -120,6 +130,8 @@ async function prepareInstance(
 async function prepareWithConcurrency(
   instances: ImagingDicomManifestInstance[],
   onProgress: (completed: number) => void,
+  signal: AbortSignal,
+  onManagedFile: (imageId: string) => void,
 ) {
   const prepared = new Array<PreparedInstance>(instances.length)
   let cursor = 0
@@ -128,9 +140,10 @@ async function prepareWithConcurrency(
 
   await Promise.all(Array.from({ length: workerCount }, async () => {
     while (cursor < instances.length) {
+      signal.throwIfAborted()
       const index = cursor
       cursor += 1
-      prepared[index] = await prepareInstance(instances[index], index)
+      prepared[index] = await prepareInstance(instances[index], index, signal, onManagedFile)
       completed += 1
       onProgress(completed)
     }
@@ -165,6 +178,7 @@ export function CornerstoneDicomViewer({
   const viewportRef = useRef<CornerstoneTypes.IStackViewport | null>(null)
   const [loadingText, setLoadingText] = useState('DICOM 원본 준비 중…')
   const [error, setError] = useState('')
+  const [retryRevision, setRetryRevision] = useState(0)
   const idsRef = useRef({
     renderingEngineId: `dicom-engine-${crypto.randomUUID()}`,
     viewportId: `dicom-viewport-${crypto.randomUUID()}`,
@@ -178,6 +192,19 @@ export function CornerstoneDicomViewer({
     let disposed = false
     let renderingEngine: RenderingEngine | null = null
     let managedImageIds: string[] = []
+    const controller = new AbortController()
+    let resizeFrame = 0
+    const resizeObserver = new ResizeObserver(() => {
+      cancelAnimationFrame(resizeFrame)
+      resizeFrame = requestAnimationFrame(() => {
+        if (!disposed && renderingEngine && viewportRef.current) {
+          renderingEngine.resize(true, false)
+          viewportRef.current.resetCamera({ resetPan: true, resetZoom: true, resetToCenter: true })
+          viewportRef.current.render()
+        }
+      })
+    })
+    resizeObserver.observe(element)
     const { renderingEngineId, viewportId, toolGroupId } = idsRef.current
 
     const handleNewImage = (event: Event) => {
@@ -214,17 +241,19 @@ export function CornerstoneDicomViewer({
         setError('')
         setLoadingText(`DICOM 원본 준비 중 · 0/${instances.length}`)
         onStatus?.(`DICOM 원본 준비 중 · 0/${instances.length}`)
-        await initializeCornerstone()
+        await withDicomTimeout(initializeCornerstone(), 20000, 'DICOM Viewer 초기화가 지연되고 있습니다. 다시 시도해주세요.')
+        if (disposed) return
 
-        const prepared = await prepareWithConcurrency(instances, (completed) => {
+        const prepared = await withDicomTimeout(prepareWithConcurrency(instances, (completed) => {
           if (disposed) return
           const status = `DICOM 원본 준비 중 · ${completed}/${instances.length}`
           setLoadingText(status)
           onStatus?.(status)
-        })
-        managedImageIds = prepared.map((item) => item.imageId)
+        }, controller.signal, (imageId) => {
+          if (disposed || controller.signal.aborted) removeManagedFile(imageId)
+          else managedImageIds.push(imageId)
+        }), 90000, 'DICOM 원본 다운로드가 지연되고 있습니다. 연결 상태를 확인하고 다시 시도해주세요.')
         if (disposed) {
-          managedImageIds.forEach(removeManagedFile)
           return
         }
 
@@ -239,7 +268,14 @@ export function CornerstoneDicomViewer({
 
         const viewport = renderingEngine.getViewport(viewportId) as CornerstoneTypes.IStackViewport
         viewportRef.current = viewport
-        await viewport.setStack(managedImageIds, Math.min(currentIndex, managedImageIds.length - 1))
+        const decodingStatus = `DICOM 영상 해석 중 · ${prepared.length}슬라이스`
+        setLoadingText(decodingStatus)
+        onStatus?.(decodingStatus)
+        // Download registration order may differ from physical slice order.
+        const orderedImageIds = prepared.map((item) => item.imageId)
+        await withDicomTimeout(viewport.setStack(orderedImageIds, Math.min(currentIndex, orderedImageIds.length - 1)), 30000, 'DICOM 영상 해석이 지연되고 있습니다. 브라우저를 새로고침하거나 다시 시도해주세요.')
+        if (disposed) return
+        viewport.resetCamera({ resetPan: true, resetZoom: true, resetToCenter: true })
         viewport.render()
 
         const toolGroup = ToolGroupManager.createToolGroup(toolGroupId)
@@ -265,8 +301,15 @@ export function CornerstoneDicomViewer({
         setLoadingText('')
         onStatus?.(`원본 DICOM 연결됨 · ${prepared.length}슬라이스`)
       } catch (caught) {
+        controller.abort()
         const message = caught instanceof Error ? caught.message : 'DICOM 원본을 표시하지 못했습니다.'
         if (!disposed) {
+          viewportRef.current = null
+          ToolGroupManager.destroyToolGroup(toolGroupId)
+          renderingEngine?.destroy()
+          renderingEngine = null
+          managedImageIds.forEach(removeManagedFile)
+          managedImageIds = []
           setError(message)
           setLoadingText('')
           onError?.(message)
@@ -278,6 +321,9 @@ export function CornerstoneDicomViewer({
 
     return () => {
       disposed = true
+      controller.abort()
+      resizeObserver.disconnect()
+      cancelAnimationFrame(resizeFrame)
       element.removeEventListener(CornerstoneEnums.Events.STACK_NEW_IMAGE, handleNewImage)
       element.removeEventListener(CornerstoneEnums.Events.IMAGE_RENDERED, reportTransform)
       onAnnotationTransform?.(null)
@@ -287,7 +333,7 @@ export function CornerstoneDicomViewer({
       renderingEngine?.destroy()
       managedImageIds.forEach(removeManagedFile)
     }
-  }, [instances, onCurrentIndexChange, onError, onOrderedInstances, onStatus, onAnnotationTransform])
+  }, [instances, onCurrentIndexChange, onError, onOrderedInstances, onStatus, onAnnotationTransform, retryRevision])
 
   useEffect(() => {
     const viewport = viewportRef.current
@@ -297,10 +343,17 @@ export function CornerstoneDicomViewer({
 
   return (
     <div className="cornerstone-dicom-viewer" ref={elementRef}>
+      {!loadingText && !error && <button className="dicom-fit-button" type="button" onClick={() => {
+        const viewport = viewportRef.current
+        if (!viewport) return
+        viewport.resetCamera({ resetPan: true, resetZoom: true, resetToCenter: true })
+        viewport.render()
+      }}>화면에 맞춤</button>}
       {(loadingText || error) && (
         <div className={`cornerstone-dicom-state ${error ? 'error' : ''}`}>
           <strong>{error ? 'DICOM 원본을 열지 못했습니다' : loadingText}</strong>
           {error && <span>{error}</span>}
+          {error && <button type="button" onClick={() => setRetryRevision((value) => value + 1)}>DICOM 다시 불러오기</button>}
         </div>
       )}
       {!loadingText && !error && (

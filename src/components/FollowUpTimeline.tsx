@@ -17,6 +17,7 @@ export function FollowUpTimeline({
   selectedExaminationId,
   labObservations = [],
   refreshKey = 0,
+  scope = 'ALL',
 }: {
   patientId?: number
   onRecords?: (records: PatientFollowUpRecords | null) => void
@@ -25,6 +26,7 @@ export function FollowUpTimeline({
   selectedExaminationId?: number
   labObservations?: LabObservation[]
   refreshKey?: number
+  scope?: 'ALL' | 'LAB'
 }) {
   const [records, setRecords] = useState<PatientFollowUpRecords | null>(null)
   const [loading, setLoading] = useState(false)
@@ -60,9 +62,9 @@ export function FollowUpTimeline({
   const hasLab = currentRecords?.visits.some((visit) => visit.examinations.some((exam) => exam.result?.resultType === 'LAB_PANEL'))
 
   return (
-    <section className="followup-panel">
+    <section className={`followup-panel${scope === 'LAB' ? ' lab-followup-panel' : ''}`}>
       <header>
-        <div><CalendarClock size={17} /><span><strong>환자 추적관찰</strong><small>최초검사 → 1차 추적검사 → 2차 추적검사</small></span></div>
+        <div><CalendarClock size={17} /><span><strong>{scope === 'LAB' ? '혈액검사 추적관찰' : '환자 추적관찰'}</strong><small>최초검사 → 1차 추적검사 → 2차 추적검사</small></span></div>
         <div className="followup-header-actions">{currentRecords && <b>{currentRecords.programGroup || 'FOLLOW-UP'} · {currentRecords.visitCount}회</b>}<button className="lab-ai-launch" onClick={onAnalyzeLab} disabled={!hasLab} type="button"><BrainCircuit size={18} />혈액검사 AI 분석</button></div>
       </header>
       {loading && <div className="followup-state"><LoaderCircle className="spin" size={15} />기록을 불러오는 중…</div>}
@@ -82,6 +84,7 @@ export function FollowUpTimeline({
                   const abnormal = flags.filter((flag) => ['HIGH', 'LOW', 'CRITICAL_HIGH', 'CRITICAL_LOW', 'ABNORMAL'].includes(flag)).length
                   const unknown = flags.length - normal - abnormal
                   const isLab = exam.examinationType.category.toUpperCase().includes('LAB') || exam.examinationType.code.toUpperCase().includes('LAB')
+                  if (scope === 'LAB' && !isLab) return null
                   if (isLab) return (
                     <button className={`followup-lab-select ${selectedExaminationId === exam.examinationId ? 'selected' : ''}`} key={`${exam.orderId}-${exam.examinationId}`} onClick={() => onSelectLab?.(exam.examinationId)} type="button" aria-pressed={selectedExaminationId === exam.examinationId}>
                       <span><FlaskConical size={13} /><strong>{exam.examinationType.name}</strong></span>

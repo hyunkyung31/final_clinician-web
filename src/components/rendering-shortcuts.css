@@ -1,0 +1,46 @@
+.three-d-pane.three-d-rendered-pane { grid-template-rows: 34px auto minmax(0, 1fr) 30px; }
+.rendering-kind-buttons { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; border-bottom: 1px solid #253a51; background: #101e2e; }
+.rendering-kind-buttons button { padding: 8px 12px; border: 1px solid #37506d; border-radius: 7px; background: #15283c; color: #b6cae3; font-size: 12px; cursor: pointer; }
+.rendering-kind-buttons button.active { border-color: #659eff; background: #2d68cf; color: white; font-weight: 700; }
+.rendering-kind-buttons button:disabled { opacity: .5; cursor: default; }
+.rendering-kind-buttons button:focus-visible { outline: 2px solid #a7caff; outline-offset: 2px; }
+.imaging-review-layout.large-three-d-layout { grid-template-columns: 220px minmax(0, 1fr); min-height: 780px; }
+.large-three-d-layout .clinical-image-viewer > .clinical-image-stage { min-height: 650px; }
+.large-three-d-layout .image-viewer-header { flex-wrap: wrap; height: auto; min-height: 70px; gap: 12px; }
+.large-three-d-layout .image-viewer-actions { flex-wrap: wrap; gap: 10px; }
+.large-three-d-layout .annotation-toolbar { flex-wrap: wrap; }
+.large-three-d-layout .annotation-toolbar button[title='마지막 텍스트 주석 수정'],
+.large-three-d-layout .annotation-toolbar button:last-child:not([title]) { width: auto; padding: 0 9px; white-space: nowrap; }
+.image-viewer-actions .ct-ai-launch { display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; border: 1px solid #6e98ff; border-radius: 9px; background: #316ae0; color: white; font-size: 14px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.ct-ai-launch:disabled { opacity: .5; cursor: default; }
+.cornerstone-dicom-viewer .dicom-fit-button { position: absolute; top: 12px; right: 12px; z-index: 5; padding: 8px 12px; border: 1px solid #526d8b; border-radius: 7px; background: #152a40e6; color: #e5efff; cursor: pointer; font-size: 12px; }
+.cornerstone-dicom-state.error { pointer-events: auto; }
+.ct-ai-modal { width: min(620px, 90vw); }
+.ct-ai-modal h2 { display: flex; align-items: center; gap: 8px; }
+.ct-ai-source { display: grid; gap: 8px; padding: 16px; border: 1px solid #cfdaec; border-radius: 9px; background: #f5f8fd; }
+.ct-ai-source span { font-size: 12px; color: #64748b; }
+.ct-ai-connection { padding: 14px; background: #edf4ff; border-radius: 9px; color: #36577d; line-height: 1.7; }
+.three-d-pane.three-d-original-pane { grid-template-rows: 34px minmax(0, 1fr) 78px; }
+.three-d-original-pane > .three-d-slice-footer { display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 8px; }
+.three-d-slice-controls { display: flex; align-items: center; gap: 10px; }
+.three-d-slice-controls input { flex: 1; min-width: 0; accent-color: #6295ff; }
+.three-d-slice-controls span { color: #d5e6ff; font-size: 12px; min-width: 40px; text-align: center; }
+.three-d-slice-controls button { display: grid; place-items: center; padding: 5px; background: #1a3048; color: #dce9ff; border: 1px solid #3e5d7f; border-radius: 6px; cursor: pointer; }
+.three-d-slice-controls button:disabled { opacity: .4; cursor: default; }
+@media (max-width: 1100px) {
+  .imaging-review-layout.large-three-d-layout { grid-template-columns: 180px minmax(0, 1fr); }
+}
+.large-three-d-layout .three-d-comparison.three-d-single-view { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.large-three-d-layout .clinical-image-viewer > .clinical-image-stage { min-height: 720px; }
+.ct-view-tabs { display: flex; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #2e435a; background: #101e2d; }
+.ct-view-tabs button { display: flex; align-items: center; gap: 8px; border: 1px solid #3c5574; border-radius: 8px; padding: 12px 22px; color: #b9cce4; background: #182c42; font-size: 14px; font-weight: 700; cursor: pointer; }
+.ct-view-tabs button.active { color: #fff; background: #2d68d4; border-color: #7baaff; }
+.ct-view-tabs button:focus-visible { outline: 2px solid #a7caff; outline-offset: 2px; }
+@media (max-width: 720px) {
+  .large-three-d-layout .clinical-image-viewer > .clinical-image-stage { min-height: 560px; }
+  .ct-view-tabs button { flex: 1; justify-content: center; padding: 12px; }
+}
+@media (max-width: 720px) {
+  .imaging-review-layout.large-three-d-layout { grid-template-columns: 1fr; }
+  .large-three-d-layout .imaging-exam-list { max-height: 220px; }
+}

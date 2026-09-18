@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test:consultation": "node --test scripts/consultation-workflow.test.mjs scripts/consultation-api.test.mjs",
+    "test:angiography": "node --test scripts/angiography.test.mjs",
+    "test:xca": "node --test scripts/xca-analysis.test.mjs scripts/xca-details.test.mjs scripts/xca-report.test.mjs scripts/xca-pdf.test.mjs",
     "typecheck:consultation": "tsc --project tsconfig.consultation.json --noEmit"
   },
   "dependencies": {

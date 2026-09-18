@@ -38,3 +38,29 @@ export function annotationGeometry(annotation: ViewerAnnotation) {
   return { coordinate_space: annotation.coordinateSpace ?? 'viewport_normalized', ...(annotation.type === 'FREEHAND' ? { points: annotation.points.map(normalize) } : annotation.type === 'RECTANGLE' ? { start: normalize(annotation.start), end: normalize(annotation.end) } : { point: normalize(annotation.point) }) }
 }
 
+// XCA 상세 분석(Detailed Analysis) API 호출 함수
+export async function analyzeAngiographyDetailed(
+  patientId: string | number,
+  frames: import('../types').FrameRecord[]
+): Promise<import('../types').AngiographyDetailedResponse> {
+  const response = await fetch('/api/v1/angiography/analyze-detailed', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      patient_id: patientId,
+      frames,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    throw new Error(
+      errorData?.detail?.message || 
+      `상세 AI 분석에 실패했습니다. (HTTP ${response.status})`
+    );
+  }
+
+  return response.json();
+}

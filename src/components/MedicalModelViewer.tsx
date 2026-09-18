@@ -8,6 +8,7 @@ import { VTKLoader } from 'three/examples/jsm/loaders/VTKLoader.js'
 interface MedicalModelViewerProps {
   sourceUrl: string
   format: string
+  color?: string
   onStatus?: (status: string) => void
   onError?: (message: string) => void
   onCameraChange?: (state: Record<string, unknown>) => void
@@ -38,6 +39,7 @@ function fitModel(object: THREE.Object3D) {
 export function MedicalModelViewer({
   sourceUrl,
   format,
+  color = '#ef5d63',
   onStatus,
   onError,
   onCameraChange,
@@ -59,7 +61,13 @@ export function MedicalModelViewer({
     const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 1000)
     camera.position.set(0, 0.35, 5.4)
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
+    let renderer: THREE.WebGLRenderer
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
+    } catch {
+      onError?.('브라우저에서 WebGL 3D 화면을 생성하지 못했습니다.')
+      return
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -125,7 +133,7 @@ export function MedicalModelViewer({
         return new THREE.Mesh(
           geometry,
           new THREE.MeshStandardMaterial({
-            color: '#ef5d63',
+            color,
             roughness: 0.48,
             metalness: 0.08,
             side: THREE.DoubleSide,
@@ -191,7 +199,7 @@ export function MedicalModelViewer({
       renderer.dispose()
       renderer.domElement.remove()
     }
-  }, [format, onError, onStatus, sourceUrl, onCameraChange, cameraState])
+  }, [color, format, onError, onStatus, sourceUrl, onCameraChange, cameraState])
 
   return <div className="medical-model-viewer" ref={containerRef} />
 }

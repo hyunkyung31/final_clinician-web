@@ -1,4 +1,9 @@
-import { annotationRecordKey, annotationGeometry, fromServerAnnotation, type ViewerAnnotation } from '../api/imagingAnnotations'
+import { 
+  annotationRecordKey,
+  annotationGeometry, 
+  fromServerAnnotation,
+  type ViewerAnnotation 
+} from '../api/imagingAnnotations'
 import {
   Activity,
   CheckCircle2,
@@ -69,8 +74,14 @@ import type {
   ImagingAnnotationInput,
 } from '../types'
 import { LabResultEditor } from './LabResultEditor'
+import { RENDERING_KINDS, preferredRendering, renderingLabel } from '../api/renderingSelection'
+import './rendering-shortcuts.css'
+import { CTAIAnalysisPanel } from './CTAIAnalysisPanel'
+import { groupAngiographySequences } from '../api/angiographyGrouping'
+import { splitImagingStudies } from '../api/imagingCategories'
 import { FollowUpTimeline } from './FollowUpTimeline'
 import { ClinicalAIAnalysisPanel } from './ClinicalAIAnalysisPanel'
+import { XCAAnalysisPanel } from './XCAAnalysisPanel'
 import { ExaminationPatientSearch } from './ExaminationPatientSearch'
 import type { DicomAnnotationTransform } from './CornerstoneDicomViewer'
 
@@ -86,7 +97,8 @@ const CornerstoneDicomViewer = lazy(() =>
   })),
 )
 
-type ExamTab = 'LAB' | 'IMAGING_2D' | 'IMAGING_3D'
+type ExamSection = 'LAB' | 'IMAGING'
+type ExamTab = 'IMAGING_2D' | 'IMAGING_3D'
 type AnnotationTool = 'POINTER' | 'FREEHAND' | 'RECTANGLE' | 'TEXT'
 type ThreeDPane = 'ORIGINAL' | 'RENDERED'
 
@@ -130,6 +142,15 @@ function formatDate(value: string) {
     month: '2-digit',
     day: '2-digit',
   }).format(date)
+}
+
+function formatAngiographyDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const parts = new Intl.DateTimeFormat('ko-KR', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(date)
+  return ['year', 'month', 'day'].map((type) => parts.find((part) => part.type === type)?.value).join('-')
 }
 
 function displayFlag(flag: LabObservation['flag']) {
@@ -269,12 +290,17 @@ export function ExaminationImagingWorkspace({
   onOpenPatient: (patientId: string) => void
   onSelectPatient: (patient: PatientSummary) => void
 }) {
-  const [activeTab, setActiveTab] = useState<ExamTab>('LAB')
+  const [activeSection, setActiveSection] = useState<ExamSection>('LAB')
+  const [activeTab, setActiveTab] = useState<ExamTab>('IMAGING_2D')
   const [followUpRecords, setFollowUpRecords] = useState<PatientFollowUpRecords | null>(null)
   const [clinicalAiOpen, setClinicalAiOpen] = useState(false)
+  const [xcaAiOpen, setXcaAiOpen] = useState(false)
+  const [xcaAiBusy, setXcaAiBusy] = useState(false)
+  const closeXcaAi = useCallback(() => setXcaAiOpen(false), [])
   const [selectedLabExaminationId, setSelectedLabExaminationId] = useState<number | null>(null)
   const [labItems, setLabItems] = useState<LabObservation[]>([])
   const [sequences, setSequences] = useState<AngiographySequenceSummary[]>([])
+  const [sequenceError, setSequenceError] = useState('')
   const [dataLoading, setDataLoading] = useState(false)
   const [labError, setLabError] = useState('')
   const [selectedLabCode, setSelectedLabCode] = useState('')
@@ -309,8 +335,11 @@ export function ExaminationImagingWorkspace({
   const [renderingRevision, setRenderingRevision] = useState(0)
   const [renderingSaving, setRenderingSaving] = useState(false)
   const [createRenderingOpen, setCreateRenderingOpen] = useState(false)
-  const [renderingType, setRenderingType] = useState('VESSEL_ONLY')
-  const [requestedFormat, setRequestedFormat] = useState('GLB')
+  const [ctAiOpen, setCtAiOpen] = useState(false)
+  const [renderingType, setRenderingType] = useState('CALCIFICATION_ONLY')
+  const renderingTypeRef = useRef(renderingType)
+  renderingTypeRef.current = renderingType
+  const [requestedFormat, setRequestedFormat] = useState('STL')
   const [renderingSources, setRenderingSources] = useState<Awaited<ReturnType<typeof getRendering3DSources>>>([])
   const [modelCamera, setModelCamera] = useState<Record<string, unknown> | null>(null)
   const [restoreCamera, setRestoreCamera] = useState<Record<string, unknown> | null>(null)
@@ -351,6 +380,7 @@ export function ExaminationImagingWorkspace({
     if (!patient?.backendId) {
       setLabItems([])
       setSequences([])
+      setSequenceError('')
       setLabError('')
       return
     }
@@ -359,6 +389,7 @@ export function ExaminationImagingWorkspace({
     setDataLoading(true)
     setLabItems([])
     setSequences([])
+    setSequenceError('')
     setLabError('')
 
     Promise.allSettled([
@@ -379,6 +410,9 @@ export function ExaminationImagingWorkspace({
       }
 
       setSequences(sequenceResult.status === 'fulfilled' ? sequenceResult.value : [])
+      setSequenceError(sequenceResult.status === 'rejected'
+        ? sequenceResult.reason instanceof Error ? sequenceResult.reason.message : 'Angio 촬영 영상 목록을 불러오지 못했습니다.'
+        : '')
       setDataLoading(false)
     })
 
@@ -418,21 +452,29 @@ export function ExaminationImagingWorkspace({
     )
   }, [labGroups])
 
+  const studyCategories = useMemo(() => splitImagingStudies(imagingStudies), [imagingStudies])
+  const visibleStudies = activeTab === 'IMAGING_3D' ? studyCategories.threeD : studyCategories.twoD
   const imagingAssets = useMemo<ImagingAsset[]>(
     () => [
-      ...sequences.map((sequence) => ({
+      ...(activeTab === 'IMAGING_2D' ? sequences : []).map((sequence) => ({
         key: `sequence-${sequence.id}`,
         kind: 'SEQUENCE' as const,
         sequence,
       })),
-      ...imagingStudies.map((study) => ({
+      ...visibleStudies.map((study) => ({
         key: `study-${study.id}`,
         kind: 'STUDY' as const,
         study,
       })),
     ],
-    [imagingStudies, sequences],
+    [visibleStudies, sequences, activeTab],
   )
+
+  const angiographyExaminations = useMemo(() => groupAngiographySequences(sequences), [sequences])
+  const imagingExaminationCount = new Set([
+    ...(activeTab === 'IMAGING_2D' ? angiographyExaminations : []).map((group) => group.key),
+    ...visibleStudies.map((study) => study.examinationId !== undefined ? `examination-${study.examinationId}` : `study-${study.id}`),
+  ]).size
 
   useEffect(() => {
     setSelectedAssetKey((current) =>
@@ -443,11 +485,14 @@ export function ExaminationImagingWorkspace({
   }, [imagingAssets])
 
   const selectedAsset = imagingAssets.find((asset) => asset.key === selectedAssetKey) ?? null
+  const xcaExaminationId = selectedAsset?.kind === 'SEQUENCE' ? selectedAsset.sequence.examinationId : undefined
+  const xcaSequences = sequences.filter((sequence) => xcaExaminationId !== undefined && sequence.examinationId === xcaExaminationId)
+  useEffect(() => { setXcaAiOpen(false) }, [patient?.backendId, xcaExaminationId, activeSection, activeTab])
   const selectedStudy = selectedAsset?.kind === 'STUDY'
     ? selectedAsset.study
     : selectedAsset?.kind === 'SEQUENCE'
       ? imagingStudies.find(
-          (study) => study.examinationId === selectedAsset.sequence.examinationId,
+          (study) => selectedAsset.sequence.examinationId !== undefined && study.examinationId === selectedAsset.sequence.examinationId,
         ) ?? null
       : null
 
@@ -484,6 +529,7 @@ export function ExaminationImagingWorkspace({
 
   useEffect(() => {
     setStudySeries([])
+    setActive3DPane('ORIGINAL')
     setSelectedSeriesId(null)
     setDicomManifest(null)
     setOrderedDicomInstances([])
@@ -583,7 +629,7 @@ export function ExaminationImagingWorkspace({
           return statusOrder(a.status) - statusOrder(b.status) || b.version - a.version
         })
         setRenderings3D(ordered)
-        setSelectedRenderingId(ordered[0]?.id ?? null)
+        setSelectedRenderingId(preferredRendering(ordered, renderingTypeRef.current)?.id ?? null)
       })
       .catch((error) => {
         if (active) {
@@ -660,7 +706,17 @@ export function ExaminationImagingWorkspace({
     }
   }, [selectedRendering, viewerMode])
 
-  const requestRendering = async (retry = false) => {
+  const selectRenderingKind = (kind: string) => {
+    setRenderingType(kind)
+    setSelectedRenderingId(preferredRendering(renderings3D, kind)?.id ?? null)
+    setRenderingError('')
+    setModelWaiting(false)
+    setRestoreCamera(null)
+    setModelCamera(null)
+    setActive3DPane('RENDERED')
+  }
+
+  const requestRendering = async (retry = false, kind = renderingType, format = requestedFormat) => {
     if (!selectedStudy || renderingSaving) return
     setRenderingSaving(true)
     setRenderingError('')
@@ -668,7 +724,7 @@ export function ExaminationImagingWorkspace({
     try {
       const item = retry && selectedRendering
         ? await regenerateRendering3D(selectedRendering.id, selectedRendering.renderingConfig ?? {}, selectedRendering.fileFormat)
-        : await createStudyRendering3D(studyId, { rendering_type: renderingType, source_series_ids: selectedSeriesId ? [selectedSeriesId] : [], file_format: requestedFormat, generation_type: selectedStudy.modality.toUpperCase() === 'CT' ? 'CCTA' : 'ANGIO_2D_TO_3D' })
+        : await createStudyRendering3D(studyId, { rendering_type: kind, source_series_ids: selectedSeriesId ? [selectedSeriesId] : [], file_format: format, generation_type: selectedStudy.modality.toUpperCase() === 'CT' ? 'CCTA' : 'ANGIO_2D_TO_3D' })
       if (renderingStudyContext.current !== studyId) return
       setRenderings3D((items) => [...items.filter((current) => current.id !== item.id), item])
       setSelectedRenderingId(item.id)
@@ -744,7 +800,7 @@ export function ExaminationImagingWorkspace({
 
   useEffect(() => {
     setIsPlaying(false)
-  }, [activeTab, selectedAssetKey, selectedSeriesId, tool])
+  }, [activeSection, activeTab, selectedAssetKey, selectedSeriesId, tool])
 
   useEffect(() => {
     if (selectedAsset?.kind !== 'SEQUENCE' || !frames.length) return
@@ -1091,45 +1147,82 @@ export function ExaminationImagingWorkspace({
         {patient && <div className="exam-strip-actions"><button onClick={() => onOpenPatient(patient.id)} type="button">워크스테이션 열기</button></div>}
       </section>
 
-      <FollowUpTimeline refreshKey={labRevision} patientId={patient?.backendId} onRecords={setFollowUpRecords} labObservations={labItems} selectedExaminationId={selectedLabAi?.exam.examinationId} onSelectLab={(examinationId) => { setSelectedLabExaminationId(examinationId); setActiveTab('LAB') }} onAnalyzeLab={() => openLabAi()} />
-
-      <nav className="exam-data-tabs" aria-label="검사 데이터 종류">
-        <button className={activeTab === 'LAB' ? 'active' : ''} onClick={() => setActiveTab('LAB')} type="button">
+      <nav className="exam-data-tabs exam-section-tabs" aria-label="검사 종류">
+        <button className={activeSection === 'LAB' ? 'active' : ''} aria-pressed={activeSection === 'LAB'} onClick={() => setActiveSection('LAB')} type="button">
           <FlaskConical size={16} />혈액검사 <b>{labGroups.length}</b>
         </button>
-        <button className={activeTab === 'IMAGING_2D' ? 'active' : ''} onClick={() => setActiveTab('IMAGING_2D')} type="button">
-          <Images size={16} />2D 영상 <b>{imagingAssets.length}</b>
-        </button>
-        <button className={activeTab === 'IMAGING_3D' ? 'active' : ''} onClick={() => setActiveTab('IMAGING_3D')} type="button">
-          <Rotate3D size={16} />3D 영상 <b>{renderings3D.length}</b>
+        <button className={activeSection === 'IMAGING' ? 'active' : ''} aria-pressed={activeSection === 'IMAGING'} onClick={() => setActiveSection('IMAGING')} type="button">
+          <Images size={16} />영상검사 <b>{sequences.length + imagingStudies.length}</b>
         </button>
       </nav>
 
-      {activeTab !== 'LAB' ? (
-        <div className="imaging-review-layout">
+      <div hidden={activeSection !== 'LAB'}>
+        <FollowUpTimeline scope="LAB" refreshKey={labRevision} patientId={patient?.backendId} onRecords={setFollowUpRecords} labObservations={labItems} selectedExaminationId={selectedLabAi?.exam.examinationId} onSelectLab={(examinationId) => { setSelectedLabExaminationId(examinationId); setActiveSection('LAB') }} onAnalyzeLab={() => openLabAi()} />
+      </div>
+
+      {activeSection === 'IMAGING' && (
+        <nav className="exam-imaging-subtabs" aria-label="영상검사 종류">
+          <button className={activeTab === 'IMAGING_2D' ? 'active' : ''} aria-pressed={activeTab === 'IMAGING_2D'} onClick={() => setActiveTab('IMAGING_2D')} type="button"><Images size={15} />2D 혈관조영·영상 <b>{sequences.length + studyCategories.twoD.length}</b></button>
+          <button className={activeTab === 'IMAGING_3D' ? 'active' : ''} aria-pressed={activeTab === 'IMAGING_3D'} onClick={() => setActiveTab('IMAGING_3D')} type="button"><Rotate3D size={15} />3D 원본·렌더링 <b>{studyCategories.threeD.length}</b></button>
+          <span>{activeTab === 'IMAGING_2D' ? '촬영 시리즈를 선택해 연속 프레임을 확인합니다.' : 'CT·MR 원본과 3D 렌더링 결과를 확인합니다.'}</span>
+        </nav>
+      )}
+
+
+      {activeSection === 'IMAGING' ? (
+        <div className={`imaging-review-layout ${viewerMode === '3D' ? 'large-three-d-layout' : ''}`}>
           <section className="feature-card imaging-exam-list">
-            <header><div><h2>영상검사 목록</h2><span>검사를 선택하면 영상이 열립니다.</span></div><b>{imagingAssets.length}건</b></header>
+            <header><div><h2>{viewerMode === '3D' ? '3D 원본 검사 목록' : '2D 영상검사 목록'}</h2><span>{viewerMode === '3D' ? '원본 검사를 선택해 렌더링을 확인합니다.' : '촬영 영상을 선택하면 영상이 열립니다.'}</span></div><b>{imagingExaminationCount}검사</b></header>
             <div>
-              {imagingAssets.map((asset) => {
-                const isSequence = asset.kind === 'SEQUENCE'
-                return (
+              {viewerMode === '2D' && sequenceError && <p className="api-inline-notice" role="alert">Angio 촬영 영상 조회 실패: {sequenceError}</p>}
+              {(viewerMode === '2D' ? angiographyExaminations : []).map((examination) => (
+                <section className="angio-examination-group" key={examination.key} aria-label={`관상동맥 조영술 ${examination.examinationId ?? '검사 연결 미등록'}`}>
+                  <header>
+                    <strong>{examination.performedAt ? formatAngiographyDate(examination.performedAt) : '촬영일 미등록'} 관상동맥 조영술</strong>
+                    <small>{examination.examinationId === undefined ? '검사 연결 미등록 · ' : ''}촬영 영상 {examination.sequenceCount}개</small>
+                  </header>
+                  {examination.sides.map((group) => (
+                    <details className={`angio-side-group side-${group.side.toLowerCase()}`} key={group.side} open>
+                      <summary><strong>{group.label}</strong><span>촬영 영상 {group.sequences.length}개</span></summary>
+                      {group.side === 'UNKNOWN' && <p className="angio-side-notice">좌·우 정보가 없는 촬영 영상입니다.</p>}
+                      {group.sequences.map((sequence) => (
+                        <button
+                          key={sequence.id}
+                          className={`imaging-asset-button${selectedAssetKey === `sequence-${sequence.id}` ? ' active' : ''}`}
+                          aria-pressed={selectedAssetKey === `sequence-${sequence.id}`}
+                          onClick={() => setSelectedAssetKey(`sequence-${sequence.id}`)}
+                          type="button"
+                        >
+                          <span className="imaging-list-icon"><Images size={16} /></span>
+                          <span>
+                            <strong title={sequence.displayName}>{sequence.displayName}</strong>
+                            <small>{sequence.coronarySideLabel} · 촬영 {sequence.sequenceNo}</small>
+                          </span>
+                          <b>{sequence.frameCount}F</b>
+                        </button>
+                      ))}
+                    </details>
+                  ))}
+                </section>
+              ))}
+              {visibleStudies.map((study) => (
                   <button
-                    key={asset.key}
-                    className={selectedAssetKey === asset.key ? 'active' : ''}
-                    onClick={() => setSelectedAssetKey(asset.key)}
+                    key={`study-${study.id}`}
+                    className={`imaging-asset-button${selectedAssetKey === `study-${study.id}` ? ' active' : ''}`}
+                    aria-pressed={selectedAssetKey === `study-${study.id}`}
+                    onClick={() => setSelectedAssetKey(`study-${study.id}`)}
                     type="button"
                   >
                     <span className="imaging-list-icon"><Images size={16} /></span>
                     <span>
-                      <strong>{isSequence ? `CAG 시퀀스 ${asset.sequence.sequenceNo}` : asset.study.description}</strong>
-                      <small>{isSequence ? 'XA · 2D 혈관조영' : `${asset.study.modality} · ${asset.study.studyDate ? formatDate(asset.study.studyDate) : '검사일 미등록'}`}</small>
+                      <strong>{study.description}</strong>
+                      <small>{study.modality} · {study.studyDate ? formatDate(study.studyDate) : '검사일 미등록'}</small>
                     </span>
-                    <b>{isSequence ? `${asset.sequence.frameCount}F` : asset.study.status}</b>
+                    <b>{study.status}</b>
                   </button>
-                )
-              })}
-              {!dataLoading && imagingAssets.length === 0 && (
-                <div className="feature-empty"><Images size={28} /><strong>등록된 영상검사가 없습니다</strong><span>DICOM 또는 CAG 프레임 연동 후 표시됩니다.</span></div>
+              ))}
+              {!dataLoading && !(viewerMode === '2D' && sequenceError) && imagingAssets.length === 0 && (
+                <div className="feature-empty"><Images size={28} /><strong>{viewerMode === '3D' ? '등록된 3D 원본 검사가 없습니다' : '등록된 2D 영상검사가 없습니다'}</strong><span>{viewerMode === '3D' ? 'CT·MR 원본 검사 연동 후 표시됩니다.' : '2D DICOM 또는 CAG 프레임 연동 후 표시됩니다.'}</span></div>
               )}
               {dataLoading && <div className="feature-empty">검사 데이터를 불러오는 중…</div>}
             </div>
@@ -1138,15 +1231,19 @@ export function ExaminationImagingWorkspace({
           <section className="feature-card clinical-image-viewer">
             <header className="image-viewer-header">
               <div>
-                <strong>{selectedAsset ? (selectedAsset.kind === 'SEQUENCE' ? `CAG 시퀀스 ${selectedAsset.sequence.sequenceNo}` : selectedAsset.study.description) : '영상 뷰어'}</strong>
-                <small>{viewerMode === '3D' ? (selectedRendering ? `원본 CT/AI 렌더링 비교 · ${selectedRendering.renderingType} v${selectedRendering.version}` : '3D 렌더링 선택 대기') : (currentFrame ? `${currentFrame.filename} · ${frameIndex + 1}/${viewerFrameCount}` : selectedStudy ? `Series ${studySeries.length}개 · Instance ${viewerFrameCount}개` : '검사를 선택해주세요.')}</small>
+                <strong>{selectedAsset ? (selectedAsset.kind === 'SEQUENCE' ? selectedAsset.sequence.displayName : selectedAsset.study.description) : '영상 뷰어'}</strong>
+                <small>{viewerMode === '3D' ? (active3DPane === 'ORIGINAL' ? '원본 CT · 슬라이스 조회' : selectedRendering ? `${renderingLabel(selectedRendering.renderingType)} · v${selectedRendering.version}` : '3D 렌더링 결과 조회') : (currentFrame ? `${currentFrame.filename} · ${frameIndex + 1}/${viewerFrameCount}` : selectedStudy ? `Series ${studySeries.length}개 · Instance ${viewerFrameCount}개` : '검사를 선택해주세요.')}</small>
               </div>
               <div className="image-viewer-actions">
-                {viewerMode === '3D' && (
-                  <div className="annotation-target-switch" aria-label="3D 주석 대상">
-                    <button className={active3DPane === 'ORIGINAL' ? 'active' : ''} onClick={() => setActive3DPane('ORIGINAL')} type="button">원본</button>
-                    <button className={active3DPane === 'RENDERED' ? 'active' : ''} onClick={() => setActive3DPane('RENDERED')} type="button">렌더링</button>
-                  </div>
+                {viewerMode === '3D' && <button className="ct-ai-launch" type="button" disabled={!selectedStudy || selectedStudy.modality.toUpperCase() !== 'CT' || !selectedSeriesId} onClick={() => setCtAiOpen(true)}><BrainCircuit size={19} />석회화 AI 분석</button>}
+                {viewerMode === '2D' && selectedAsset?.kind === 'SEQUENCE' && (
+                  <>
+                    <button className="xca-launch" type="button"
+                      disabled={!patient?.backendId || !xcaExaminationId}
+                      onClick={() => setXcaAiOpen(true)} title="같은 Angio 검사의 분류된 전체 시리즈 분석">
+                      <BrainCircuit size={15} />{xcaAiBusy ? '2D AI 분석 중…' : '2D AI 분석·저장 결과'}
+                    </button>
+                  </>
                 )}
                 <div className="annotation-toolbar" aria-label="영상 주석 도구">
                     {([
@@ -1192,6 +1289,11 @@ export function ExaminationImagingWorkspace({
               </div>
             </header>
 
+            {viewerMode === '3D' && <nav className="ct-view-tabs" role="tablist" aria-label="CT 영상 보기">
+              <button id="ct-original-tab" type="button" role="tab" aria-controls="ct-original-panel" aria-selected={active3DPane === 'ORIGINAL'} className={active3DPane === 'ORIGINAL' ? 'active' : ''} onClick={() => setActive3DPane('ORIGINAL')}><Images size={18} />원본 CT</button>
+              <button id="ct-rendered-tab" type="button" role="tab" aria-controls="ct-rendered-panel" aria-selected={active3DPane === 'RENDERED'} className={active3DPane === 'RENDERED' ? 'active' : ''} onClick={() => setActive3DPane('RENDERED')}><Rotate3D size={18} />3D 렌더링</button>
+            </nav>}
+
             {viewerMode === '2D' && selectedAsset?.kind === 'STUDY' && (
               <div className="dicom-browser-bar">
                 <label>
@@ -1207,10 +1309,12 @@ export function ExaminationImagingWorkspace({
             )}
 
             {selectedAsset?.kind === 'SEQUENCE' && <p className="api-inline-notice">이 Angio 시퀀스의 주석은 화면에서만 편집됩니다. 서버 저장에는 해당 Study·Series 연결이 필요합니다.</p>}
-            {viewerMode === '3D' && selectedStudy && <div className="rendering-action-bar"><button type="button" disabled={renderingSaving || !selectedSeriesId} onClick={() => setCreateRenderingOpen(true)}>3D 렌더링 생성</button><button type="button" disabled={renderingSaving} onClick={() => setRenderingRevision((value) => value + 1)}>목록 새로고침</button><span>{renderingSources.length ? `연결된 원본 ${renderingSources.length}개` : '연결된 렌더링 원본 없음'}</span>{selectedRendering?.status === 'FAILED' && <button type="button" disabled={renderingSaving} onClick={() => requestRendering(true)}>재시도</button>}</div>}
+            {viewerMode === '3D' && active3DPane === 'RENDERED' && selectedStudy && <div className="rendering-action-bar"><button type="button" disabled={renderingSaving} onClick={() => setRenderingRevision((value) => value + 1)}>목록 새로고침</button><span>{renderingSources.length ? `연결된 원본 ${renderingSources.length}개` : '연결된 렌더링 원본 없음'}</span><button type="button" disabled={renderingSaving || !selectedSeriesId} onClick={() => setCreateRenderingOpen(true)}>고급 생성 설정</button></div>}
 
             <div className={`clinical-image-stage viewer-${viewerMode.toLowerCase()} tool-${tool.toLowerCase()}`}>
               {viewerMode === '2D' && selectedAsset?.kind === 'SEQUENCE' && currentFrame && <img key={currentFrame.url} src={currentFrame.url} alt={`${currentFrame.filename} 혈관조영 영상`} draggable={false} onLoad={() => setImageLoadError('')} onError={() => setImageLoadError('2D 프레임 URL에 브라우저가 접근하지 못했습니다.')} />}
+              
+
               {viewerMode === '2D' && selectedAsset?.kind === 'STUDY' && renderDicomViewport()}
               {viewerMode === '2D' && currentFrame && !imageLoadError && (
                 renderAnnotationLayer(frameAnnotationKey, true)
@@ -1231,30 +1335,35 @@ export function ExaminationImagingWorkspace({
                 </div>
               )}
               {viewerMode === '3D' && (
-                <div className="three-d-comparison">
-                  <section
-                    className={`three-d-pane ${active3DPane === 'ORIGINAL' ? 'active' : ''}`}
+                <div className="three-d-comparison three-d-single-view">
+                  {active3DPane === 'ORIGINAL' && <section
+                    id="ct-original-panel" role="tabpanel" aria-labelledby="ct-original-tab"
+                    className={`three-d-pane three-d-original-pane ${active3DPane === 'ORIGINAL' ? 'active' : ''}`}
                     onPointerDown={() => setActive3DPane('ORIGINAL')}
                   >
                     <header>
-                      <span><i className={currentDicomInstance ? 'connected' : ''} />원본 CT DICOM</span>
+                      <span><i className={currentDicomInstance ? 'connected' : ''} />원본 {selectedStudy?.modality || 'CT·MR'} DICOM</span>
                       <small>{viewerFrameCount ? `${frameIndex + 1}/${viewerFrameCount} slice` : 'DICOM'}</small>
                     </header>
                     <div className={`three-d-stage tool-${tool.toLowerCase()}`}>
                       {renderDicomViewport()}
                       {renderAnnotationLayer(original3DAnnotationKey, Boolean(currentDicomInstance && !dicomError))}
                     </div>
-                    <footer>{dicomError || dicomViewerStatus || 'ImagePositionPatient 기준 슬라이스 정렬'}</footer>
-                  </section>
+                    <footer className="three-d-slice-footer"><div className="three-d-slice-controls"><button type="button" aria-label="이전 CT 슬라이스" disabled={!viewerFrameCount || frameIndex === 0} onClick={() => setFrameIndex((value) => Math.max(0, value - 1))}><ChevronLeft size={18} /></button><input type="range" aria-label="CT 슬라이스 선택" min="0" max={Math.max(0, viewerFrameCount - 1)} value={Math.min(frameIndex, Math.max(0, viewerFrameCount - 1))} disabled={viewerFrameCount < 2} onChange={(event) => setFrameIndex(Number(event.target.value))} /><span>{viewerFrameCount ? `${frameIndex + 1}/${viewerFrameCount}` : '0/0'}</span><button type="button" aria-label="다음 CT 슬라이스" disabled={!viewerFrameCount || frameIndex >= viewerFrameCount - 1} onClick={() => setFrameIndex((value) => Math.min(viewerFrameCount - 1, value + 1))}><ChevronRight size={18} /></button></div><small>{dicomError || dicomViewerStatus || '원본 CT 슬라이스를 선택해주세요.'}</small></footer>
+                  </section>}
 
-                  <section
-                    className={`three-d-pane ${active3DPane === 'RENDERED' ? 'active' : ''}`}
+                  {active3DPane === 'RENDERED' && <section
+                    id="ct-rendered-panel" role="tabpanel" aria-labelledby="ct-rendered-tab"
+                    className={`three-d-pane three-d-rendered-pane ${active3DPane === 'RENDERED' ? 'active' : ''}`}
                     onPointerDown={() => setActive3DPane('RENDERED')}
                   >
                     <header>
-                      <span><i className={modelUrl ? 'connected' : ''} />렌더링 결과</span>
-                      <small>{selectedRendering ? `${selectedRendering.renderingType} · ${modelFormat}` : modelFormat}</small>
+                      <span><i className={modelUrl ? 'connected' : ''} />{renderingLabel(renderingType)} 렌더링</span>
+                      <small>{selectedRendering ? `v${selectedRendering.version} · ${modelFormat}` : '결과 선택'}</small>
                     </header>
+                    <nav className="rendering-kind-buttons" aria-label="렌더링 종류 바로 보기">
+                      {RENDERING_KINDS.map((kind) => <button key={kind.value} type="button" aria-pressed={renderingType === kind.value} className={renderingType === kind.value ? 'active' : ''} disabled={renderingSaving || renderingLoading} onClick={() => selectRenderingKind(kind.value)}>{kind.label}</button>)}
+                    </nav>
                     <div className={`three-d-stage tool-${tool.toLowerCase()}`}>
                       {modelUrl ? (
                         <Suspense fallback={<div className="image-viewer-empty"><BoxIcon size={32} /><strong>렌더링 결과 준비 중…</strong></div>}>
@@ -1263,20 +1372,22 @@ export function ExaminationImagingWorkspace({
                       ) : (
                         <div className="image-viewer-empty">
                           <BoxIcon size={32} />
-                          <strong>{renderingError ? '렌더링 결과를 열지 못했습니다' : selectedRendering?.status === 'FAILED' ? '3D 렌더링 생성에 실패했습니다' : selectedRendering?.status === 'PENDING' ? '3D 렌더링 생성 대기 중입니다' : selectedRendering?.status === 'PROCESSING' || modelWaiting ? '3D 렌더링 파일을 준비 중입니다' : renderingLoading ? '렌더링 결과 확인 중…' : '3D 렌더링 데이터가 아직 생성되지 않았습니다.'}</strong>
+                          <strong>{renderingError ? '렌더링 결과를 열지 못했습니다' : selectedRendering?.status === 'FAILED' ? '3D 렌더링 생성에 실패했습니다' : selectedRendering?.status === 'PENDING' ? '3D 렌더링 생성 대기 중입니다' : selectedRendering?.status === 'PROCESSING' || modelWaiting ? '3D 렌더링 파일을 준비 중입니다' : renderingLoading ? '렌더링 결과 확인 중…' : `${renderingLabel(renderingType)} 결과가 아직 생성되지 않았습니다.`}</strong>
                           <span>{renderingError || (['PENDING', 'PROCESSING'].includes(selectedRendering?.status ?? '') || modelWaiting ? '생성 상태를 자동으로 확인합니다.' : selectedRendering?.status === 'FAILED' ? '기존 원본 데이터로 다시 생성할 수 있습니다.' : 'AI 분할 및 3D 파일 생성 파이프라인이 완료되면 표시됩니다.')}</span>
                           {selectedRendering?.status === 'FAILED' && <button type="button" disabled={renderingSaving} onClick={() => requestRendering(true)}>3D 재생성</button>}
+                          {!selectedRendering && !renderingLoading && !renderingError && <button type="button" disabled={renderingSaving || !selectedStudy || !selectedSeriesId} onClick={() => requestRendering(false, renderingType, renderingType === 'CALCIFICATION_ONLY' ? 'STL' : 'GLB')}>{renderingSaving ? '요청 중…' : `${renderingLabel(renderingType)} 생성 요청`}</button>}
+                          {!selectedRendering && renderingType !== 'CALCIFICATION_ONLY' && <span>현재 COCA U-Net 패키지는 석회화 분할을 지원합니다. 이 결과에는 별도 모델·서버 연결이 필요합니다.</span>}
                         </div>
                       )}
                       {renderAnnotationLayer(rendered3DAnnotationKey, Boolean(modelUrl))}
                     </div>
                     <footer>{renderingError || modelStatus || '렌더링 모델 선택 대기'}</footer>
-                  </section>
+                  </section>}
                 </div>
               )}
             </div>
 
-            <footer className="image-frame-control">
+            {(viewerMode === '2D' || active3DPane === 'RENDERED') && <footer className="image-frame-control">
               {viewerMode === '2D' ? (
                 <>
                   <button
@@ -1310,15 +1421,15 @@ export function ExaminationImagingWorkspace({
               ) : (
                 <div className="rendering-control">
                   <Rotate3D size={16} />
-                  <select aria-label="3D 렌더링 선택" value={selectedRenderingId ?? ''} onChange={(event) => setSelectedRenderingId(Number(event.target.value))} disabled={!renderings3D.length}>
-                    {!renderings3D.length && <option value="">3D 렌더링 없음</option>}
-                    {renderings3D.map((rendering) => <option key={rendering.id} value={rendering.id}>{rendering.renderingType} · v{rendering.version} · {rendering.status}</option>)}
+                  <select aria-label="3D 렌더링 버전 선택" value={selectedRenderingId ?? ''} onChange={(event) => { const item = renderings3D.find((rendering) => rendering.id === Number(event.target.value)); if (item) { setSelectedRenderingId(item.id); setRestoreCamera(null); setModelCamera(null); setActive3DPane('RENDERED') } }} disabled={!renderings3D.some((item) => item.renderingType === renderingType)}>
+                    {!renderings3D.some((item) => item.renderingType === renderingType) && <option value="">{renderingLabel(renderingType)} 결과 없음</option>}
+                    {renderings3D.filter((item) => item.renderingType === renderingType).map((rendering) => <option key={rendering.id} value={rendering.id}>{renderingLabel(rendering.renderingType)} · v{rendering.version} · {rendering.status}</option>)}
                   </select>
                   <span className={`rendering-status status-${selectedRendering?.status.toLowerCase() ?? 'empty'}`}>{selectedRendering?.status ?? 'EMPTY'}</span>
                   <small>{renderingError || modelStatus || '3D 모델을 선택해주세요.'}</small>
                 </div>
               )}
-            </footer>
+            </footer>}
           </section>
         </div>
       ) : (
@@ -1384,7 +1495,10 @@ export function ExaminationImagingWorkspace({
       )}
 
       {labEditorOpen && labEditorResultId && <LabResultEditor resultId={labEditorResultId} onClose={() => setLabEditorOpen(false)} onSaved={() => setLabRevision((value) => value + 1)} />}
-      {createRenderingOpen && selectedStudy && <div className="feature-modal-backdrop"><form className="feature-modal" onSubmit={(event) => { event.preventDefault(); void requestRendering() }}><header><h2>3D 렌더링 생성</h2><button type="button" disabled={renderingSaving} onClick={() => setCreateRenderingOpen(false)}><X size={18} /></button></header><p>선택된 Series의 원본 데이터를 사용합니다. 실제 생성에는 모델·렌더링 처리 파이프라인 연결이 필요합니다.</p><label>렌더링 종류<select value={renderingType} onChange={(e) => setRenderingType(e.target.value)}><option value="VESSEL_ONLY">혈관</option><option value="CALCIFICATION_ONLY">석회화</option><option value="VESSEL_CALCIFICATION">혈관·석회화</option><option value="CENTERLINE">중심선</option></select></label><label>파일 형식<select value={requestedFormat} onChange={(e) => setRequestedFormat(e.target.value)}><option>GLB</option><option>STL</option><option>VTK</option></select></label>{renderingError && <p className="api-inline-error">{renderingError}</p>}<footer><button type="submit" disabled={renderingSaving || !selectedSeriesId}>생성 요청</button></footer></form></div>}
+      {ctAiOpen && selectedStudy && <CTAIAnalysisPanel key={`${patient?.backendId ?? 'none'}-${selectedStudy.id}-${selectedSeriesId}`} study={selectedStudy} seriesId={selectedSeriesId} onClose={() => setCtAiOpen(false)} onRefresh={() => { selectRenderingKind('CALCIFICATION_ONLY'); setRenderingRevision((value) => value + 1) }} />}
+      {createRenderingOpen && selectedStudy && <div className="feature-modal-backdrop"><form className="feature-modal" onSubmit={(event) => { event.preventDefault(); void requestRendering() }}><header><h2>3D 렌더링 생성</h2><button type="button" disabled={renderingSaving} onClick={() => setCreateRenderingOpen(false)}><X size={18} /></button></header><p>선택된 Series의 원본 데이터를 사용합니다. 실제 생성에는 모델·렌더링 처리 파이프라인 연결이 필요합니다.</p><label>렌더링 종류<select value={renderingType} onChange={(e) => selectRenderingKind(e.target.value)}><option value="VESSEL_ONLY">혈관</option><option value="CALCIFICATION_ONLY">석회화</option><option value="VESSEL_CALCIFICATION">혈관·석회화</option><option value="CENTERLINE">중심선</option></select></label><label>파일 형식<select value={requestedFormat} onChange={(e) => setRequestedFormat(e.target.value)}><option>GLB</option><option>STL</option><option>VTK</option></select></label>{renderingError && <p className="api-inline-error">{renderingError}</p>}<footer><button type="submit" disabled={renderingSaving || !selectedSeriesId}>생성 요청</button></footer></form></div>}
+      <XCAAnalysisPanel open={xcaAiOpen} patient={patient} examinationId={xcaExaminationId} sequences={xcaSequences}
+        onClose={closeXcaAi} onBusyChange={setXcaAiBusy} />
       {clinicalAiOpen && patient && (
         <div className="feature-modal-backdrop lab-ai-modal-backdrop">
           <section className="lab-ai-modal" role="dialog" aria-modal="true" aria-label="혈액검사 Clinical AI 분석">

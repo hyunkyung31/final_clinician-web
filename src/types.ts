@@ -300,11 +300,17 @@ export interface BackendCapabilities {
   referenceAdministration: boolean
 }
 
+export type CoronarySide = 'LEFT' | 'RIGHT' | 'UNKNOWN'
+
 export interface AngiographySequenceSummary {
   id: number
   sequenceNo: number
   frameCount: number
   examinationId?: number
+  coronarySide: CoronarySide
+  coronarySideLabel: string
+  displayName: string
+  performedAt: string
   labels: unknown
 }
 
@@ -670,3 +676,90 @@ export interface PatientFollowUpRecords {
   visitCount: number
   visits: FollowUpVisit[]
 }
+
+// 기존에 정의된 FrameRecord가 없다면 추가
+export interface FrameRecord {
+  patient_id: string | number;
+  side: 'LEFT' | 'RIGHT';
+  series_id: string | number;
+  frame_index: number;
+  image_path: string;
+}
+
+// ---------------------------------------------------------
+// XCA 상세 분석(Detailed Analysis) 관련 타입
+// ---------------------------------------------------------
+
+export interface LocalizationComponent {
+  bbox_xywh: [number, number, number, number]; // [x, y, w, h]
+  area_pixels: number;
+}
+
+export interface LocalizationMask {
+  encoding: 'png_base64';
+  data: string; // Base64 인코딩된 PNG 문자열
+  sha256: string;
+  foreground_value: number;
+  background_value: number;
+  height: number;
+  width: number;
+}
+
+export interface LocalizationTransform {
+  source_hw: [number, number];
+  model_hw: [number, number];
+  shape_before_cropping: [number, number, number];
+  shape_after_cropping_and_before_resampling: [number, number, number];
+  bbox_used_for_cropping: [[number, number], [number, number], [number, number]];
+  transpose_forward: [number, number, number];
+  inverse_resampling: string;
+  coordinate_space: string;
+  clinical_geometry_validation: string;
+}
+
+export interface AngiographyFrameDetail {
+  series_id: string;
+  side: 'LEFT' | 'RIGHT';
+  frame_index: number;
+  source_png_sha256: string;
+  features: Record<string, number>;
+  localization: {
+    label: string;
+    validation: string;
+    threshold: string;
+    minimum_component_pixels_model_space: number;
+    connectivity: number;
+    model_component_count: number;
+    source_components: LocalizationComponent[];
+    transform: LocalizationTransform;
+    mask: LocalizationMask | null; // 의심 영역이 없으면 null
+  };
+}
+
+export interface AngiographySeriesExploratoryResult {
+  series_id: string;
+  side: string;
+  n_frames: number;
+  score_scope: string;
+  classification_validation: string;
+  classification: {
+    side: string;
+    features: Record<string, number>;
+    any_stenosis: { ai_score: number; prediction: number };
+    significant_stenosis: { ai_score: number; prediction: number };
+    threshold: number;
+  };
+  suspected_frame_indices: number[];
+  representative_frame_index: number | null;
+  representative_selection: string;
+}
+
+export interface AngiographyDetailedResponse {
+  detail_version: string;
+  summary: Record<string, any>; // 기존 summary와 동일 구조 + processing_seconds 등
+  series: AngiographySeriesExploratoryResult[];
+  frames: AngiographyFrameDetail[];
+  provenance: Record<string, string>;
+  warnings: string[];
+}
+

@@ -2,9 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
+import { groupingModuleUrl, xcaModuleUrl, xcaDetailsModuleUrl, xcaReportModuleUrl } from './load-api-test-module.mjs'
 // Isolated API adapter tests: replace the build-time env and use only in-memory fetch responses.
 const source = readFileSync(new URL('../src/api/client.ts', import.meta.url), 'utf8').replace(/import\.meta\.env/g, '({ VITE_API_BASE_URL: "" })')
-const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText
+const compiled = ts.transpileModule(source.replace("'./angiographyGrouping'", JSON.stringify(groupingModuleUrl)).replace("'./xcaAnalysis'", JSON.stringify(xcaModuleUrl)).replace("'./xcaDetails'", JSON.stringify(xcaDetailsModuleUrl)).replace("'./xcaReport'", JSON.stringify(xcaReportModuleUrl)), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText
 globalThis.sessionStorage = { getItem: () => null, removeItem: () => {} }
 const { getConsultations } = await import('data:text/javascript;base64,' + Buffer.from(compiled).toString('base64'))
 test('consultation adapter follows pagination on own API and maps identity, location, canceled status', async () => {
