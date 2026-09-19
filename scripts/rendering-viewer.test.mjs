@@ -5,6 +5,7 @@ import { compileTestModule, loadApiTestModule } from './load-api-test-module.mjs
 
 const { preferredRendering } = await import(compileTestModule(readFileSync(new URL('../src/api/renderingSelection.ts', import.meta.url), 'utf8')))
 const { getImagingDicomBlob, postFormData } = await loadApiTestModule()
+const { getStudyRenderings3D } = await loadApiTestModule({ VITE_API_BASE_URL: '' })
 
 test('kind shortcut never displays another kind and prefers latest completed result', () => {
   const items = [
@@ -41,6 +42,37 @@ test('DICOM permission errors remain errors and are not retried as alternate end
   globalThis.fetch = async () => { calls++; return new Response('', { status: 403 }) }
   await assert.rejects(getImagingDicomBlob('/api/imaging-instances/17/dicom/'), (error) => error.status === 403)
   assert.equal(calls, 1)
+})
+
+test('3D rendering list is requested from the real /api/staff/ route, not a guessed non-staff path', async () => {
+  globalThis.sessionStorage = { getItem: () => 'test-token', removeItem: () => {} }
+  const paths = []
+  globalThis.fetch = async (url) => {
+    paths.push(url)
+    return Response.json([
+      { id: 9, imaging_study: 1006, rendering_type: 'CALCIFICATION_ONLY', file_format: 'STL', version: 1, status: 'COMPLETED' },
+    ])
+  }
+  const items = await getStudyRenderings3D(1006)
+  // Verified live against the deployed API: /api/imaging-studies/1006/renderings-3d/ -> 404,
+  // /api/staff/imaging-studies/1006/renderings-3d/ -> 401 (exists). Only one request should fire.
+  assert.deepEqual(paths, ['/api/staff/imaging-studies/1006/renderings-3d/'])
+  assert.equal(items[0].id, 9)
+  assert.equal(items[0].studyId, 1006)
+})
+
+test('3D rendering list falls back to the non-staff path only if the staff route itself 404s', async () => {
+  globalThis.sessionStorage = { getItem: () => 'test-token', removeItem: () => {} }
+  const paths = []
+  globalThis.fetch = async (url) => {
+    paths.push(url)
+    return url.includes('/api/staff/')
+      ? new Response('', { status: 404 })
+      : Response.json([{ id: 9, imaging_study: 1006, rendering_type: 'CALCIFICATION_ONLY', file_format: 'STL', version: 1, status: 'COMPLETED' }])
+  }
+  const items = await getStudyRenderings3D(1006)
+  assert.deepEqual(paths, ['/api/staff/imaging-studies/1006/renderings-3d/', '/api/imaging-studies/1006/renderings-3d/'])
+  assert.equal(items[0].id, 9)
 })
 
 test('multipart upload leaves the boundary to the browser and retains authenticated request handling', async () => {
