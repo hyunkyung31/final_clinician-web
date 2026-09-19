@@ -10,6 +10,10 @@
     "test:consultation": "node --test scripts/consultation-workflow.test.mjs scripts/consultation-api.test.mjs",
     "test:angiography": "node --test scripts/angiography.test.mjs",
     "test:xca": "node --test scripts/xca-analysis.test.mjs scripts/xca-details.test.mjs scripts/xca-report.test.mjs scripts/xca-pdf.test.mjs",
+    "test:ct-ai": "node --test scripts/ct-ai.test.mjs",
+    "test:rendering": "node --test scripts/rendering-viewer.test.mjs",
+    "test:dicom": "node --test scripts/dicom-loading.test.mjs",
+    "test": "node --test scripts/*.test.mjs",
     "typecheck:consultation": "tsc --project tsconfig.consultation.json --noEmit"
   },
   "dependencies": {
