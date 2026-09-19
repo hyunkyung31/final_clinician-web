@@ -39,7 +39,7 @@ test('unlinked acquisitions never form a fabricated examination; newest dated ex
   assert.equal(groupAngiographySequences([]).length, 0)
 })
 
-test('new integrated endpoint maps side, display name, capture time and examination; no raw label guessing', async () => {
+test('integrated-data endpoint maps side, display name, capture time and examination; no raw label guessing', async () => {
   const paths = []
   globalThis.fetch = async (path) => {
     paths.push(path)
@@ -49,7 +49,10 @@ test('new integrated endpoint maps side, display name, capture time and examinat
     ] })
   }
   const items = await getPatientAngiographySequences(202)
-  assert.deepEqual(paths, ['/api/patients/202/integrated/'])
+  // /api/patients/{id}/integrated-data/ is the route that actually exists on the
+  // deployed API (verified live: /integrated/ -> 404, /integrated-data/ -> 401),
+  // so it must be tried first.
+  assert.deepEqual(paths, ['/api/patients/202/integrated-data/'])
   assert.equal(items[0].displayName, '좌관상동맥 촬영 3')
   assert.equal(items[0].coronarySide, 'LEFT')
   assert.equal(items[0].coronarySideLabel, '좌관상동맥')
@@ -60,14 +63,14 @@ test('new integrated endpoint maps side, display name, capture time and examinat
   assert.equal(items[1].performedAt, '')
 })
 
-test('404 alone falls back to legacy integrated-data; permission and server errors do not', async () => {
+test('404 alone falls back to legacy integrated endpoint; permission and server errors do not', async () => {
   const paths = []
   globalThis.fetch = async (path) => {
     paths.push(path)
-    return path.endsWith('/integrated/') ? Response.json({ detail: 'Not found' }, { status: 404 }) : Response.json({ angiography_sequences: [{ id: 1, sequence_no: 1 }] })
+    return path.endsWith('/integrated-data/') ? Response.json({ detail: 'Not found' }, { status: 404 }) : Response.json({ angiography_sequences: [{ id: 1, sequence_no: 1 }] })
   }
   const items = await getPatientAngiographySequences(202)
-  assert.deepEqual(paths, ['/api/patients/202/integrated/', '/api/patients/202/integrated-data/'])
+  assert.deepEqual(paths, ['/api/patients/202/integrated-data/', '/api/patients/202/integrated/'])
   assert.equal(items[0].coronarySide, 'UNKNOWN')
   for (const status of [403, 500]) {
     paths.length = 0

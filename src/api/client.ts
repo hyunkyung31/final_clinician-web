@@ -1302,10 +1302,12 @@ export async function getPatientAngiographySequences(
 ): Promise<AngiographySequenceSummary[]> {
   let payload: unknown
   try {
-    payload = await request<unknown>(`/api/patients/${patientId}/integrated/`)
+    // /api/patients/{id}/integrated-data/ is the route in the deployed API
+    // (verified against /api/schema/); /integrated/ is kept as a fallback only.
+    payload = await request<unknown>(`/api/patients/${patientId}/integrated-data/`)
   } catch (error) {
     if (!(error instanceof ApiError) || error.status !== 404) throw error
-    payload = await request<unknown>(`/api/patients/${patientId}/integrated-data/`)
+    payload = await request<unknown>(`/api/patients/${patientId}/integrated/`)
   }
 
   if (!isRecord(payload) || !Array.isArray(payload.angiography_sequences)) return []
@@ -1476,10 +1478,12 @@ export async function getStudyRenderings3D(
 }
 
 async function requestRenderingApi<T>(path: string, init?: ApiRequestInit): Promise<T> {
-  try { return await request<T>(`/api/${path}`, init) }
+  // Current deployed API only exposes these under /api/staff/ (verified against /api/schema/).
+  // /api/${path} is kept as a fallback in case a non-staff route is added later.
+  try { return await request<T>(`/api/staff/${path}`, init) }
   catch (error) {
     if (!(error instanceof ApiError) || error.status !== 404) throw error
-    return request<T>(`/api/staff/${path}`, init)
+    return request<T>(`/api/${path}`, init)
   }
 }
 
