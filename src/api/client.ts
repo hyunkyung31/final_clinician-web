@@ -1061,11 +1061,10 @@ function resolveBinaryApiUrl(url: string) {
   return url.startsWith('/api/') ? `${API_BASE_URL}${url}` : url
 }
 
-export async function getImagingDicomBlob(dicomUrl: string, signal?: AbortSignal): Promise<Blob> {
-  const targetUrl = resolveBinaryApiUrl(dicomUrl)
+async function getAuthenticatedBlob(url: string, failedMessage: string, signal?: AbortSignal): Promise<Blob> {
+  const targetUrl = resolveBinaryApiUrl(url)
   let token = sessionStorage.getItem(ACCESS_TOKEN_KEY)
   const createHeaders = () => {
-    // DRF negotiates its API renderer before the view returns the binary HttpResponse.
     const headers = new Headers({ Accept: '*/*' })
     if (token) headers.set('Authorization', `Bearer ${token}`)
     return headers
@@ -1078,9 +1077,13 @@ export async function getImagingDicomBlob(dicomUrl: string, signal?: AbortSignal
   }
   if (response.status === 401) clearSession()
   if (!response.ok) {
-    throw new ApiError(`DICOM 원본 파일을 불러오지 못했습니다. (${response.status})`, response.status)
+    throw new ApiError(`${failedMessage} (${response.status})`, response.status)
   }
   return response.blob()
+}
+
+export async function getImagingDicomBlob(dicomUrl: string, signal?: AbortSignal): Promise<Blob> {
+  return getAuthenticatedBlob(dicomUrl, 'DICOM 원본 파일을 불러오지 못했습니다.', signal)
 }
 
 export async function getImagingInstanceDetail(
@@ -1623,6 +1626,21 @@ export async function getFileDownloadUrl(fileId: number): Promise<string> {
   return url
 }
 
+/** Authenticated same-origin byte stream. Avoids browser CORS against RustFS presigned URLs. */
+export async function getFileContentBlob(fileId: number, signal?: AbortSignal): Promise<Blob> {
+  try {
+    return await getAuthenticatedBlob(`/api/files/${fileId}/content/`, '파일을 불러오지 못했습니다.', signal)
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 404) throw error
+    return getAuthenticatedBlob(`/api/staff/files/${fileId}/content/`, '파일을 불러오지 못했습니다.', signal)
+  }
+}
+
+export async function getFileContentObjectUrl(fileId: number, signal?: AbortSignal): Promise<string> {
+  const blob = await getFileContentBlob(fileId, signal)
+  return URL.createObjectURL(blob)
+}
+
 async function getFileViewerSource(
   renderingId: number,
   fileId: number,
@@ -1643,21 +1661,12 @@ async function getFileViewerSource(
     )
   }
 
-  const download = await requestFileApi<unknown>(fileId, 'download/')
-  if (!isRecord(download)) {
-    throw new ApiError('원본 3D 파일 다운로드 응답 형식이 올바르지 않습니다.', 500)
-  }
-  const downloadUrl = readString(download, 'download_url', 'url')
-  if (!downloadUrl) {
-    throw new ApiError('원본 3D 파일의 서명 URL이 없습니다.', 409)
-  }
-
   return {
     renderingId,
     fileId,
     fileFormat,
-    downloadUrl,
-    expiresIn: readNumber(download, 'expires_in'),
+    downloadUrl: await getFileContentObjectUrl(fileId),
+    expiresIn: undefined,
     sourceRole,
   }
 }
@@ -1813,37 +1822,17 @@ export async function getRendering3DViewerSource(
     throw new ApiError('3D 뷰어 응답 형식이 올바르지 않습니다.', 500)
   }
 
-  const viewerUrl = readString(viewer, 'viewer_url', 'viewerUrl')
-  if (!viewerUrl) {
+  const fileId = readNumber(viewer, 'file_id', 'fileId')
+  if (!fileId) {
     throw new ApiError('3D 파일 조회 주소가 없습니다.', 409)
-  }
-
-  let download: unknown
-  try {
-    download = await request<unknown>(viewerUrl)
-  } catch (error) {
-    if (
-      !(error instanceof ApiError) ||
-      error.status !== 404 ||
-      !viewerUrl.startsWith('/api/staff/files/')
-    ) throw error
-    download = await request<unknown>(viewerUrl.replace('/api/staff/files/', '/api/files/'))
-  }
-  if (!isRecord(download)) {
-    throw new ApiError('3D 파일 다운로드 응답 형식이 올바르지 않습니다.', 500)
-  }
-
-  const downloadUrl = readString(download, 'download_url', 'url')
-  if (!downloadUrl) {
-    throw new ApiError('3D 파일의 서명 URL이 없습니다.', 409)
   }
 
   return {
     renderingId: readNumber(viewer, 'rendering_id') ?? renderingId,
-    fileId: readNumber(viewer, 'file_id') ?? 0,
+    fileId,
     fileFormat: readString(viewer, 'file_format') || 'GLB',
-    downloadUrl,
-    expiresIn: readNumber(download, 'expires_in'),
+    downloadUrl: await getFileContentObjectUrl(fileId),
+    expiresIn: undefined,
   }
 }
 

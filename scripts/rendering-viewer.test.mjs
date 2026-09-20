@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { compileTestModule, loadApiTestModule } from './load-api-test-module.mjs'
 
-const { preferredRendering } = await import(compileTestModule(readFileSync(new URL('../src/api/renderingSelection.ts', import.meta.url), 'utf8')))
-const { getImagingDicomBlob, postFormData } = await loadApiTestModule()
+const { preferredRendering, visibleRenderingKinds } = await import(compileTestModule(readFileSync(new URL('../src/api/renderingSelection.ts', import.meta.url), 'utf8')))
+const { getImagingDicomBlob, getFileContentBlob, getRendering3DViewerSource, postFormData } = await loadApiTestModule()
 
 test('kind shortcut never displays another kind and prefers latest completed result', () => {
   const items = [
@@ -55,4 +55,64 @@ test('multipart upload leaves the boundary to the browser and retains authentica
     return Response.json({ status: 'completed' })
   }
   assert.deepEqual(await postFormData('/test-upload/', form), { status: 'completed' })
+})
+
+test('CCTA CT studies only expose calcification unless another type already exists', () => {
+  assert.deepEqual(visibleRenderingKinds({ modality: 'CT' }).map((item) => item.value), ['CALCIFICATION_ONLY'])
+  assert.deepEqual(visibleRenderingKinds({ generationType: 'CCTA' }).map((item) => item.value), ['CALCIFICATION_ONLY'])
+  assert.deepEqual(
+    visibleRenderingKinds({ modality: 'CT', existingTypes: ['VESSEL_ONLY', 'CALCIFICATION_ONLY'] }).map((item) => item.value),
+    ['VESSEL_ONLY', 'CALCIFICATION_ONLY'],
+  )
+  assert.deepEqual(
+    visibleRenderingKinds({ generationType: 'ANGIO_2D_TO_3D', modality: 'XA' }).map((item) => item.value),
+    ['VESSEL_ONLY', 'CALCIFICATION_ONLY', 'VESSEL_CALCIFICATION', 'CENTERLINE'],
+  )
+})
+
+test('3D mesh bytes are fetched from the authenticated content stream, not a RustFS presigned URL', async () => {
+  globalThis.window = { location: { origin: 'https://clinician.34-50-57-207.sslip.io' } }
+  globalThis.sessionStorage = { getItem: () => 'test-token', removeItem: () => {} }
+  globalThis.URL.createObjectURL = (blob) => {
+    assert.equal(blob.size, 5)
+    return 'blob:ccta-stl'
+  }
+  const urls = []
+  globalThis.fetch = async (url, options) => {
+    urls.push(String(url))
+    if (String(url).includes('/viewer/')) {
+      return Response.json({
+        rendering_id: 12,
+        file_id: 56261,
+        file_format: 'STL',
+        viewer_url: '/api/staff/files/56261/download/',
+      })
+    }
+    if (String(url).endsWith('/api/files/56261/content/')) {
+      assert.equal(options.headers.get('Accept'), '*/*')
+      assert.equal(options.headers.get('Authorization'), 'Bearer test-token')
+      return new Response(new Uint8Array([1, 2, 3, 4, 5]), { headers: { 'Content-Type': 'model/stl' } })
+    }
+    throw new Error(`unexpected url ${url}`)
+  }
+  const source = await getRendering3DViewerSource(12)
+  assert.equal(source.downloadUrl, 'blob:ccta-stl')
+  assert.equal(source.fileFormat, 'STL')
+  assert.equal(source.fileId, 56261)
+  assert.deepEqual(urls, [
+    '/api/staff/renderings-3d/12/viewer/',
+    '/api/files/56261/content/',
+  ])
+})
+
+test('file content stream keeps staff authorization and does not follow unsigned storage URLs', async () => {
+  globalThis.window = { location: { origin: 'https://clinician.34-50-57-207.sslip.io' } }
+  globalThis.sessionStorage = { getItem: () => 'test-token', removeItem: () => {} }
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, '/api/files/9/content/')
+    assert.equal(options.headers.get('Authorization'), 'Bearer test-token')
+    return new Response(new Uint8Array([9]), { headers: { 'Content-Type': 'model/stl' } })
+  }
+  const blob = await getFileContentBlob(9)
+  assert.equal(blob.size, 1)
 })

@@ -79,7 +79,7 @@ import type {
   ImagingAnnotationInput,
 } from '../types'
 import { LabResultEditor } from './LabResultEditor'
-import { RENDERING_KINDS, preferredRendering, renderingLabel } from '../api/renderingSelection'
+import { visibleRenderingKinds, preferredRendering, renderingLabel } from '../api/renderingSelection'
 import './rendering-shortcuts.css'
 import { CTAIAnalysisPanel } from './CTAIAnalysisPanel'
 import { groupAngiographySequences } from '../api/angiographyGrouping'
@@ -106,6 +106,11 @@ type ExamSection = 'LAB' | 'IMAGING'
 type ExamTab = 'IMAGING_2D' | 'IMAGING_3D'
 type AnnotationTool = 'POINTER' | 'FREEHAND' | 'RECTANGLE' | 'TEXT'
 type ThreeDPane = 'ORIGINAL' | 'RENDERED'
+
+function userFacing3DError(error: unknown) {
+  console.error('[CCTA 3D]', error)
+  return '3D 결과를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'
+}
 
 interface Point {
   x: number
@@ -682,6 +687,22 @@ export function ExaminationImagingWorkspace({
     (item) => item.id === selectedRenderingId,
   ) ?? null
 
+  const renderingKinds = useMemo(
+    () => visibleRenderingKinds({
+      modality: selectedStudy?.modality,
+      generationType: selectedRendering?.generationType || renderings3D[0]?.generationType,
+      existingTypes: renderings3D.map((item) => item.renderingType),
+    }),
+    [renderings3D, selectedRendering?.generationType, selectedStudy?.modality],
+  )
+
+  useEffect(() => {
+    if (renderingKinds.some((kind) => kind.value === renderingType)) return
+    const fallback = renderingKinds[0]?.value ?? 'CALCIFICATION_ONLY'
+    setRenderingType(fallback)
+    setSelectedRenderingId(preferredRendering(renderings3D, fallback)?.id ?? null)
+  }, [renderingKinds, renderingType, renderings3D])
+
   useEffect(() => {
     if (!selectedRendering || viewerMode !== '3D') return
     let active = true
@@ -706,6 +727,7 @@ export function ExaminationImagingWorkspace({
     if (viewerMode !== '3D' || !selectedRendering) return
 
     let active = true
+    let objectUrl = ''
     setRenderingLoading(true)
     setRenderingError('')
     if (selectedRendering.status !== 'COMPLETED') {
@@ -715,18 +737,18 @@ export function ExaminationImagingWorkspace({
     }
     const sourcePromise = getRendering3DViewerSource(selectedRendering.id)
     sourcePromise.then((source) => {
-      if (!active) return
+      if (!active) {
+        if (source.downloadUrl.startsWith('blob:')) URL.revokeObjectURL(source.downloadUrl)
+        return
+      }
+      objectUrl = source.downloadUrl
       setModelUrl(source.downloadUrl)
       setModelFormat(source.fileFormat)
       setModelWaiting(false)
     }).catch((error) => {
       if (active) {
         if (error instanceof ApiError && error.status === 409) { setModelWaiting(true); setRenderingError(''); return }
-        setRenderingError(
-          error instanceof Error
-            ? error.message
-            : '3D 렌더링 모델 주소를 불러오지 못했습니다.',
-        )
+        setRenderingError(userFacing3DError(error))
       }
     }).finally(() => {
       if (active) setRenderingLoading(false)
@@ -734,6 +756,7 @@ export function ExaminationImagingWorkspace({
 
     return () => {
       active = false
+      if (objectUrl.startsWith('blob:')) URL.revokeObjectURL(objectUrl)
     }
   }, [selectedRendering, viewerMode])
 
@@ -794,7 +817,7 @@ export function ExaminationImagingWorkspace({
       setSelectedRenderingId(item.id)
       setCreateRenderingOpen(false)
     } catch (error) {
-      if (renderingStudyContext.current === studyId) setRenderingError(error instanceof Error ? error.message : '3D 생성 요청 실패')
+      if (renderingStudyContext.current === studyId) setRenderingError(userFacing3DError(error))
     } finally { setRenderingSaving(false) }
   }
 
@@ -803,9 +826,8 @@ export function ExaminationImagingWorkspace({
   }, [])
 
   const handleModelError = useCallback((message: string) => {
-    setRenderingError(
-      `${message} RustFS CORS 또는 서명 URL의 외부 접근 주소를 확인해주세요.`,
-    )
+    console.error('[CCTA 3D viewer]', message)
+    setRenderingError('3D 결과를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.')
   }, [])
 
   const handleDicomOrderedInstances = useCallback((items: ImagingDicomManifestInstance[]) => {
@@ -1437,7 +1459,7 @@ export function ExaminationImagingWorkspace({
                       {Number.isSafeInteger(CT_AI_VERSION_ID) && CT_AI_VERSION_ID > 0 && <small className="ccta-summary-model">AI 모델 v{CT_AI_VERSION_ID}</small>}
                     </div>
                     <nav className="rendering-kind-buttons" aria-label="렌더링 종류 바로 보기">
-                      {RENDERING_KINDS.map((kind) => <button key={kind.value} type="button" aria-pressed={renderingType === kind.value} className={renderingType === kind.value ? 'active' : ''} disabled={renderingSaving || renderingLoading} onClick={() => selectRenderingKind(kind.value)}>{kind.label}</button>)}
+                      {renderingKinds.map((kind) => <button key={kind.value} type="button" aria-pressed={renderingType === kind.value} className={renderingType === kind.value ? 'active' : ''} disabled={renderingSaving || renderingLoading} onClick={() => selectRenderingKind(kind.value)}>{kind.label}</button>)}
                     </nav>
                     <div className={`three-d-result-layout ${renderingType === 'CALCIFICATION_ONLY' ? 'has-result-panel' : ''}`}>
                       <div className={`three-d-stage tool-${tool.toLowerCase()}`}>
@@ -1454,7 +1476,7 @@ export function ExaminationImagingWorkspace({
                         ) : (
                           <div className="image-viewer-empty">
                             <BoxIcon size={32} />
-                            <strong>{renderingError ? '렌더링 결과를 열지 못했습니다' : selectedRendering?.status === 'FAILED' ? '3D 렌더링 생성에 실패했습니다' : `${renderingLabel(renderingType)} 결과가 아직 생성되지 않았습니다.`}</strong>
+                            <strong>{renderingError ? '3D 결과를 불러오지 못했습니다' : selectedRendering?.status === 'FAILED' ? '3D 렌더링 생성에 실패했습니다' : `${renderingLabel(renderingType)} 결과가 아직 생성되지 않았습니다.`}</strong>
                             <span>{renderingError || (selectedRendering?.status === 'FAILED' ? '기존 원본 데이터로 다시 생성할 수 있습니다.' : 'AI 분할 및 3D 파일 생성 파이프라인이 완료되면 표시됩니다.')}</span>
                             {selectedRendering?.status === 'FAILED' && <button type="button" disabled={renderingSaving} onClick={() => requestRendering(true)}>3D 재생성</button>}
                             {!selectedRendering && !renderingLoading && !renderingError && <button type="button" disabled={renderingSaving || !selectedStudy || !selectedSeriesId} onClick={() => requestRendering(false, renderingType, renderingType === 'CALCIFICATION_ONLY' ? 'STL' : 'GLB')}>{renderingSaving ? '요청 중…' : `${renderingLabel(renderingType)} 생성 요청`}</button>}
@@ -1611,7 +1633,7 @@ export function ExaminationImagingWorkspace({
         </div>
       )}
       {ctAiOpen && selectedStudy && <CTAIAnalysisPanel key={`${patient?.backendId ?? 'none'}-${selectedStudy.id}-${selectedSeriesId}`} study={selectedStudy} seriesId={selectedSeriesId} onClose={() => setCtAiOpen(false)} onRefresh={() => { selectRenderingKind('CALCIFICATION_ONLY'); setRenderingRevision((value) => value + 1) }} />}
-      {createRenderingOpen && selectedStudy && <div className="feature-modal-backdrop"><form className="feature-modal" onSubmit={(event) => { event.preventDefault(); void requestRendering() }}><header><h2>3D 렌더링 생성</h2><button type="button" disabled={renderingSaving} onClick={() => setCreateRenderingOpen(false)}><X size={18} /></button></header><p>선택된 Series의 원본 데이터를 사용합니다. 실제 생성에는 모델·렌더링 처리 파이프라인 연결이 필요합니다.</p><label>렌더링 종류<select value={renderingType} onChange={(e) => selectRenderingKind(e.target.value)}><option value="VESSEL_ONLY">혈관</option><option value="CALCIFICATION_ONLY">석회화</option><option value="VESSEL_CALCIFICATION">혈관·석회화</option><option value="CENTERLINE">중심선</option></select></label><label>파일 형식<select value={requestedFormat} onChange={(e) => setRequestedFormat(e.target.value)}><option>GLB</option><option>STL</option><option>VTK</option></select></label>{renderingError && <p className="api-inline-error">{renderingError}</p>}<footer><button type="submit" disabled={renderingSaving || !selectedSeriesId}>생성 요청</button></footer></form></div>}
+      {createRenderingOpen && selectedStudy && <div className="feature-modal-backdrop"><form className="feature-modal" onSubmit={(event) => { event.preventDefault(); void requestRendering() }}><header><h2>3D 렌더링 생성</h2><button type="button" disabled={renderingSaving} onClick={() => setCreateRenderingOpen(false)}><X size={18} /></button></header><p>선택된 Series의 원본 데이터를 사용합니다. 실제 생성에는 모델·렌더링 처리 파이프라인 연결이 필요합니다.</p><label>렌더링 종류<select value={renderingType} onChange={(e) => selectRenderingKind(e.target.value)}>{renderingKinds.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}</select></label><label>파일 형식<select value={requestedFormat} onChange={(e) => setRequestedFormat(e.target.value)}><option>GLB</option><option>STL</option><option>VTK</option></select></label>{renderingError && <p className="api-inline-error">{renderingError}</p>}<footer><button type="submit" disabled={renderingSaving || !selectedSeriesId}>생성 요청</button></footer></form></div>}
       <XCAAnalysisPanel open={xcaAiOpen} patient={patient} examinationId={xcaExaminationId} sequences={xcaSequences}
         onClose={closeXcaAi} onBusyChange={setXcaAiBusy} />
       {clinicalAiOpen && patient && (
