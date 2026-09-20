@@ -1194,7 +1194,8 @@ export function ExaminationImagingWorkspace({
         .map((exam) => ({ exam, stageLabel: visit.stageLabel, visitDate: visit.visitDate })),
     )
   }, [followUpRecords, patient?.backendId])
-  const selectedLabAi = labAiCandidates.find((candidate) => candidate.exam.examinationId === selectedLabExaminationId) ?? labAiCandidates[0]
+  const selectedLabAi = labAiCandidates.find((candidate) => candidate.exam.examinationId === selectedLabExaminationId)
+    ?? labAiCandidates.at(-1)
   const displayPatient = patient && followUpRecords && followUpRecords.patient.id === patient.backendId ? {
     ...patient,
     name: followUpRecords.patient.name || patient.name,
@@ -1202,9 +1203,10 @@ export function ExaminationImagingWorkspace({
     age: followUpRecords.patient.age ?? patient.age,
   } : patient
   const clinicalLabInput = useMemo(() => {
-    // 우선순위: (1) AngioCAD 원본 feature snapshot(있으면 54개 항목 대부분을 커버하는 기본값)
-    // → (2) 실제 검사 차수의 확정 수치(있으면 snapshot 값을 덮어써 최신 검사 결과 우선)
-    // → (3) 검사에 이미 저장된 clinicalInput(과거 분석에서 사용한 입력값)이 있으면 그것을 최우선.
+    // 우선순위: (1) dataset clinical_feature_snapshot
+    // → (2) 선택한(기본: 최신) 검사 차수의 확정 lab 수치가 snapshot을 덮어씀
+    // → (3) 검사에 이미 저장된 clinicalInput이 있으면 그것을 최우선.
+    // 없는 항목은 0/정상으로 채우지 않는다.
     const payload: Record<string, number | string> = { ...(clinicalFeatureSnapshot ?? {}) }
 
     const supported = new Set(['FBS', 'CR', 'TG', 'LDL', 'HDL', 'BUN', 'ESR', 'HB', 'K', 'NA', 'WBC', 'LYMPH', 'NEUT', 'PLT', 'EF-TTE'])
@@ -1220,7 +1222,7 @@ export function ExaminationImagingWorkspace({
     return payload
   }, [selectedLabAi, clinicalFeatureSnapshot])
   const openLabAi = (examinationId?: number) => {
-    const targetId = examinationId ?? selectedLabAi?.exam.examinationId ?? labAiCandidates[0]?.exam.examinationId
+    const targetId = examinationId ?? selectedLabAi?.exam.examinationId ?? labAiCandidates.at(-1)?.exam.examinationId
     if (!targetId) return
     setSelectedLabExaminationId(targetId)
     setClinicalAiOpen(true)

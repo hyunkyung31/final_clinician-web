@@ -96,6 +96,14 @@ const groups: ClinicalGroup[] = [
 
 const allFields = groups.flatMap((group) => group.fields)
 
+function normalizeSex(value: string | undefined) {
+  if (value === '0' || value === '1') return value
+  const text = (value ?? '').trim().toLowerCase()
+  if (['male', 'm', 'man', '남', '남자'].includes(text)) return '1'
+  if (['female', 'f', 'woman', '여', '여자'].includes(text)) return '0'
+  return value
+}
+
 function initialValues(
   patient: PatientSummary | null,
   detail: PatientDetail | null,
@@ -104,9 +112,13 @@ function initialValues(
   const values: Record<string, string> = Object.fromEntries(
     Object.entries(initialInput).map(([name, value]) => [name, String(value)]),
   )
+  const mappedSex = normalizeSex(values.Sex)
+  if (mappedSex !== undefined) values.Sex = mappedSex
   if (patient) {
     values.Age ??= String(detail?.age ?? patient.age)
-    values.Sex ??= (detail?.sex ?? patient.sex) === 'M' ? '1' : '0'
+    const sex = detail?.sex ?? patient.sex
+    if (sex === 'M') values.Sex ??= '1'
+    else if (sex === 'F') values.Sex ??= '0'
   }
   return values
 }
@@ -211,14 +223,18 @@ export function ClinicalAIAnalysisPanel({
       </header>
 
       {!examinationId && <div className="clinical-ai-warning"><TriangleAlert size={16} />선택된 검사 ID가 없어 실행 버튼이 비활성화됩니다.</div>}
-      {sourceLabel && <div className="clinical-ai-prefill"><CheckCircle2 size={16} /><span><strong>{sourceLabel}</strong>에 연결된 임상정보와 검사값을 자동 입력했습니다. 54개 항목 모두 분석 전에 수정할 수 있습니다.</span></div>}
-      {completedCount < 54 && <div className="clinical-ai-warning"><TriangleAlert size={16} />현재 저장된 임상정보를 자동으로 불러왔습니다. 누락된 항목은 직접 입력해 주세요. (미입력 {54 - completedCount}개)</div>}
+      {sourceLabel && <div className="clinical-ai-prefill"><CheckCircle2 size={16} /><span><strong>{sourceLabel}</strong>에 연결된 임상정보와 검사값을 자동 입력했습니다. 분석 전에 값을 확인할 수 있습니다.</span></div>}
+      {completedCount < 54 && <div className="clinical-ai-warning"><TriangleAlert size={16} />현재 저장된 임상정보를 자동으로 불러왔습니다. 누락된 항목은 확인 후 직접 입력해 주세요.</div>}
       {error && <div className="feature-error"><span>{error}</span></div>}
 
       <div className="clinical-ai-groups">
         {groups.map((group, index) => (
           <details className="clinical-ai-group" key={group.title} open={index === 0}>
-            <summary><span><strong>{group.title}</strong><small>{group.description}</small></span><b>{group.fields.filter((field) => values[field.name] !== undefined && values[field.name] !== '').length}/{group.fields.length}</b></summary>
+            <summary><span><strong>{group.title}</strong><small>{group.description}</small></span><b>{(() => {
+              const filled = group.fields.filter((field) => values[field.name] !== undefined && values[field.name] !== '').length
+              const needed = group.fields.length - filled
+              return needed > 0 ? `${filled}/${group.fields.length} · 직접 입력 필요` : `${filled}/${group.fields.length} · 자동 입력됨`
+            })()}</b></summary>
             <div className="clinical-ai-fields">
               {group.fields.map((field) => (
                 <label key={field.name}>
