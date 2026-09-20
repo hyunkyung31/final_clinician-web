@@ -57,6 +57,7 @@ import {
   getPatientLabObservations,
   getRendering3DViewerSource,
   getStudyRenderings3D,
+  getFileDownloadUrl,
 } from '../api/client'
 import type {
   AngiographyFrame,
@@ -332,6 +333,8 @@ export function ExaminationImagingWorkspace({
   const [modelFormat, setModelFormat] = useState('GLB')
   const [modelStatus, setModelStatus] = useState('')
   const [modelWaiting, setModelWaiting] = useState(false)
+  const [renderingAuxImages, setRenderingAuxImages] = useState<{ overlay?: string; preview?: string }>({})
+  const [renderingAuxError, setRenderingAuxError] = useState('')
   const [renderingRevision, setRenderingRevision] = useState(0)
   const [renderingSaving, setRenderingSaving] = useState(false)
   const [createRenderingOpen, setCreateRenderingOpen] = useState(false)
@@ -701,6 +704,38 @@ export function ExaminationImagingWorkspace({
       if (active) setRenderingLoading(false)
     })
 
+    return () => {
+      active = false
+    }
+  }, [selectedRendering, viewerMode])
+
+  useEffect(() => {
+    setRenderingAuxImages({})
+    setRenderingAuxError('')
+    if (viewerMode !== '3D' || !selectedRendering || selectedRendering.status !== 'COMPLETED') return
+
+    // CCTA 석회화 overlay/preview PNG는 별도 API가 아니라
+    // Rendering3D.rendering_config.overlay_file_asset_id / preview_file_asset_id 로만 연결된다.
+    const config = selectedRendering.renderingConfig
+    const overlayId = Number(config?.overlay_file_asset_id)
+    const previewId = Number(config?.preview_file_asset_id)
+    const targets: Array<{ role: 'overlay' | 'preview'; fileId: number }> = []
+    if (Number.isSafeInteger(overlayId) && overlayId > 0) targets.push({ role: 'overlay', fileId: overlayId })
+    if (Number.isSafeInteger(previewId) && previewId > 0) targets.push({ role: 'preview', fileId: previewId })
+    if (!targets.length) return
+
+    let active = true
+    Promise.allSettled(targets.map((target) => getFileDownloadUrl(target.fileId))).then((results) => {
+      if (!active) return
+      const next: { overlay?: string; preview?: string } = {}
+      let failed = 0
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') next[targets[index].role] = result.value
+        else failed += 1
+      })
+      setRenderingAuxImages(next)
+      if (failed) setRenderingAuxError('일부 보조 이미지(overlay/preview)를 불러오지 못했습니다.')
+    })
     return () => {
       active = false
     }
@@ -1379,9 +1414,25 @@ export function ExaminationImagingWorkspace({
                           {!selectedRendering && renderingType !== 'CALCIFICATION_ONLY' && <span>현재 COCA U-Net 패키지는 석회화 분할을 지원합니다. 이 결과에는 별도 모델·서버 연결이 필요합니다.</span>}
                         </div>
                       )}
+                      {(renderingAuxImages.overlay || renderingAuxImages.preview) && (
+                        <div className="rendering-aux-images">
+                          {renderingAuxImages.overlay && (
+                            <figure>
+                              <img src={renderingAuxImages.overlay} alt="CT + 석회화 예측 overlay" />
+                              <figcaption>Overlay (calcification_overlay.png)</figcaption>
+                            </figure>
+                          )}
+                          {renderingAuxImages.preview && (
+                            <figure>
+                              <img src={renderingAuxImages.preview} alt="3D 렌더링 preview" />
+                              <figcaption>3D Preview (calcification_3d.png)</figcaption>
+                            </figure>
+                          )}
+                        </div>
+                      )}
                       {renderAnnotationLayer(rendered3DAnnotationKey, Boolean(modelUrl))}
                     </div>
-                    <footer>{renderingError || modelStatus || '렌더링 모델 선택 대기'}</footer>
+                    <footer>{renderingError || renderingAuxError || modelStatus || '렌더링 모델 선택 대기'}</footer>
                   </section>}
                 </div>
               )}

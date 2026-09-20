@@ -20,6 +20,10 @@
 .ct-ai-source { display: grid; gap: 8px; padding: 16px; border: 1px solid #cfdaec; border-radius: 9px; background: #f5f8fd; }
 .ct-ai-source span { font-size: 12px; color: #64748b; }
 .ct-ai-connection { padding: 14px; background: #edf4ff; border-radius: 9px; color: #36577d; line-height: 1.7; }
+.rendering-aux-images { position: absolute; left: 10px; bottom: 10px; z-index: 3; display: flex; gap: 10px; flex-wrap: wrap; pointer-events: none; }
+.rendering-aux-images figure { margin: 0; display: flex; flex-direction: column; gap: 4px; background: #0d1927cc; padding: 6px; border-radius: 8px; border: 1px solid #33506e; }
+.rendering-aux-images img { max-width: 160px; max-height: 120px; border-radius: 6px; object-fit: contain; background: #0a1420; }
+.rendering-aux-images figcaption { font-size: 10px; color: #9fb8d6; text-align: center; }
 .three-d-pane.three-d-original-pane { grid-template-rows: 34px minmax(0, 1fr) 78px; }
 .three-d-original-pane > .three-d-slice-footer { display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 8px; }
 .three-d-slice-controls { display: flex; align-items: center; gap: 10px; }

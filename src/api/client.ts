@@ -624,13 +624,17 @@ export async function getBackendCapabilities(): Promise<BackendCapabilities> {
     const patients = Object.entries(paths).find(([path]) => /\/patients\/$/.test(path))?.[1]
     const operation = isRecord(patients) && isRecord(patients.get) ? patients.get : undefined
     const parameters = operation && Array.isArray(operation.parameters) ? operation.parameters.filter(isRecord) : []
+    // 감사 이력은 전용 audit-logs 엔드포인트 대신 공용 /api/admin/audit-events/ 로 조회하므로
+    // referenceAdministration 판정에서 audit-logs 경로 존재 여부는 더 이상 확인하지 않는다.
+    const referenceRangeCreateMethods = Object.entries(paths)
+      .find(([path]) => /\/examinations\/clinical-variables\/\{[^/]+\}\/reference-ranges\/$/.test(path))?.[1]
     return {
       patientScope: parameters.some((parameter) => parameter.name === 'patient_scope'),
-      referenceAdministration: Object.entries(paths).some(([path, methods]) => /\/admin\/reference-ranges\/\{[^/]+\}\/$/.test(path) && isRecord(methods) && Boolean(methods.patch))
-        && Object.keys(paths).some((path) => /\/reference-ranges\/\{[^/]+\}\/audit-logs\/$/.test(path)),
+      referenceAdministration: Object.entries(paths).some(([path, methods]) => /\/admin\/reference-ranges\/\{[^/]+\}\/$/.test(path) && isRecord(methods) && Boolean(methods.patch)),
+      referenceRangeCreate: isRecord(referenceRangeCreateMethods) && Boolean(referenceRangeCreateMethods.post),
     }
   } catch {
-    return { patientScope: false, referenceAdministration: false }
+    return { patientScope: false, referenceAdministration: false, referenceRangeCreate: false }
   }
 }
 
@@ -1426,6 +1430,24 @@ async function requestFileApi<T>(fileId: number, suffix = ''): Promise<T> {
   }
 }
 
+/**
+ * 임의의 FileAsset id를 서명된 다운로드 URL로 변환한다.
+ * CCTA 결과의 calcification_overlay.png / calcification_3d.png 처럼
+ * Rendering3D.rendering_config 또는 AIAnalysisResult.result_json에
+ * *_file_asset_id 로만 연결된 보조 파일을 화면에 표시할 때 사용한다.
+ */
+export async function getFileDownloadUrl(fileId: number): Promise<string> {
+  const download = await requestFileApi<unknown>(fileId, 'download/')
+  if (!isRecord(download)) {
+    throw new ApiError('파일 다운로드 응답 형식이 올바르지 않습니다.', 500)
+  }
+  const url = readString(download, 'download_url', 'url')
+  if (!url) {
+    throw new ApiError('파일의 서명 URL이 없습니다.', 409)
+  }
+  return url
+}
+
 async function getFileViewerSource(
   renderingId: number,
   fileId: number,
@@ -1476,10 +1498,13 @@ export async function getStudyRenderings3D(
 }
 
 async function requestRenderingApi<T>(path: string, init?: ApiRequestInit): Promise<T> {
-  try { return await request<T>(`/api/${path}`, init) }
+  // ai/rendering_urls.py는 config/api_v1_urls.py에서 "staff/" 프리픽스로만 마운트되어 있어
+  // 실제 유효 경로는 /api/staff/... 이다. staff 경로를 우선 시도하고,
+  // 향후 배포에서 프리픽스 없는 경로가 추가될 경우를 대비해 폴백을 유지한다.
+  try { return await request<T>(`/api/staff/${path}`, init) }
   catch (error) {
     if (!(error instanceof ApiError) || error.status !== 404) throw error
-    return request<T>(`/api/staff/${path}`, init)
+    return request<T>(`/api/${path}`, init)
   }
 }
 
@@ -1585,7 +1610,24 @@ export function versionClinicalReferenceRange(id: number, input: Record<string, 
   return request(`/api/examinations/admin/reference-ranges/${id}/`, { method: 'PATCH', body: JSON.stringify(input) })
 }
 export async function getReferenceRangeAuditLogs(id: number): Promise<UnknownRecord[]> {
-  return extractList(await request(`/api/examinations/admin/reference-ranges/${id}/audit-logs/`))
+  // 전용 audit-logs 엔드포인트는 backend에 존재하지 않으므로,
+  // 공용 감사 로그 조회 API(object_id 필터 지원)로 대체한다.
+  const payload = await request<unknown>(
+    `/api/admin/audit-events/?object=CLINICAL_REFERENCE_RANGE&object_id=${id}`,
+  )
+  return extractList(payload).map((entry) => {
+    const metadata = isRecord(entry.metadata_json) ? entry.metadata_json : {}
+    const actorLabel = entry.actor_type && entry.actor_id
+      ? `${entry.actor_type}#${entry.actor_id}`
+      : entry.actor_type ?? undefined
+    return {
+      ...entry,
+      created_at: entry.created_at ?? entry.occurred_at,
+      actor: entry.actor ?? actorLabel,
+      before: entry.before ?? metadata.before,
+      after: entry.after ?? metadata.after,
+    }
+  })
 }
 
 export async function getRendering3DViewerSource(

@@ -54,6 +54,10 @@ export function CTAIAnalysisPanel({ study, seriesId, onClose, onRefresh }: { stu
     {analysis?.jobs.map((job) => job.error_message && <p className="api-inline-error" key={job.id}>{job.error_message}</p>)}
     {analysis?.results?.map((result) => <div className="ct-ai-source" key={result.id}><strong>{result.summary_text || 'CT 분석 결과'}</strong><span>{result.result_type} · {result.status}</span></div>)}
     {notice && <p role="status">{notice}</p>}{error && <p className="api-inline-error" role="alert">{error}</p>}
-    <footer>{analysis ? <><button type="button" onClick={refresh} disabled={busy}>상태 확인</button>{status === 'SUCCEEDED' && <button type="button" onClick={() => { onRefresh(); onClose() }}>렌더링 결과 확인</button>}</> : <button type="button" onClick={run} disabled={!ready || !study.examinationId || !seriesId || busy}>{busy ? '분석 요청 중…' : 'AI 분석 시작'}</button>}</footer>
+    <footer>{analysis ? <>
+      <button type="button" onClick={refresh} disabled={busy}>상태 확인</button>
+      {status === 'SUCCEEDED' && <button type="button" onClick={() => { onRefresh(); onClose() }}>렌더링 결과 확인</button>}
+      {status === 'FAILED' && <button type="button" disabled={busy} onClick={() => { setAnalysis(null); setError(''); setNotice('') }}>다시 시도</button>}
+    </> : <button type="button" onClick={run} disabled={!ready || !study.examinationId || !seriesId || busy}>{busy ? '분석 요청 중…' : 'AI 분석 시작'}</button>}</footer>
   </section></div>
 }

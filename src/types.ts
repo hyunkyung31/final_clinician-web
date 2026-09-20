@@ -297,7 +297,10 @@ export interface ImagingAnnotationRecord extends ImagingAnnotationInput {
 
 export interface BackendCapabilities {
   patientScope: boolean
+  /** PATCH /admin/reference-ranges/{id}/ 존재 여부 (새 버전 저장 + 감사 이력 조회 가능) */
   referenceAdministration: boolean
+  /** POST /clinical-variables/{id}/reference-ranges/ 존재 여부 (신규 등록 가능) */
+  referenceRangeCreate: boolean
 }
 
 export type CoronarySide = 'LEFT' | 'RIGHT' | 'UNKNOWN'

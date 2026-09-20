@@ -22,13 +22,14 @@ export function ReferenceRangeManager({ staffRoles }: { staffRoles: string[] }) 
   const [formOpen, setFormOpen] = useState(false)
   const [audit, setAudit] = useState<Row[] | null>(null)
   const [available, setAvailable] = useState(false)
+  const [createAvailable, setCreateAvailable] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
   useEffect(() => {
     if (!admin) return
     let active = true
-    Promise.all([getClinicalVariables(), getBackendCapabilities()]).then(([items, capability]) => { if (active) { setVariables(items); setAvailable(capability.referenceAdministration) } }).catch((e) => { if (active) setError(e instanceof Error ? e.message : '정상범위 정보 조회 실패') })
+    Promise.all([getClinicalVariables(), getBackendCapabilities()]).then(([items, capability]) => { if (active) { setVariables(items); setAvailable(capability.referenceAdministration); setCreateAvailable(capability.referenceRangeCreate) } }).catch((e) => { if (active) setError(e instanceof Error ? e.message : '정상범위 정보 조회 실패') })
     return () => { active = false }
   }, [admin])
   useEffect(() => {
@@ -74,9 +75,10 @@ export function ReferenceRangeManager({ staffRoles }: { staffRoles: string[] }) 
   return <section className="feature-card reference-manager">
     <header><div><h2>정상범위 관리</h2><p>시스템 관리자 · 변경 시 새 버전 생성</p></div></header>
     {!available && <p className="api-state-panel">현재 서버에서는 정상범위 조회를 사용할 수 있습니다. 버전 변경·감사 이력 기능은 배포 후 활성화됩니다.</p>}
+    {available && !createAvailable && <p className="api-state-panel">신규 등록 API는 아직 배포되지 않았습니다. 기존 항목의 "새 버전으로 변경"과 감사 이력 조회는 사용할 수 있습니다.</p>}
     <label>검사 항목<select value={variableId} disabled={busy} onChange={(e) => setVariableId(e.target.value)}><option value="">검사 항목 선택</option>{variables.map((variable) => <option key={Number(variable.id)} value={Number(variable.id)}>{String(variable.name)} · {String(variable.code)}</option>)}</select></label>
     {error && <p className="api-inline-error" role="alert">{error}</p>}
-    <button type="button" disabled={!available || !variableId || busy} onClick={() => edit()}>정상범위 등록</button>
+    <button type="button" disabled={!createAvailable || !variableId || busy} onClick={() => edit()}>정상범위 등록</button>
     <div className="reference-range-list">{ranges.map((row) => <article key={Number(row.id)}><strong>{text(row.lower_bound)} ~ {text(row.upper_bound)} {text(row.unit)}</strong><small>{text(row.effective_from)} ~ {text(row.effective_to)} · 버전 {text(row.version)} · {row.is_active === false ? '비활성' : '활성'}</small><dl>{Object.entries(row).filter(([key]) => labels[key]).map(([key, value]) => <div key={key}><dt>{labels[key]}</dt><dd>{text(value)}</dd></div>)}</dl><button type="button" disabled={!available || busy} onClick={() => edit(row)}>새 버전으로 변경</button><button type="button" disabled={!available || busy} onClick={async () => { setBusy(true); setError(''); try { setAudit(await getReferenceRangeAuditLogs(Number(row.id))) } catch (e) { setError(e instanceof Error ? e.message : '이력 조회 실패') } finally { setBusy(false) } }}>변경 이력</button></article>)}</div>
     {formOpen && <form className="reference-edit-form" onSubmit={submit}><h3>{editing ? '정상범위 새 버전' : '정상범위 등록'}</h3><div className="form-columns">{fields.map((field) => <label key={field.name}>{labels[field.name] ?? field.label}{field.enum || field.type === 'boolean' ? <select required={field.required} value={values[field.name] ?? ''} onChange={(e) => setValues((items) => ({ ...items, [field.name]: e.target.value }))}><option value="">선택</option>{(field.enum ?? ['true', 'false']).map((value) => <option key={value} value={value}>{value === 'true' ? '예' : value === 'false' ? '아니오' : value}</option>)}</select> : <input required={field.required} type={field.format === 'date' ? 'date' : field.format === 'date-time' ? 'datetime-local' : ['number', 'integer'].includes(field.type) ? 'number' : 'text'} step={field.type === 'integer' ? '1' : 'any'} value={values[field.name] ?? ''} onChange={(e) => setValues((items) => ({ ...items, [field.name]: e.target.value }))} />}</label>)}</div><button disabled={busy} type="submit">{editing ? '새 버전 저장' : '등록'}</button><button disabled={busy} type="button" onClick={() => setFormOpen(false)}>취소</button></form>}
     {audit && <section className="reference-audit"><h3>정상범위 변경 이력</h3>{!audit.length && <p>변경 이력이 없습니다.</p>}{audit.map((entry, index) => <article key={String(entry.id ?? index)}><strong>{text(entry.action ?? entry.operation)}</strong><small>{text(entry.created_at ?? entry.timestamp)} · {text(entry.actor_name ?? entry.user_name ?? entry.actor)}</small>{['before', 'after'].map((side) => { const data = entry[side] ?? entry[`${side}_json`]; return data && typeof data === 'object' ? <div key={side}><b>{side === 'before' ? '변경 전' : '변경 후'}</b><dl>{Object.entries(data).map(([key, value]) => <div key={key}><dt>{labels[key] ?? key}</dt><dd>{text(value)}</dd></div>)}</dl></div> : null })}</article>)}</section>}
