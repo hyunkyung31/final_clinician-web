@@ -16,9 +16,10 @@ import type {
   DashboardAIStatus,
   DashboardSummary,
   ImagingStudySummary,
+  PatientReportSummary,
   PatientSummary,
 } from '../types'
-import { getPatientsPage } from '../api/client'
+import { getPatientReports, getPatientsPage, getReportDownload } from '../api/client'
 import { ExaminationImagingWorkspace } from './ExaminationImagingWorkspace'
 import { ReferenceRangeManager } from './ReferenceRangeManager'
 
@@ -101,6 +102,31 @@ export function ModuleWorkspace({
   const [hasNext, setHasNext] = useState(false)
   const [listError, setListError] = useState('')
 
+  const [reportPatient, setReportPatient] = useState<PatientSummary | null>(null)
+  const [reportSearchKeyword, setReportSearchKeyword] = useState('')
+  const [reportSearchResults, setReportSearchResults] = useState<PatientSummary[]>([])
+  const [reportSearchLoading, setReportSearchLoading] = useState(false)
+  const [reportSearchError, setReportSearchError] = useState('')
+  const [patientReports, setPatientReports] = useState<PatientReportSummary[]>([])
+  const [reportsLoading, setReportsLoading] = useState(false)
+  const [reportsError, setReportsError] = useState('')
+  const [reportDownloadingId, setReportDownloadingId] = useState<number | null>(null)
+
+  // '전체 환자' 통계/탭 배지는 그동안 `patients` prop(내 담당+협진+최근 조회를 합친
+  // 부분집합, App.tsx의 초기 로딩에서만 채워짐)의 길이를 썼는데, 이 값은 실제
+  // 전체 synthetic 환자 수(100명)와 무관하다. 실제 전체 건수는 페이지네이션
+  // 목록과 동일하게 backend count를 그대로 신뢰해야 하므로, size=1로 총
+  // 건수(count)만 별도 조회한다. (page_size=100 하드코딩이 아니라 count 필드만 사용)
+  const [totalPatientCount, setTotalPatientCount] = useState<number | null>(null)
+  useEffect(() => {
+    let active = true
+    void getPatientsPage('', false, { patientScope: 'ALL_ACCESSIBLE', page: 1, size: 1 })
+      .then((data) => { if (active) setTotalPatientCount(data.count) })
+      .catch(() => { /* 통계용 보조 조회 실패는 patients.length로 폴백 */ })
+    return () => { active = false }
+  }, [])
+  const displayedTotalPatientCount = totalPatientCount ?? patients.length
+
   const scopedPatients = useMemo(() => {
     if (patientScope === 'mine') return assignedPatients
     if (patientScope === 'consultation') return consultationPatients
@@ -136,6 +162,71 @@ export function ModuleWorkspace({
   }, [patientScope, patientSearch, section, page])
   useEffect(() => { setPage(1) }, [patientScope, patientSearch])
 
+  // '결과보고서' 화면 진입 시 현재 전역 선택 환자를 초기값으로만 사용한다.
+  // 이후에는 이 화면 안에서 직접 검색해 다른 환자로 바꿀 수 있어야 하므로,
+  // selectedPatient가 바뀌어도 사용자가 이미 고른 reportPatient를 덮어쓰지 않는다.
+  useEffect(() => {
+    if (section === '결과보고서' && !reportPatient && selectedPatient) {
+      setReportPatient(selectedPatient)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section])
+
+  useEffect(() => {
+    if (section !== '결과보고서') return
+    const keyword = reportSearchKeyword.trim()
+    if (!keyword) {
+      setReportSearchResults([])
+      setReportSearchLoading(false)
+      setReportSearchError('')
+      return
+    }
+    let active = true
+    setReportSearchLoading(true)
+    setReportSearchError('')
+    const timer = window.setTimeout(() => {
+      void getPatientsPage(keyword, false, { patientScope: 'ALL_ACCESSIBLE', page: 1, size: 20 })
+        .then((data) => { if (active) setReportSearchResults(data.results) })
+        .catch((error) => { if (active) { setReportSearchResults([]); setReportSearchError(error instanceof Error ? error.message : '환자 검색 실패') } })
+        .finally(() => { if (active) setReportSearchLoading(false) })
+    }, 250)
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [reportSearchKeyword, section])
+
+  useEffect(() => {
+    if (!reportPatient?.backendId) {
+      setPatientReports([])
+      setReportsError('')
+      return
+    }
+    let active = true
+    setReportsLoading(true)
+    setReportsError('')
+    void getPatientReports(reportPatient.backendId)
+      .then((items) => { if (active) setPatientReports(items) })
+      .catch((error) => { if (active) { setPatientReports([]); setReportsError(error instanceof Error ? error.message : '보고서 목록을 불러오지 못했습니다.') } })
+      .finally(() => { if (active) setReportsLoading(false) })
+    return () => { active = false }
+  }, [reportPatient?.backendId])
+
+  const reportStatusLabels: Record<string, string> = { DRAFT: '초안', REVIEWING: '검토 중', SIGNED: '서명 완료', RELEASED: '공개됨' }
+
+  const openReport = async (reportId: number) => {
+    setReportDownloadingId(reportId)
+    try {
+      const info = await getReportDownload(reportId)
+      if (info.downloadUrl) {
+        window.open(info.downloadUrl, '_blank', 'noopener')
+      } else {
+        setReportsError('보고서 파일 저장소(RustFS) 연결이 아직 설정되지 않아 다운로드할 수 없습니다.')
+      }
+    } catch (error) {
+      setReportsError(error instanceof Error ? error.message : '보고서 다운로드에 실패했습니다.')
+    } finally {
+      setReportDownloadingId(null)
+    }
+  }
+
   const displayedPatients = useMemo(() => {
     const keyword = patientSearch.trim().toLowerCase()
     if (patientSearchResults) return patientSearchResults
@@ -158,7 +249,7 @@ export function ModuleWorkspace({
         />
         <div className="module-content">
           <section className="module-stat-grid">
-            <article><Users size={20} /><span>전체 환자</span><strong>{patients.length}</strong></article>
+            <article><Users size={20} /><span>전체 환자</span><strong>{displayedTotalPatientCount}</strong></article>
             <article><UserRound size={20} /><span>내 담당 환자</span><strong>{assignedPatients.length}</strong></article>
             <article><ShieldCheck size={20} /><span>협진 환자</span><strong>{consultationPatients.length}</strong></article>
           </section>
@@ -167,7 +258,7 @@ export function ModuleWorkspace({
               <button aria-selected={patientScope === 'mine'} className={patientScope === 'mine' ? 'active' : ''} onClick={() => setPatientScope('mine')} role="tab" type="button">내 담당 <b>{assignedPatients.length}</b></button>
               <button aria-selected={patientScope === 'consultation'} className={patientScope === 'consultation' ? 'active' : ''} onClick={() => setPatientScope('consultation')} role="tab" type="button">협진 <b>{consultationPatients.length}</b></button>
               <button aria-selected={patientScope === 'recent'} className={patientScope === 'recent' ? 'active' : ''} onClick={() => setPatientScope('recent')} role="tab" type="button">최근 조회 <b>{recentPatients.length}</b></button>
-              <button aria-selected={patientScope === 'all'} className={patientScope === 'all' ? 'active' : ''} onClick={() => setPatientScope('all')} role="tab" type="button">전체 <b>{patients.length}</b></button>
+              <button aria-selected={patientScope === 'all'} className={patientScope === 'all' ? 'active' : ''} onClick={() => setPatientScope('all')} role="tab" type="button">전체 <b>{displayedTotalPatientCount}</b></button>
             </div>
             <label className="patient-management-search"><Search size={15} /><input value={patientSearch} onChange={(event) => setPatientSearch(event.target.value)} placeholder="환자 이름 또는 환자번호 검색" />{patientSearchLoading && <LoaderCircle className="spin" size={15} />}</label>
           </section>
@@ -249,20 +340,55 @@ export function ModuleWorkspace({
         <ModuleHeader
           eyebrow="CLINICAL REPORT"
           title="결과보고서"
-          description="판독 초안부터 최종 서명·전송까지의 보고서 업무 공간입니다."
+          description="환자를 검색해 판독 초안부터 최종 서명·공개까지의 보고서 상태를 확인합니다."
         />
         <div className="module-content module-split">
           <section className="feature-card module-context-card">
             <span className="module-icon"><FileText size={22} /></span>
-            <small>현재 선택 환자</small>
-            <h2>{selectedPatient?.name ?? '선택된 환자 없음'}</h2>
-            <p>{selectedPatient?.id ?? '환자를 먼저 선택해주세요.'}</p>
+            <small>환자 검색</small>
+            <label className="patient-management-search"><Search size={15} /><input value={reportSearchKeyword} onChange={(event) => setReportSearchKeyword(event.target.value)} placeholder="이름 또는 환자번호 검색" />{reportSearchLoading && <LoaderCircle className="spin" size={15} />}</label>
+            {reportSearchError && <p className="api-inline-error">{reportSearchError}</p>}
+            {reportSearchKeyword.trim() && (
+              <div className="module-report-search-results">
+                {reportSearchResults.map((patient) => (
+                  <button className={reportPatient?.backendId === patient.backendId ? 'active' : ''} key={patient.id} onClick={() => { setReportPatient(patient); setReportSearchKeyword(''); setReportSearchResults([]) }} type="button">
+                    <strong>{patient.name}</strong><span>{patient.id}</span>
+                  </button>
+                ))}
+                {!reportSearchLoading && reportSearchResults.length === 0 && <p className="feature-empty-inline">검색 결과가 없습니다.</p>}
+              </div>
+            )}
+            <hr />
+            <small>선택된 환자</small>
+            <h2>{reportPatient?.name ?? '선택된 환자 없음'}</h2>
+            <p>{reportPatient?.id ?? '환자를 검색해 선택해주세요.'}</p>
           </section>
-          <section className="feature-card module-placeholder-card">
-            <span className="module-icon"><FileText size={26} /></span>
-            <h2>보고서 API 연결 대기</h2>
-            <p>보고서 목록·초안 저장·최종 서명 API가 확정되면 환자별 판독보고서를 이 화면에 연결합니다.</p>
-            <span className="module-ready-badge">UI 골격 준비됨</span>
+          <section className="feature-card module-table-card">
+            <header><h2>보고서 목록</h2><span>총 {patientReports.length}건</span></header>
+            {reportsError && <p className="api-inline-error">{reportsError}</p>}
+            {!reportPatient && <div className="feature-empty"><FileText size={28} /><strong>환자를 먼저 검색해 선택해주세요.</strong></div>}
+            {reportPatient && (
+              <div className="module-table module-report-table">
+                <div className="module-table-head"><span>검사일</span><span>진료 유형</span><span>상태</span><span>작성/서명 의료진</span><span /></div>
+                {patientReports.map((item) => (
+                  <div key={item.medicalResultId} className="module-table-row">
+                    <span>{item.visitDate ? new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium' }).format(new Date(item.visitDate)) : '-'}</span>
+                    <span>{item.encounterType ?? '-'}</span>
+                    <b className={`status-pill status-report-${item.status.toLowerCase()}`}>{reportStatusLabels[item.status] ?? item.status}</b>
+                    <span>{item.latestSignoff?.doctorName ?? item.doctorName ?? '-'}</span>
+                    <button
+                      disabled={!item.latestReport || reportDownloadingId === item.latestReport?.reportId}
+                      onClick={() => item.latestReport && void openReport(item.latestReport.reportId)}
+                      title={item.latestReport ? '보고서 PDF 열기' : '아직 생성된 보고서 파일이 없습니다'}
+                      type="button"
+                    >
+                      {reportDownloadingId === item.latestReport?.reportId ? '여는 중…' : '보고서 보기'}
+                    </button>
+                  </div>
+                ))}
+                {!reportsLoading && patientReports.length === 0 && <div className="feature-empty"><FileText size={28} /><strong>등록된 보고서가 없습니다.</strong></div>}
+              </div>
+            )}
           </section>
         </div>
       </section>

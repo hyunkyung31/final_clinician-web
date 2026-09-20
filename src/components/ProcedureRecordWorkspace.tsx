@@ -15,18 +15,22 @@ import {
   X,
 } from 'lucide-react'
 import {
+  createPatientAllergy,
   createProcedureEvent,
   cancelProcedureEvent,
   correctProcedureEvent,
   finalizeProcedureRecord,
+  getPatientAllergies,
+  getPatientDiagnoses,
   getPatientLabObservations,
+  getPatientMedicalHistories,
   getPrescriptionDetail,
   getPrescriptions,
   getProcedureEvents,
   getProcedureRecord,
   updateProcedureRecord,
 } from '../api/client'
-import type { LabObservation, PatientDetail, PatientSummary, PrescriptionItemSummary } from '../types'
+import type { LabObservation, PatientAllergySummary, PatientDetail, PatientDiagnosisSummary, PatientMedicalHistorySummary, PatientSummary, PrescriptionItemSummary } from '../types'
 
 type ProcedureTab = 'TIMELINE' | 'MATERIALS' | 'VITALS' | 'LAB' | 'REPORT'
 type ProcedureCategory =
@@ -211,9 +215,15 @@ export function ProcedureRecordWorkspace({
   const [labLoading, setLabLoading] = useState(false)
   const [labError, setLabError] = useState('')
   const [saveNotice, setSaveNotice] = useState('')
-  const [allergy, setAllergy] = useState('')
+  const [allergies, setAllergies] = useState<PatientAllergySummary[]>([])
+  const [allergyLoading, setAllergyLoading] = useState(false)
+  const [allergyError, setAllergyError] = useState('')
   const [allergyDraft, setAllergyDraft] = useState('')
   const [allergyEditing, setAllergyEditing] = useState(false)
+  const [allergySaving, setAllergySaving] = useState(false)
+  const [diagnoses, setDiagnoses] = useState<PatientDiagnosisSummary[]>([])
+  const [medicalHistories, setMedicalHistories] = useState<PatientMedicalHistorySummary[]>([])
+  const [clinicalInfoError, setClinicalInfoError] = useState('')
   const [orderedMedications, setOrderedMedications] = useState<PrescriptionItemSummary[]>([])
   const [prescriptionLoading, setPrescriptionLoading] = useState(false)
   const [prescriptionError, setPrescriptionError] = useState('')
@@ -224,7 +234,6 @@ export function ProcedureRecordWorkspace({
     setEvents([])
     setVitals([])
     setMemo('')
-    setAllergy('')
     setAllergyDraft('')
     setAllergyEditing(false)
     setEditingId(null)
@@ -232,6 +241,67 @@ export function ProcedureRecordWorkspace({
     setMaterialPickerOpen(false)
     setSaveNotice('')
   }, [patient?.backendId])
+
+  useEffect(() => {
+    if (!patient?.backendId) {
+      setAllergies([])
+      setDiagnoses([])
+      setMedicalHistories([])
+      setAllergyError('')
+      setClinicalInfoError('')
+      return
+    }
+    let active = true
+    setAllergyLoading(true)
+    setAllergyError('')
+    setClinicalInfoError('')
+    void getPatientAllergies(patient.backendId)
+      .then((items) => { if (active) setAllergies(items) })
+      .catch((error) => { if (active) { setAllergies([]); setAllergyError(error instanceof Error ? error.message : '알레르기 정보를 불러오지 못했습니다.') } })
+      .finally(() => { if (active) setAllergyLoading(false) })
+    void Promise.allSettled([getPatientDiagnoses(patient.backendId), getPatientMedicalHistories(patient.backendId)])
+      .then(([diagnosisResult, historyResult]) => {
+        if (!active) return
+        setDiagnoses(diagnosisResult.status === 'fulfilled' ? diagnosisResult.value : [])
+        setMedicalHistories(historyResult.status === 'fulfilled' ? historyResult.value : [])
+        if (diagnosisResult.status === 'rejected' || historyResult.status === 'rejected') {
+          setClinicalInfoError('진단명 또는 기저질환 정보를 일부 불러오지 못했습니다.')
+        }
+      })
+    return () => { active = false }
+  }, [patient?.backendId])
+
+  const activeAllergies = allergies.filter((item) => item.status === 'ACTIVE' && !item.isNoKnownAllergy)
+  const noKnownAllergyConfirmed = allergies.some((item) => item.status === 'ACTIVE' && item.isNoKnownAllergy)
+  const allergySummaryText = allergyLoading
+    ? '조회 중…'
+    : activeAllergies.length
+      ? activeAllergies.map((item) => item.allergenName || item.allergenType || '기록됨').join(', ')
+      : noKnownAllergyConfirmed ? '알레르기 없음' : '미입력'
+  const activeMedicalHistories = medicalHistories.filter((item) => item.status === 'ACTIVE')
+  const diagnosisSummaryText = diagnoses.length ? diagnoses.map((item) => item.name || item.code).join(', ') : '등록된 진단 없음'
+  const medicalHistorySummaryText = activeMedicalHistories.length ? activeMedicalHistories.map((item) => item.conditionName).join(', ') : '등록된 기저질환 없음'
+
+  const submitAllergy = async (input: { isNoKnownAllergy?: boolean; allergenName?: string }) => {
+    if (!patient?.backendId) {
+      setSaveNotice('알레르기를 저장할 환자가 선택되지 않았습니다.')
+      return
+    }
+    setAllergySaving(true)
+    try {
+      const created = await createPatientAllergy(patient.backendId, input.isNoKnownAllergy
+        ? { isNoKnownAllergy: true }
+        : { allergenType: 'OTHER', allergenName: input.allergenName })
+      setAllergies((current) => [created, ...current.map((item) => (item.status === 'ACTIVE' ? { ...item, status: 'INACTIVE' } : item))])
+      setAllergyDraft('')
+      setAllergyEditing(false)
+      setSaveNotice('알레르기 정보를 저장했습니다.')
+    } catch (requestError) {
+      setSaveNotice(requestError instanceof Error ? requestError.message : '알레르기 정보를 저장하지 못했습니다.')
+    } finally {
+      setAllergySaving(false)
+    }
+  }
 
   useEffect(() => {
     if (!examinationId) return
@@ -431,15 +501,6 @@ export function ProcedureRecordWorkspace({
     }))
   }
 
-  const saveAllergy = (value = allergyDraft) => {
-    const nextValue = value.trim()
-    if (!nextValue) return
-    setAllergy(nextValue)
-    setAllergyDraft(nextValue)
-    setAllergyEditing(false)
-    setSaveNotice('알레르기 정보가 로컬 초안에 반영되었습니다.')
-  }
-
   const deleteEvent = async (event: ProcedureEvent) => {
     if (!window.confirm('이 시술기록을 삭제하시겠습니까?')) return
     if (/^\d+$/.test(event.id)) {
@@ -570,17 +631,17 @@ export function ProcedureRecordWorkspace({
 
       <section className="feature-card procedure-patient-banner">
         <div className="procedure-patient-name"><strong>{patient?.name ?? '환자 미선택'}</strong><span>{patientDetail?.medicalRecordNo || patient?.id || '-'}</span></div>
-        <div><b>{patient?.age ?? '-'}세</b><span>{patient?.sex ?? '-'} · {formatPatientBirth(patientDetail?.birthDate ?? '')}</span><small>진단명 정보 연동 필요 · 예정 {patient?.exam || '-'}</small></div>
-        <div className={`procedure-alert ${allergy ? 'recorded' : ''}`}>
+        <div><b>{patient?.age ?? '-'}세</b><span>{patient?.sex ?? '-'} · {formatPatientBirth(patientDetail?.birthDate ?? '')}</span><small>진단명: {diagnosisSummaryText} · 예정 {patient?.exam || '-'}</small></div>
+        <div className={`procedure-alert ${activeAllergies.length ? 'recorded' : ''}`}>
           {allergyEditing ? (
-            <form onSubmit={(event) => { event.preventDefault(); saveAllergy() }}>
-              <input autoFocus aria-label="알레르기 직접 입력" value={allergyDraft} onChange={(event) => setAllergyDraft(event.target.value)} placeholder="예: 조영제(Iodine) 발진" />
-              <button className="none" onClick={() => saveAllergy('알레르기 없음')} type="button">없음</button>
-              <button className="save" disabled={!allergyDraft.trim()} title="알레르기 저장" type="submit"><Check size={13} /></button>
-              <button onClick={() => { setAllergyDraft(allergy); setAllergyEditing(false) }} title="입력 취소" type="button"><X size={13} /></button>
+            <form onSubmit={(event) => { event.preventDefault(); if (allergyDraft.trim()) void submitAllergy({ allergenName: allergyDraft.trim() }) }}>
+              <input autoFocus aria-label="알레르기 직접 입력" value={allergyDraft} onChange={(event) => setAllergyDraft(event.target.value)} placeholder="예: 조영제(Iodine) 발진" disabled={allergySaving} />
+              <button className="none" disabled={allergySaving} onClick={() => void submitAllergy({ isNoKnownAllergy: true })} type="button">없음</button>
+              <button className="save" disabled={allergySaving || !allergyDraft.trim()} title="알레르기 저장" type="submit"><Check size={13} /></button>
+              <button disabled={allergySaving} onClick={() => { setAllergyDraft(''); setAllergyEditing(false) }} title="입력 취소" type="button"><X size={13} /></button>
             </form>
           ) : (
-            <><AlertTriangle size={14} /><span>{allergy ? `Allergy: ${allergy}` : '알레르기 미입력'}</span><button onClick={() => { setAllergyDraft(allergy); setAllergyEditing(true) }} type="button">{allergy ? '수정' : '입력'}</button></>
+            <><AlertTriangle size={14} /><span>{allergyError || (activeAllergies.length ? `Allergy: ${allergySummaryText}` : allergySummaryText === '알레르기 없음' ? '알레르기 없음' : '알레르기 미입력')}</span><button onClick={() => { setAllergyDraft(''); setAllergyEditing(true) }} type="button">{activeAllergies.length || noKnownAllergyConfirmed ? '수정' : '입력'}</button></>
           )}
         </div>
         <label>시술명<select value={procedureType} onChange={(event) => setProcedureType(event.target.value)}><option>CAG</option><option>PCI</option><option>CAG + PCI</option></select></label>
@@ -638,7 +699,7 @@ export function ProcedureRecordWorkspace({
         </main>
 
         <aside className="procedure-side-column">
-          <section className="feature-card procedure-info-card"><header><h2>환자 주요 정보</h2>{patient && <button onClick={() => onOpenPatient(patient.id)} type="button">환자 열기</button>}</header><dl><div><dt>등록번호</dt><dd>{patientDetail?.medicalRecordNo || patient?.id || '-'}</dd></div><div><dt>이름</dt><dd>{patient?.name ?? '-'}</dd></div><div><dt>성별/나이</dt><dd>{patient ? `${patient.sex} / ${patient.age}세` : '-'}</dd></div><div><dt>진단명</dt><dd>진료정보 API 연결 필요</dd></div><div><dt>예정 검사</dt><dd>{patient?.exam || '-'}</dd></div><div><dt>기저질환</dt><dd>진료정보 API 연결 필요</dd></div><div className={`allergy ${allergy ? 'recorded' : ''}`}><dt>알레르기</dt><dd><AlertTriangle size={13} /><span>{allergy || '미입력'}</span><button onClick={() => { setAllergyDraft(allergy); setAllergyEditing(true) }} type="button">{allergy ? '수정' : '직접 입력'}</button></dd></div></dl></section>
+          <section className="feature-card procedure-info-card"><header><h2>환자 주요 정보</h2>{patient && <button onClick={() => onOpenPatient(patient.id)} type="button">환자 열기</button>}</header>{clinicalInfoError && <p className="api-inline-error">{clinicalInfoError}</p>}<dl><div><dt>등록번호</dt><dd>{patientDetail?.medicalRecordNo || patient?.id || '-'}</dd></div><div><dt>이름</dt><dd>{patient?.name ?? '-'}</dd></div><div><dt>성별/나이</dt><dd>{patient ? `${patient.sex} / ${patient.age}세` : '-'}</dd></div><div><dt>진단명</dt><dd>{diagnosisSummaryText}</dd></div><div><dt>예정 검사</dt><dd>{patient?.exam || '-'}</dd></div><div><dt>기저질환</dt><dd>{medicalHistorySummaryText}</dd></div><div className={`allergy ${activeAllergies.length ? 'recorded' : ''}`}><dt>알레르기</dt><dd><AlertTriangle size={13} /><span>{allergyLoading ? '조회 중…' : allergySummaryText}</span><button onClick={() => { setAllergyDraft(''); setAllergyEditing(true) }} type="button">{activeAllergies.length || noKnownAllergyConfirmed ? '수정' : '직접 입력'}</button></dd></div></dl></section>
 
           <section className="feature-card procedure-vital-card"><header><div><HeartPulse size={16} /><h2>환자 상태</h2></div><button onClick={() => setVitalAdding((current) => !current)} type="button"><Plus size={14} />추가</button></header><VitalTable compact vitals={vitals.slice(-4)} onDelete={(id) => setVitals((current) => current.filter((item) => item.id !== id))} />{vitalAdding && <form className="vital-inline-form" onSubmit={addVital}><input type="time" value={vitalDraft.time} onChange={(event) => setVitalDraft((current) => ({ ...current, time: event.target.value }))} /><span><input inputMode="numeric" placeholder="SBP" value={vitalDraft.systolic} onChange={(event) => setVitalDraft((current) => ({ ...current, systolic: event.target.value }))} />/<input inputMode="numeric" placeholder="DBP" value={vitalDraft.diastolic} onChange={(event) => setVitalDraft((current) => ({ ...current, diastolic: event.target.value }))} /></span><input inputMode="numeric" placeholder="HR" value={vitalDraft.heartRate} onChange={(event) => setVitalDraft((current) => ({ ...current, heartRate: event.target.value }))} /><input inputMode="numeric" placeholder="SpO₂" value={vitalDraft.spo2} onChange={(event) => setVitalDraft((current) => ({ ...current, spo2: event.target.value }))} /><select value={vitalDraft.rhythm} onChange={(event) => setVitalDraft((current) => ({ ...current, rhythm: event.target.value }))}><option>Sinus</option><option>AF</option><option>VT</option><option>VF</option><option>기타</option></select><span><button className="save" type="submit"><Check size={14} /></button><button onClick={() => setVitalAdding(false)} type="button"><X size={14} /></button></span></form>}</section>
 

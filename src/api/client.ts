@@ -32,9 +32,13 @@ import type {
   LabObservation,
   MedicationFavoriteSummary,
   MedicationSummary,
+  PatientAllergySummary,
   PatientDetail,
+  PatientDiagnosisSummary,
   PatientFollowUpRecords,
+  PatientMedicalHistorySummary,
   PatientMemo,
+  PatientReportSummary,
   PatientSummary,
   PrescriptionDetail,
   PrescriptionItemInput,
@@ -650,7 +654,13 @@ export async function getPatientsPage(
   const size = filters.size ?? 50
   const scope = filters.patientScope ?? (assignedToMe ? 'ASSIGNED_TO_ME' : 'ALL_ACCESSIBLE')
   const supportsScope = (await capabilities()).patientScope
-  const params = new URLSearchParams({ size: String(size), page: String(page), scope: 'all' })
+  // 주의: backend GET /api/patients/ 의 `scope` 쿼리파라미터는 "synthetic(기본값) | source | all"
+  // 로, 시연용 통합 DEMO-100명 코호트인지 원본 소스 데이터셋(ZAS/COCA/AngioCAD 원본, 훨씬 많음)까지
+  // 포함할지를 결정한다. `scope=all`을 강제로 넣으면 원본 소스 환자까지 섞여 나와 정작
+  // 화면에서 보여야 할 통합 시연 환자 100명이 뒤로 밀려 "100명이 다 안 보인다"는 문제를 만든다.
+  // (patientScope 상단의 mine/consultation/recent/all과는 무관한, 완전히 다른 축의 필터이므로
+  // 값을 지정하지 않고 backend 기본값(synthetic)을 그대로 사용한다.)
+  const params = new URLSearchParams({ size: String(size), page: String(page) })
   if (search.trim()) params.set('search', search.trim())
   if (supportsScope) params.set('patient_scope', scope)
   else if (scope === 'ASSIGNED_TO_ME') params.set('assigned_to_me', 'true')
@@ -1334,6 +1344,171 @@ export async function getPatientAngiographySequences(
       }
     })
     .filter((item): item is AngiographySequenceSummary => item !== null)
+}
+
+/**
+ * DatasetSubject.metadata_json(AngioCAD Features 원본 행)을 그대로 노출하는
+ * clinical_feature_snapshot을 조회한다. Clinical AI 입력폼(ai/clinical_input_schema.csv,
+ * 54개 컬럼)과 동일한 키를 가지므로, 값이 있는 항목만 그대로 자동 입력에 사용한다.
+ * ANGIO_2D로 연결된 시연용(DEMO-/ANGIO-) 환자가 아니면 null.
+ */
+export async function getPatientClinicalFeatureSnapshot(
+  patientId: number,
+): Promise<Record<string, string> | null> {
+  let payload: unknown
+  try {
+    payload = await request<unknown>(`/api/patients/${patientId}/integrated/`)
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 404) throw error
+    payload = await request<unknown>(`/api/patients/${patientId}/integrated-data/`)
+  }
+
+  if (!isRecord(payload) || !isRecord(payload.clinical_feature_snapshot)) return null
+
+  const snapshot: Record<string, string> = {}
+  Object.entries(payload.clinical_feature_snapshot).forEach(([key, value]) => {
+    if (value === null || value === undefined || value === '') return
+    snapshot[key] = String(value)
+  })
+  return Object.keys(snapshot).length > 0 ? snapshot : null
+}
+
+/** GET /api/patients/{id}/diagnoses/ (clinical.PatientDiagnosisListView) */
+export async function getPatientDiagnoses(patientId: number): Promise<PatientDiagnosisSummary[]> {
+  const payload = await request<unknown>(`/api/patients/${patientId}/diagnoses/`)
+  if (!Array.isArray(payload)) return []
+  return payload.filter(isRecord).map((item): PatientDiagnosisSummary => ({
+    id: readNumber(item, 'id') ?? 0,
+    code: readString(item, 'diagnosis_code_value'),
+    name: readString(item, 'diagnosis_name'),
+    diagnosisType: readString(item, 'diagnosis_type'),
+    diagnosisText: readString(item, 'diagnosis_text'),
+    status: readString(item, 'status'),
+    diagnosedAt: readString(item, 'diagnosed_at'),
+    diagnosedByName: readString(item, 'diagnosed_by_name'),
+  }))
+}
+
+/** GET /api/patients/{id}/medical-histories/ (clinical.PatientMedicalHistoryListCreateView) */
+export async function getPatientMedicalHistories(patientId: number): Promise<PatientMedicalHistorySummary[]> {
+  const payload = await request<unknown>(`/api/patients/${patientId}/medical-histories/`)
+  if (!Array.isArray(payload)) return []
+  return payload.filter(isRecord).map((item): PatientMedicalHistorySummary => ({
+    id: readNumber(item, 'id') ?? 0,
+    conditionCode: readString(item, 'condition_code'),
+    conditionName: readString(item, 'condition_name'),
+    status: readString(item, 'status'),
+    onsetDate: readString(item, 'onset_date'),
+    resolvedDate: readString(item, 'resolved_date'),
+    note: readString(item, 'note'),
+  }))
+}
+
+function mapAllergy(item: UnknownRecord): PatientAllergySummary {
+  return {
+    id: readNumber(item, 'id') ?? 0,
+    allergenType: readString(item, 'allergen_type') || null,
+    allergenName: readString(item, 'allergen_name') || null,
+    reaction: readString(item, 'reaction'),
+    severity: readString(item, 'severity') || null,
+    status: readString(item, 'status'),
+    isNoKnownAllergy: readBoolean(item, 'is_no_known_allergy'),
+    note: readString(item, 'note'),
+    verifiedAt: readString(item, 'verified_at') || null,
+  }
+}
+
+/** GET /api/patients/{id}/allergies/ (clinical.PatientAllergyListCreateView) */
+export async function getPatientAllergies(patientId: number): Promise<PatientAllergySummary[]> {
+  const payload = await request<unknown>(`/api/patients/${patientId}/allergies/`)
+  if (!Array.isArray(payload)) return []
+  return payload.filter(isRecord).map(mapAllergy)
+}
+
+export interface PatientAllergyInput {
+  isNoKnownAllergy?: boolean
+  allergenType?: string
+  allergenName?: string
+  reaction?: string
+  severity?: string
+  note?: string
+}
+
+/** POST /api/patients/{id}/allergies/ - "미입력" 상태에서 "없음" 또는 실제 알레르기를 최초 등록한다.
+ * backend가 반대 종류의 기존 ACTIVE 레코드를 자동으로 INACTIVE 처리하므로 별도 삭제 호출은 불필요하다. */
+export async function createPatientAllergy(patientId: number, input: PatientAllergyInput): Promise<PatientAllergySummary> {
+  const payload: Record<string, unknown> = {}
+  if (input.isNoKnownAllergy) payload.is_no_known_allergy = true
+  if (input.allergenType) payload.allergen_type = input.allergenType
+  if (input.allergenName) payload.allergen_name = input.allergenName
+  if (input.reaction) payload.reaction = input.reaction
+  if (input.severity) payload.severity = input.severity
+  if (input.note) payload.note = input.note
+  const created = await request<unknown>(`/api/patients/${patientId}/allergies/`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  if (!isRecord(created)) throw new ApiError('알레르기 등록 응답 형식이 올바르지 않습니다.', 500)
+  return mapAllergy(created)
+}
+
+/** GET /api/patients/{id}/medical-results/ - 환자 기준 판독보고서 목록.
+ * '결과보고서' 화면이 전역 선택 환자에만 종속되지 않고 환자 검색으로
+ * 다른 환자의 보고서 목록을 조회할 수 있도록 한다. */
+export async function getPatientReports(patientId: number): Promise<PatientReportSummary[]> {
+  const payload = await request<unknown>(`/api/patients/${patientId}/medical-results/`)
+  if (!Array.isArray(payload)) return []
+  return payload.filter(isRecord).map((item): PatientReportSummary => {
+    const latestVersionRaw = item.latest_version
+    const latestSignoffRaw = item.latest_signoff
+    const latestReportRaw = item.latest_report
+    return {
+      medicalResultId: readNumber(item, 'medical_result_id') ?? 0,
+      encounterId: readNumber(item, 'encounter_id') ?? null,
+      visitDate: readString(item, 'visit_date') || null,
+      encounterType: readString(item, 'encounter_type') || null,
+      doctorName: readString(item, 'doctor_name') || null,
+      status: readString(item, 'status'),
+      latestVersion: isRecord(latestVersionRaw) ? {
+        versionNo: readNumber(latestVersionRaw, 'version_no') ?? 0,
+        sourceType: readString(latestVersionRaw, 'source_type'),
+        createdAt: readString(latestVersionRaw, 'created_at'),
+      } : null,
+      latestSignoff: isRecord(latestSignoffRaw) ? {
+        signedAt: readString(latestSignoffRaw, 'signed_at'),
+        doctorName: readString(latestSignoffRaw, 'doctor_name'),
+      } : null,
+      latestReport: isRecord(latestReportRaw) ? {
+        reportId: readNumber(latestReportRaw, 'report_id') ?? 0,
+        reportName: readString(latestReportRaw, 'report_name'),
+        status: readString(latestReportRaw, 'status'),
+        createdAt: readString(latestReportRaw, 'created_at'),
+      } : null,
+      createdAt: readString(item, 'created_at'),
+      updatedAt: readString(item, 'updated_at'),
+    }
+  })
+}
+
+export interface ReportDownloadInfo {
+  reportId: number
+  reportName: string
+  downloadUrl: string | null
+  downloadIntegrationStatus: string
+}
+
+/** GET /api/reports/{id}/download/ - FileAsset 기반 다운로드 URL 조회 (RustFS 미설정 시 downloadUrl=null). */
+export async function getReportDownload(reportId: number): Promise<ReportDownloadInfo> {
+  const payload = await request<unknown>(`/api/reports/${reportId}/download/`)
+  if (!isRecord(payload)) throw new ApiError('보고서 다운로드 응답 형식이 올바르지 않습니다.', 500)
+  const report = isRecord(payload.report) ? payload.report : {}
+  const file = isRecord(payload.file) ? payload.file : {}
+  return {
+    reportId: readNumber(report, 'id') ?? reportId,
+    reportName: readString(report, 'report_name'),
+    downloadUrl: readString(file, 'download_url') || null,
+    downloadIntegrationStatus: readString(file, 'download_integration_status') || 'UNKNOWN',
+  }
 }
 
 export async function getAngiographyFrames(

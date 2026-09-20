@@ -1,0 +1,15 @@
+.viewer-card.workstation-dicom-card { grid-template-rows: 38px auto minmax(420px, 1fr) auto auto; min-height: 560px; }
+.workstation-dicom-series { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid #30445d; }
+.workstation-dicom-series label { display: flex; min-width: 0; flex: 1; align-items: center; gap: 8px; font-size: 12px; }
+.workstation-dicom-series select { min-width: 0; width: 100%; padding: 8px; background: #182b40; color: #dbe9fa; border: 1px solid #45627e; border-radius: 6px; }
+.workstation-dicom-series button,.workstation-dicom-controls button { padding: 7px; color: #dbe9fa; background: #182b40; border: 1px solid #45627e; border-radius: 6px; cursor: pointer; }
+.workstation-dicom-card > .workstation-dicom-stage { position: relative; min-height: 420px; padding: 0; overflow: hidden; }
+.workstation-dicom-message { display: flex; padding: 24px; flex-direction: column; align-items: center; gap: 10px; }
+.workstation-dicom-controls { display: flex; gap: 8px; align-items: center; padding: 10px; }
+.workstation-dicom-controls input { min-width: 0; flex: 1; accent-color: #6195ff; }
+.workstation-dicom-controls span { min-width: 40px; text-align: center; font-size: 12px; }
+.workstation-dicom-controls button { display: grid; place-items: center; }
+.workstation-dicom-controls button:disabled { opacity: .4; cursor: default; }
+.workstation-dicom-card > .viewer-footer { min-height: 36px; padding: 8px 12px; flex-wrap: wrap; overflow-wrap: anywhere; }
+.workstation-dicom-card .dicom-fit-button { position: absolute; top: 12px; right: 12px; z-index: 5; padding: 8px 12px; border: 1px solid #526d8b; border-radius: 7px; background: #152a40e6; color: #e5efff; cursor: pointer; }
+.workstation-dicom-card .cornerstone-dicom-state.error { pointer-events: auto; }

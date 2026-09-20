@@ -16,6 +16,7 @@ import {
   Eraser,
   FlaskConical,
   Images,
+  Loader2,
   MousePointer2,
   Pause,
   Pencil,
@@ -28,6 +29,7 @@ import {
   Type,
   Undo2,
   X,
+  ZoomIn,
 } from 'lucide-react'
 import {
   useEffect,
@@ -54,10 +56,12 @@ import {
   getImagingStudyViewerAccess,
   getImagingSeriesViewerManifest,
   getPatientAngiographySequences,
+  getPatientClinicalFeatureSnapshot,
   getPatientLabObservations,
   getRendering3DViewerSource,
   getStudyRenderings3D,
   getFileDownloadUrl,
+  CT_AI_VERSION_ID,
 } from '../api/client'
 import type {
   AngiographyFrame,
@@ -278,6 +282,22 @@ function createAnnotationId() {
   return `annotation-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+/** Rendering3D.status(PENDING/PROCESSING/COMPLETED/FAILED) → 의료진용 한글 라벨 */
+function renderingStatusLabel(status?: string) {
+  switch (status) {
+    case 'PENDING':
+      return '분석 대기 중'
+    case 'PROCESSING':
+      return '분석 진행 중'
+    case 'COMPLETED':
+      return '분석 완료'
+    case 'FAILED':
+      return '분석 실패'
+    default:
+      return '결과 없음'
+  }
+}
+
 export function ExaminationImagingWorkspace({
   patient,
   patients,
@@ -301,6 +321,7 @@ export function ExaminationImagingWorkspace({
   const [selectedLabExaminationId, setSelectedLabExaminationId] = useState<number | null>(null)
   const [labItems, setLabItems] = useState<LabObservation[]>([])
   const [sequences, setSequences] = useState<AngiographySequenceSummary[]>([])
+  const [clinicalFeatureSnapshot, setClinicalFeatureSnapshot] = useState<Record<string, string> | null>(null)
   const [sequenceError, setSequenceError] = useState('')
   const [dataLoading, setDataLoading] = useState(false)
   const [labError, setLabError] = useState('')
@@ -335,6 +356,7 @@ export function ExaminationImagingWorkspace({
   const [modelWaiting, setModelWaiting] = useState(false)
   const [renderingAuxImages, setRenderingAuxImages] = useState<{ overlay?: string; preview?: string }>({})
   const [renderingAuxError, setRenderingAuxError] = useState('')
+  const [resultLightbox, setResultLightbox] = useState<{ url: string; title: string; caption: string } | null>(null)
   const [renderingRevision, setRenderingRevision] = useState(0)
   const [renderingSaving, setRenderingSaving] = useState(false)
   const [createRenderingOpen, setCreateRenderingOpen] = useState(false)
@@ -385,6 +407,7 @@ export function ExaminationImagingWorkspace({
       setSequences([])
       setSequenceError('')
       setLabError('')
+      setClinicalFeatureSnapshot(null)
       return
     }
 
@@ -394,11 +417,13 @@ export function ExaminationImagingWorkspace({
     setSequences([])
     setSequenceError('')
     setLabError('')
+    setClinicalFeatureSnapshot(null)
 
     Promise.allSettled([
       getPatientLabObservations(patient.backendId),
       getPatientAngiographySequences(patient.backendId),
-    ]).then(([labResult, sequenceResult]) => {
+      getPatientClinicalFeatureSnapshot(patient.backendId),
+    ]).then(([labResult, sequenceResult, clinicalSnapshotResult]) => {
       if (!active) return
 
       if (labResult.status === 'fulfilled') {
@@ -416,6 +441,9 @@ export function ExaminationImagingWorkspace({
       setSequenceError(sequenceResult.status === 'rejected'
         ? sequenceResult.reason instanceof Error ? sequenceResult.reason.message : 'Angio 촬영 영상 목록을 불러오지 못했습니다.'
         : '')
+      // 조회 실패는 조용히 무시한다: 원본 AngioCAD 연동이 없는 일반 환자에게는
+      // 자연스럽게 자동 입력 항목이 없는 것이므로 별도 에러로 취급하지 않는다.
+      setClinicalFeatureSnapshot(clinicalSnapshotResult.status === 'fulfilled' ? clinicalSnapshotResult.value : null)
       setDataLoading(false)
     })
 
@@ -712,6 +740,7 @@ export function ExaminationImagingWorkspace({
   useEffect(() => {
     setRenderingAuxImages({})
     setRenderingAuxError('')
+    setResultLightbox(null)
     if (viewerMode !== '3D' || !selectedRendering || selectedRendering.status !== 'COMPLETED') return
 
     // CCTA 석회화 overlay/preview PNG는 별도 API가 아니라
@@ -1151,18 +1180,23 @@ export function ExaminationImagingWorkspace({
     age: followUpRecords.patient.age ?? patient.age,
   } : patient
   const clinicalLabInput = useMemo(() => {
-    if (selectedLabAi?.exam.clinicalInput) return selectedLabAi.exam.clinicalInput
+    // 우선순위: (1) AngioCAD 원본 feature snapshot(있으면 54개 항목 대부분을 커버하는 기본값)
+    // → (2) 실제 검사 차수의 확정 수치(있으면 snapshot 값을 덮어써 최신 검사 결과 우선)
+    // → (3) 검사에 이미 저장된 clinicalInput(과거 분석에서 사용한 입력값)이 있으면 그것을 최우선.
+    const payload: Record<string, number | string> = { ...(clinicalFeatureSnapshot ?? {}) }
+
     const supported = new Set(['FBS', 'CR', 'TG', 'LDL', 'HDL', 'BUN', 'ESR', 'HB', 'K', 'NA', 'WBC', 'LYMPH', 'NEUT', 'PLT', 'EF-TTE'])
     const decimalFields = new Set(['CR', 'HDL', 'HB', 'K'])
-    const payload: Record<string, number> = {}
     ;(selectedLabAi?.exam.result?.measurements ?? []).forEach((item) => {
       const code = item.code.trim().toUpperCase()
       if (!supported.has(code) || item.valueNumeric === undefined) return
       const modelName = code === 'NA' ? 'Na' : code === 'LYMPH' ? 'Lymph' : code === 'NEUT' ? 'Neut' : code
       payload[modelName] = decimalFields.has(code) ? item.valueNumeric : Math.round(item.valueNumeric)
     })
+
+    if (selectedLabAi?.exam.clinicalInput) return { ...payload, ...selectedLabAi.exam.clinicalInput }
     return payload
-  }, [selectedLabAi])
+  }, [selectedLabAi, clinicalFeatureSnapshot])
   const openLabAi = (examinationId?: number) => {
     const targetId = examinationId ?? selectedLabAi?.exam.examinationId ?? labAiCandidates[0]?.exam.examinationId
     if (!targetId) return
@@ -1396,41 +1430,62 @@ export function ExaminationImagingWorkspace({
                       <span><i className={modelUrl ? 'connected' : ''} />{renderingLabel(renderingType)} 렌더링</span>
                       <small>{selectedRendering ? `v${selectedRendering.version} · ${modelFormat}` : '결과 선택'}</small>
                     </header>
+                    <div className="ccta-summary-bar">
+                      <span className="ccta-summary-tag">CCTA</span>
+                      <span className="ccta-summary-date">{selectedStudy?.studyDate ? formatDate(selectedStudy.studyDate) : '검사일 미등록'}</span>
+                      <span className={`ccta-status-badge status-${(selectedRendering?.status ?? 'empty').toLowerCase()}`}>{renderingStatusLabel(selectedRendering?.status)}</span>
+                      {Number.isSafeInteger(CT_AI_VERSION_ID) && CT_AI_VERSION_ID > 0 && <small className="ccta-summary-model">AI 모델 v{CT_AI_VERSION_ID}</small>}
+                    </div>
                     <nav className="rendering-kind-buttons" aria-label="렌더링 종류 바로 보기">
                       {RENDERING_KINDS.map((kind) => <button key={kind.value} type="button" aria-pressed={renderingType === kind.value} className={renderingType === kind.value ? 'active' : ''} disabled={renderingSaving || renderingLoading} onClick={() => selectRenderingKind(kind.value)}>{kind.label}</button>)}
                     </nav>
-                    <div className={`three-d-stage tool-${tool.toLowerCase()}`}>
-                      {modelUrl ? (
-                        <Suspense fallback={<div className="image-viewer-empty"><BoxIcon size={32} /><strong>렌더링 결과 준비 중…</strong></div>}>
-                          <MedicalModelViewer sourceUrl={modelUrl} format={modelFormat} onStatus={handleModelStatus} onError={handleModelError} onCameraChange={handleCameraChange} cameraState={restoreCamera} />
-                        </Suspense>
-                      ) : (
-                        <div className="image-viewer-empty">
-                          <BoxIcon size={32} />
-                          <strong>{renderingError ? '렌더링 결과를 열지 못했습니다' : selectedRendering?.status === 'FAILED' ? '3D 렌더링 생성에 실패했습니다' : selectedRendering?.status === 'PENDING' ? '3D 렌더링 생성 대기 중입니다' : selectedRendering?.status === 'PROCESSING' || modelWaiting ? '3D 렌더링 파일을 준비 중입니다' : renderingLoading ? '렌더링 결과 확인 중…' : `${renderingLabel(renderingType)} 결과가 아직 생성되지 않았습니다.`}</strong>
-                          <span>{renderingError || (['PENDING', 'PROCESSING'].includes(selectedRendering?.status ?? '') || modelWaiting ? '생성 상태를 자동으로 확인합니다.' : selectedRendering?.status === 'FAILED' ? '기존 원본 데이터로 다시 생성할 수 있습니다.' : 'AI 분할 및 3D 파일 생성 파이프라인이 완료되면 표시됩니다.')}</span>
-                          {selectedRendering?.status === 'FAILED' && <button type="button" disabled={renderingSaving} onClick={() => requestRendering(true)}>3D 재생성</button>}
-                          {!selectedRendering && !renderingLoading && !renderingError && <button type="button" disabled={renderingSaving || !selectedStudy || !selectedSeriesId} onClick={() => requestRendering(false, renderingType, renderingType === 'CALCIFICATION_ONLY' ? 'STL' : 'GLB')}>{renderingSaving ? '요청 중…' : `${renderingLabel(renderingType)} 생성 요청`}</button>}
-                          {!selectedRendering && renderingType !== 'CALCIFICATION_ONLY' && <span>현재 COCA U-Net 패키지는 석회화 분할을 지원합니다. 이 결과에는 별도 모델·서버 연결이 필요합니다.</span>}
-                        </div>
-                      )}
-                      {(renderingAuxImages.overlay || renderingAuxImages.preview) && (
-                        <div className="rendering-aux-images">
-                          {renderingAuxImages.overlay && (
-                            <figure>
-                              <img src={renderingAuxImages.overlay} alt="CT + 석회화 예측 overlay" />
-                              <figcaption>Overlay (calcification_overlay.png)</figcaption>
-                            </figure>
-                          )}
+                    <div className={`three-d-result-layout ${renderingType === 'CALCIFICATION_ONLY' ? 'has-result-panel' : ''}`}>
+                      <div className={`three-d-stage tool-${tool.toLowerCase()}`}>
+                        {modelUrl ? (
+                          <Suspense fallback={<div className="model-loading-state"><div className="model-skeleton" /><span><Loader2 size={16} className="spin-icon" />3D 모델을 불러오는 중…</span></div>}>
+                            <MedicalModelViewer sourceUrl={modelUrl} format={modelFormat} onStatus={handleModelStatus} onError={handleModelError} onCameraChange={handleCameraChange} cameraState={restoreCamera} />
+                          </Suspense>
+                        ) : ['PENDING', 'PROCESSING'].includes(selectedRendering?.status ?? '') || modelWaiting || renderingLoading ? (
+                          <div className="model-loading-state">
+                            <div className="model-skeleton" />
+                            <span><Loader2 size={16} className="spin-icon" />{selectedRendering?.status === 'PENDING' ? 'AI 분석 대기 중…' : renderingLoading ? '렌더링 결과 확인 중…' : '3D 모델 파일을 준비하는 중…'}</span>
+                            <small>생성 상태를 자동으로 확인합니다.</small>
+                          </div>
+                        ) : (
+                          <div className="image-viewer-empty">
+                            <BoxIcon size={32} />
+                            <strong>{renderingError ? '렌더링 결과를 열지 못했습니다' : selectedRendering?.status === 'FAILED' ? '3D 렌더링 생성에 실패했습니다' : `${renderingLabel(renderingType)} 결과가 아직 생성되지 않았습니다.`}</strong>
+                            <span>{renderingError || (selectedRendering?.status === 'FAILED' ? '기존 원본 데이터로 다시 생성할 수 있습니다.' : 'AI 분할 및 3D 파일 생성 파이프라인이 완료되면 표시됩니다.')}</span>
+                            {selectedRendering?.status === 'FAILED' && <button type="button" disabled={renderingSaving} onClick={() => requestRendering(true)}>3D 재생성</button>}
+                            {!selectedRendering && !renderingLoading && !renderingError && <button type="button" disabled={renderingSaving || !selectedStudy || !selectedSeriesId} onClick={() => requestRendering(false, renderingType, renderingType === 'CALCIFICATION_ONLY' ? 'STL' : 'GLB')}>{renderingSaving ? '요청 중…' : `${renderingLabel(renderingType)} 생성 요청`}</button>}
+                            {!selectedRendering && renderingType !== 'CALCIFICATION_ONLY' && <span>현재 COCA U-Net 패키지는 석회화 분할을 지원합니다. 이 결과에는 별도 모델·서버 연결이 필요합니다.</span>}
+                          </div>
+                        )}
+                        {renderAnnotationLayer(rendered3DAnnotationKey, Boolean(modelUrl))}
+                      </div>
+                      {renderingType === 'CALCIFICATION_ONLY' && (
+                        <aside className="ccta-result-panel" aria-label="석회화 AI 분석 보조 시각화">
+                          <h3>석회화 분할 결과</h3>
                           {renderingAuxImages.preview && (
-                            <figure>
-                              <img src={renderingAuxImages.preview} alt="3D 렌더링 preview" />
-                              <figcaption>3D Preview (calcification_3d.png)</figcaption>
-                            </figure>
+                            <button type="button" className="ccta-result-card" onClick={() => setResultLightbox({ url: renderingAuxImages.preview!, title: '3D 석회화 시각화', caption: 'calcification_3d.png · 분할된 석회화를 3D로 시각화한 보조 이미지입니다.' })}>
+                              <span className="ccta-result-card-image"><img src={renderingAuxImages.preview} alt="3D 석회화 시각화" /><em><ZoomIn size={14} />크게 보기</em></span>
+                              <strong>3D 석회화 시각화</strong>
+                              <small>calcification_3d.png</small>
+                            </button>
                           )}
-                        </div>
+                          {renderingAuxImages.overlay && (
+                            <button type="button" className="ccta-result-card" onClick={() => setResultLightbox({ url: renderingAuxImages.overlay!, title: '원본 영상 위 석회화 위치', caption: 'calcification_overlay.png · 원본 CT 영상에 석회화 예측 영역을 겹쳐 표시한 보조 이미지입니다.' })}>
+                              <span className="ccta-result-card-image"><img src={renderingAuxImages.overlay} alt="원본 영상 위 석회화 위치" /><em><ZoomIn size={14} />크게 보기</em></span>
+                              <strong>원본 영상 위 석회화 위치</strong>
+                              <small>calcification_overlay.png</small>
+                            </button>
+                          )}
+                          {!renderingAuxImages.preview && !renderingAuxImages.overlay && (
+                            <p className="ccta-result-empty">{renderingAuxError || (selectedRendering?.status === 'COMPLETED' ? '추가 시각화 자료가 제공되지 않았습니다.' : '분석이 완료되면 보조 시각화 자료가 표시됩니다.')}</p>
+                          )}
+                          <p className="ccta-result-disclaimer">AI 분석 보조 자료이며 진단을 대체하지 않습니다.</p>
+                        </aside>
                       )}
-                      {renderAnnotationLayer(rendered3DAnnotationKey, Boolean(modelUrl))}
                     </div>
                     <footer>{renderingError || renderingAuxError || modelStatus || '렌더링 모델 선택 대기'}</footer>
                   </section>}
@@ -1476,7 +1531,7 @@ export function ExaminationImagingWorkspace({
                     {!renderings3D.some((item) => item.renderingType === renderingType) && <option value="">{renderingLabel(renderingType)} 결과 없음</option>}
                     {renderings3D.filter((item) => item.renderingType === renderingType).map((rendering) => <option key={rendering.id} value={rendering.id}>{renderingLabel(rendering.renderingType)} · v{rendering.version} · {rendering.status}</option>)}
                   </select>
-                  <span className={`rendering-status status-${selectedRendering?.status.toLowerCase() ?? 'empty'}`}>{selectedRendering?.status ?? 'EMPTY'}</span>
+                  <span className={`ccta-status-badge status-${selectedRendering?.status.toLowerCase() ?? 'empty'}`}>{renderingStatusLabel(selectedRendering?.status)}</span>
                   <small>{renderingError || modelStatus || '3D 모델을 선택해주세요.'}</small>
                 </div>
               )}
@@ -1546,6 +1601,15 @@ export function ExaminationImagingWorkspace({
       )}
 
       {labEditorOpen && labEditorResultId && <LabResultEditor resultId={labEditorResultId} onClose={() => setLabEditorOpen(false)} onSaved={() => setLabRevision((value) => value + 1)} />}
+      {resultLightbox && (
+        <div className="feature-modal-backdrop" onClick={() => setResultLightbox(null)}>
+          <section className="feature-modal ccta-lightbox" role="dialog" aria-modal="true" aria-label={resultLightbox.title} onClick={(event) => event.stopPropagation()}>
+            <header><h2>{resultLightbox.title}</h2><button type="button" onClick={() => setResultLightbox(null)} aria-label="닫기"><X size={18} /></button></header>
+            <img src={resultLightbox.url} alt={resultLightbox.title} />
+            <footer>{resultLightbox.caption}</footer>
+          </section>
+        </div>
+      )}
       {ctAiOpen && selectedStudy && <CTAIAnalysisPanel key={`${patient?.backendId ?? 'none'}-${selectedStudy.id}-${selectedSeriesId}`} study={selectedStudy} seriesId={selectedSeriesId} onClose={() => setCtAiOpen(false)} onRefresh={() => { selectRenderingKind('CALCIFICATION_ONLY'); setRenderingRevision((value) => value + 1) }} />}
       {createRenderingOpen && selectedStudy && <div className="feature-modal-backdrop"><form className="feature-modal" onSubmit={(event) => { event.preventDefault(); void requestRendering() }}><header><h2>3D 렌더링 생성</h2><button type="button" disabled={renderingSaving} onClick={() => setCreateRenderingOpen(false)}><X size={18} /></button></header><p>선택된 Series의 원본 데이터를 사용합니다. 실제 생성에는 모델·렌더링 처리 파이프라인 연결이 필요합니다.</p><label>렌더링 종류<select value={renderingType} onChange={(e) => selectRenderingKind(e.target.value)}><option value="VESSEL_ONLY">혈관</option><option value="CALCIFICATION_ONLY">석회화</option><option value="VESSEL_CALCIFICATION">혈관·석회화</option><option value="CENTERLINE">중심선</option></select></label><label>파일 형식<select value={requestedFormat} onChange={(e) => setRequestedFormat(e.target.value)}><option>GLB</option><option>STL</option><option>VTK</option></select></label>{renderingError && <p className="api-inline-error">{renderingError}</p>}<footer><button type="submit" disabled={renderingSaving || !selectedSeriesId}>생성 요청</button></footer></form></div>}
       <XCAAnalysisPanel open={xcaAiOpen} patient={patient} examinationId={xcaExaminationId} sequences={xcaSequences}
@@ -1563,7 +1627,7 @@ export function ExaminationImagingWorkspace({
               patientDetail={null}
               examinationId={selectedLabAi?.exam.examinationId}
               initialInput={clinicalLabInput}
-              sourceLabel={selectedLabAi?.stageLabel ?? ''}
+              sourceLabel={selectedLabAi?.stageLabel ?? (clinicalFeatureSnapshot ? '환자 등록 원본 임상기록' : '')}
             />
           </section>
         </div>

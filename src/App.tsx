@@ -14,6 +14,7 @@ import { ConsultationWorkspace } from "./components/ConsultationWorkspace";
 import { ScheduleWorkspace } from "./components/ScheduleWorkspace";
 import { ProcedureRecordWorkspace } from "./components/ProcedureRecordWorkspace";
 import { ClinicalAIAnalysisPanel } from "./components/ClinicalAIAnalysisPanel";
+import { StudyDicomViewer } from "./components/StudyDicomViewer";
 import {
   ModuleWorkspace,
   type ModuleSection,
@@ -143,6 +144,13 @@ const navItems: NavItem[] = [
   { icon: FileText, label: "결과보고서" },
   { icon: Settings, label: "설정" },
 ];
+
+// 발표 시연 기준: Clinical/XCA/CCTA AI는 각 환자의 검사·영상 workflow 안에서
+// 실행/확인하므로, 별도 사이드바 'AI 분석' 페이지는 워크플로우가 중복된다.
+// route/component/API(GlobalSection "AI 분석", ModuleWorkspace 렌더 분기,
+// 알림 클릭 시 setActiveSection("AI 분석") 등)는 그대로 두고 사이드바
+// navigation 항목만 숨긴다. 추후 AI 작업 모니터링 화면으로 재사용 가능.
+const hiddenSidebarSections = new Set<GlobalSection>(["AI 분석"]);
 
 const connectedSections = new Set<GlobalSection>([
   "홈",
@@ -1090,6 +1098,7 @@ function App() {
             const roleAllowed = roleSections.has(item.label as GlobalSection);
 
             if (!roleAllowed) return null;
+            if (hiddenSidebarSections.has(item.label as GlobalSection)) return null;
 
             return (
               <button
@@ -1649,35 +1658,7 @@ function App() {
                     examinationId={selectedExaminationId}
                   />
                 ) : activeTab === "영상" && selectedStudy ? (
-                  <div className="viewer-card">
-                    <div className="viewer-toolbar">
-                      <span>
-                        <strong>{selectedStudy.modality}</strong>
-                        {selectedStudy.description}
-                      </span>
-
-                      <span>
-                        {selectedStudy.seriesCount !== undefined &&
-                          `Series ${selectedStudy.seriesCount}`}
-                        {selectedStudy.instanceCount !== undefined &&
-                          ` · ${selectedStudy.instanceCount} images`}
-                      </span>
-                    </div>
-
-                    <div className="viewer-stage">
-                      <Images size={30} strokeWidth={1.5} />
-                      <strong>DICOM Viewer 연결 준비</strong>
-                      <p>
-                        검사 선택까지 연결되었습니다. 다음 단계에서 Viewer
-                        token과 Series/Instance를 연결합니다.
-                      </p>
-                    </div>
-
-                    <div className="viewer-footer">
-                      <span>Study #{selectedStudy.id}</span>
-                      <span>{selectedStudy.status}</span>
-                    </div>
-                  </div>
+                  <StudyDicomViewer key={`${selectedPatient?.backendId}-${selectedStudy.id}`} study={selectedStudy} />
                 ) : (
                   <div className="analysis-empty-card">
                     <EmptyState

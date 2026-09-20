@@ -212,7 +212,7 @@ export function ClinicalAIAnalysisPanel({
 
       {!examinationId && <div className="clinical-ai-warning"><TriangleAlert size={16} />선택된 검사 ID가 없어 실행 버튼이 비활성화됩니다.</div>}
       {sourceLabel && <div className="clinical-ai-prefill"><CheckCircle2 size={16} /><span><strong>{sourceLabel}</strong>에 연결된 임상정보와 검사값을 자동 입력했습니다. 54개 항목 모두 분석 전에 수정할 수 있습니다.</span></div>}
-      {completedCount < 54 && <div className="clinical-ai-warning"><TriangleAlert size={16} />임상정보 {54 - completedCount}개가 아직 없습니다. 원본 mock 데이터 보완 후 자동 입력되며, 지금은 누락 항목을 직접 입력해야 합니다.</div>}
+      {completedCount < 54 && <div className="clinical-ai-warning"><TriangleAlert size={16} />현재 저장된 임상정보를 자동으로 불러왔습니다. 누락된 항목은 직접 입력해 주세요. (미입력 {54 - completedCount}개)</div>}
       {error && <div className="feature-error"><span>{error}</span></div>}
 
       <div className="clinical-ai-groups">

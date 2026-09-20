@@ -1,4 +1,4 @@
-.three-d-pane.three-d-rendered-pane { grid-template-rows: 34px auto minmax(0, 1fr) 30px; }
+.three-d-pane.three-d-rendered-pane { grid-template-rows: 34px auto auto minmax(0, 1fr) 30px; }
 .rendering-kind-buttons { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; border-bottom: 1px solid #253a51; background: #101e2e; }
 .rendering-kind-buttons button { padding: 8px 12px; border: 1px solid #37506d; border-radius: 7px; background: #15283c; color: #b6cae3; font-size: 12px; cursor: pointer; }
 .rendering-kind-buttons button.active { border-color: #659eff; background: #2d68cf; color: white; font-weight: 700; }
@@ -20,10 +20,77 @@
 .ct-ai-source { display: grid; gap: 8px; padding: 16px; border: 1px solid #cfdaec; border-radius: 9px; background: #f5f8fd; }
 .ct-ai-source span { font-size: 12px; color: #64748b; }
 .ct-ai-connection { padding: 14px; background: #edf4ff; border-radius: 9px; color: #36577d; line-height: 1.7; }
-.rendering-aux-images { position: absolute; left: 10px; bottom: 10px; z-index: 3; display: flex; gap: 10px; flex-wrap: wrap; pointer-events: none; }
-.rendering-aux-images figure { margin: 0; display: flex; flex-direction: column; gap: 4px; background: #0d1927cc; padding: 6px; border-radius: 8px; border: 1px solid #33506e; }
-.rendering-aux-images img { max-width: 160px; max-height: 120px; border-radius: 6px; object-fit: contain; background: #0a1420; }
-.rendering-aux-images figcaption { font-size: 10px; color: #9fb8d6; text-align: center; }
+
+.ct-ai-progress { display: grid; gap: 8px; }
+.ct-ai-progress-label { display: flex; align-items: baseline; justify-content: space-between; font-size: 14px; color: #1f2937; }
+.ct-ai-progress-label strong { font-weight: 700; }
+.ct-ai-progress-label span { font-variant-numeric: tabular-nums; color: #316ae0; font-weight: 700; }
+.ct-ai-progress-track { position: relative; height: 10px; border-radius: 999px; background: #e2e8f5; overflow: hidden; }
+.ct-ai-progress-bar { height: 100%; min-width: 2%; border-radius: 999px; background: #316ae0; transition: width .5s ease; }
+/* 실제 progress_percent가 정체 구간(예: 40%)에서도 프로세스가 살아있음을 보여주기 위한 은은한 줄무늬 애니메이션.
+   진행률 수치 자체는 절대 임의로 올리지 않는다 - 애니메이션은 시각효과일 뿐 실제 값에 영향 없음. */
+.ct-ai-progress-bar.is-active {
+  background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.35) 0 10px, transparent 10px 20px), linear-gradient(#316ae0, #316ae0);
+  background-size: 28px 28px, 100% 100%;
+  animation: ct-ai-progress-stripes 1.1s linear infinite;
+}
+@keyframes ct-ai-progress-stripes { from { background-position: 0 0, 0 0; } to { background-position: 28px 0, 0 0; } }
+.ct-ai-progress-description { margin: 0; font-size: 13px; color: #64748b; line-height: 1.6; }
+
+/* CCTA 3D 결과 상단 요약 바: 검사일 · CCTA 태그 · 분석 상태 · (선택) 모델 버전 */
+.ccta-summary-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #253a51; background: #0d1a29; }
+.ccta-summary-tag { padding: 2px 8px; border-radius: 5px; background: #1c3450; color: #9fc4ff; font-size: 11px; font-weight: 800; letter-spacing: .02em; }
+.ccta-summary-date { color: #b6c8de; font-size: 12px; }
+.ccta-summary-model { margin-left: auto; color: #6f8bab; font-size: 11px; }
+
+/* 공용 상태 배지 (요약 바 + 하단 렌더링 컨트롤에서 동일하게 사용) */
+.ccta-status-badge { display: inline-flex; min-height: 22px; padding: 0 8px; align-items: center; justify-content: center; border-radius: 999px; font-size: 11px; font-weight: 800; color: #8da3bd; background: #1b3047; }
+.ccta-status-badge.status-pending, .ccta-status-badge.status-empty { color: #b7c6dc; background: #1b3047; }
+.ccta-status-badge.status-processing { color: #8ec8ff; background: #1c3450; }
+.ccta-status-badge.status-completed { color: #5de1b0; background: #123d37; }
+.ccta-status-badge.status-failed { color: #ff8c94; background: #47242c; }
+
+/* 3D STL 뷰어 + 우측 보조 결과 카드 2단 레이아웃 */
+.three-d-result-layout { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; }
+.three-d-result-layout.has-result-panel { grid-template-columns: minmax(0, 1fr) 220px; }
+.three-d-result-layout .three-d-stage { border-radius: 0; }
+
+.ccta-result-panel { display: flex; flex-direction: column; gap: 10px; padding: 12px; overflow-y: auto; border-left: 1px solid #253a51; background: #0c1826; }
+.ccta-result-panel h3 { margin: 0; color: #c4d5ea; font-size: 12px; font-weight: 800; }
+.ccta-result-card { display: flex; flex-direction: column; gap: 6px; padding: 0; border: 1px solid #2c4460; border-radius: 9px; background: #101f30; color: inherit; text-align: left; cursor: pointer; overflow: hidden; }
+.ccta-result-card:hover, .ccta-result-card:focus-visible { border-color: #659eff; }
+.ccta-result-card-image { position: relative; display: block; aspect-ratio: 4 / 3; background: #06101a; }
+.ccta-result-card-image img { width: 100%; height: 100%; object-fit: contain; }
+.ccta-result-card-image em { position: absolute; right: 6px; bottom: 6px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 999px; background: #0b1622d9; color: #d8e7f8; font-size: 10px; font-style: normal; font-weight: 700; opacity: 0; transition: opacity 120ms ease; }
+.ccta-result-card:hover .ccta-result-card-image em, .ccta-result-card:focus-visible .ccta-result-card-image em { opacity: 1; }
+.ccta-result-card strong { padding: 0 10px; color: #dce8f6; font-size: 12px; font-weight: 700; }
+.ccta-result-card small { padding: 0 10px 8px; color: #6f8bab; font-size: 10px; }
+.ccta-result-empty { margin: 0; padding: 12px; border: 1px dashed #2c4460; border-radius: 9px; color: #6f8bab; font-size: 11px; line-height: 1.6; }
+.ccta-result-disclaimer { margin: auto 0 0; padding-top: 8px; border-top: 1px solid #1e3149; color: #5b7590; font-size: 10px; line-height: 1.6; }
+
+/* STL/렌더링 로딩 상태: skeleton + spinner (경고색 없이 중립 색상만 사용) */
+.model-loading-state { display: flex; max-width: 320px; flex-direction: column; align-items: center; gap: 10px; color: #8198b3; text-align: center; }
+.model-skeleton { width: 220px; height: 140px; border-radius: 10px; background: linear-gradient(100deg, #14243684 30%, #24405f9e 50%, #14243684 70%); background-size: 200% 100%; animation: ccta-skeleton-shimmer 1.4s ease-in-out infinite; }
+.model-loading-state span { display: inline-flex; align-items: center; gap: 6px; color: #b6cae3; font-size: 12px; font-weight: 700; }
+.model-loading-state small { color: #6f8bab; font-size: 11px; }
+.spin-icon { animation: ccta-spin 1s linear infinite; }
+@keyframes ccta-skeleton-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@keyframes ccta-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* 결과 이미지 확대 보기 (lightbox) */
+.ccta-lightbox { width: min(720px, 92vw); }
+.ccta-lightbox header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ccta-lightbox header h2 { margin: 0; font-size: 15px; }
+.ccta-lightbox img { width: 100%; max-height: 70vh; margin-top: 10px; border-radius: 8px; object-fit: contain; background: #06101a; }
+.ccta-lightbox footer { margin-top: 10px; color: #6f8bab; font-size: 12px; line-height: 1.6; }
+
+@media (max-width: 980px) {
+  .three-d-result-layout.has-result-panel { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .ccta-result-panel { flex-direction: row; flex-wrap: wrap; max-height: 190px; border-left: none; border-top: 1px solid #253a51; }
+  .ccta-result-card { flex: 1 1 160px; }
+  .ccta-result-disclaimer { flex-basis: 100%; margin-top: 0; }
+}
+
 .three-d-pane.three-d-original-pane { grid-template-rows: 34px minmax(0, 1fr) 78px; }
 .three-d-original-pane > .three-d-slice-footer { display: flex; flex-direction: column; justify-content: center; align-items: stretch; gap: 8px; }
 .three-d-slice-controls { display: flex; align-items: center; gap: 10px; }

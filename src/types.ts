@@ -153,6 +153,58 @@ export interface PatientDetail {
   registeredAt : string
 }
 
+export interface PatientDiagnosisSummary {
+  id: number
+  code: string
+  name: string
+  diagnosisType: string
+  diagnosisText: string
+  status: string
+  diagnosedAt: string
+  diagnosedByName: string
+}
+
+export interface PatientMedicalHistorySummary {
+  id: number
+  conditionCode: string
+  conditionName: string
+  status: string
+  onsetDate: string
+  resolvedDate: string
+  note: string
+}
+
+/** PatientAllergy 조회 결과. isNoKnownAllergy=true인 ACTIVE 레코드가 있으면
+ * "알레르기 없음"이 명시적으로 확인된 것이고, ACTIVE 레코드가 전혀 없으면
+ * 아직 확인되지 않은 "미입력" 상태다. 실제 알레르기 레코드가 있으면 그 목록을 보여준다. */
+export interface PatientAllergySummary {
+  id: number
+  allergenType: string | null
+  allergenName: string | null
+  reaction: string
+  severity: string | null
+  status: string
+  isNoKnownAllergy: boolean
+  note: string
+  verifiedAt: string | null
+}
+
+/** GET /api/patients/{id}/medical-results/ (reports.StaffPatientMedicalResultListView) 응답 항목.
+ * "결과보고서" 화면에서 환자를 검색/선택했을 때 보여줄 보고서 상태 목록이다. */
+export interface PatientReportSummary {
+  medicalResultId: number
+  encounterId: number | null
+  visitDate: string | null
+  encounterType: string | null
+  doctorName: string | null
+  status: string
+  latestVersion: { versionNo: number; sourceType: string; createdAt: string } | null
+  latestSignoff: { signedAt: string; doctorName: string } | null
+  latestReport: { reportId: number; reportName: string; status: string; createdAt: string } | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ImagingStudySummary {
   id: number
   examinationId?: number
