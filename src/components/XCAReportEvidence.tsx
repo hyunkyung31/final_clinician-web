@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { getSavedXCAFrame } from '../api/client'
 import type { XCAArchivedFrame, XCADetailResult } from '../api/xcaDetails'
 
@@ -20,13 +20,12 @@ export function XCAReportEvidence({ detail, frameIds }: { detail: XCADetailResul
   </div>
 }
 function EvidenceFrame({ frame }: { frame: XCAArchivedFrame }) {
-  const maskId = 'xca-report-mask-' + useId().replace(/[^a-zA-Z0-9_-]/g, '')
   const [error, setError] = useState(false)
   return <figure><figcaption>촬영 {frame.number} · frame_index {frame.index} · 보존 프레임 #{frame.id}</figcaption>
-    {!error && <svg viewBox={`0 0 ${frame.width} ${frame.height}`} role="img" aria-label="보고서에 선택한 원본과 약한 위치 추정">
-      <image href={frame.sourceUrl} width={frame.width} height={frame.height} onError={() => setError(true)} />
-      {frame.maskUrl && <><defs><mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width={frame.width} height={frame.height} style={{ maskType:'luminance' }}><image href={frame.maskUrl} width={frame.width} height={frame.height} onError={() => setError(true)} /></mask></defs><rect width={frame.width} height={frame.height} fill="orangered" opacity=".55" mask={`url(#${maskId})`} /></>}
-    </svg>}{error && <p role="alert">영상 표시 실패. 첨부 영상 URL 갱신을 눌러주세요.</p>}
+    {!error && <div className="report-preview-row">
+      <div><small>원본</small><img src={frame.sourceUrl} alt="원본 대표 프레임" onError={() => setError(true)} /></div>
+      {frame.previewUrl && <div><small>협착 의심 영역 합성본</small><img src={frame.previewUrl} alt="협착 의심 영역 합성본" onError={() => setError(true)} /></div>}
+    </div>}{error && <p role="alert">영상 표시 실패. 첨부 영상 URL 갱신을 눌러주세요.</p>}
     <small>약한 위치 추정 · 확정 진단 아님{!frame.maskUrl && ' · 필터를 통과한 의심 영역 없음'}</small>
   </figure>
 }

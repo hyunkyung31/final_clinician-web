@@ -106,7 +106,12 @@ function AiBlock({ title, summary, kind }: { title: string; summary: ReportAiSum
           ))}
         </ul>
       )}
-      {kind === 'xca' && <ReportFilePreview fileId={summary.overlayFileAssetId} label="2D overlay" />}
+      {kind === 'xca' && (
+        <div className="report-preview-row">
+          <ReportFilePreview fileId={summary.sourceFileAssetId} label="원본 대표 프레임" />
+          <ReportFilePreview fileId={summary.previewFileAssetId} label="협착 의심 영역 합성본" />
+        </div>
+      )}
       {kind === 'ccta' && (
         <div className="report-preview-row">
           <ReportFilePreview fileId={summary.previewFileAssetId} label="석회화 preview" />

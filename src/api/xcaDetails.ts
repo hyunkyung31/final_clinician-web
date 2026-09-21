@@ -3,7 +3,7 @@ import { parseXCAAnalysis, type XCAAnalysisResult, type XCAScore } from './xcaAn
 const BUNDLE = '18ffc48b71309379598a3dc6d1b1ac4a858e567f4d6ee917532e2a08e01a3569'
 export interface XCASeriesDetail { sequenceId: number; number: string; side: 'LEFT' | 'RIGHT'; frameCount: number; suspected: number[]; representative: number | null; any: XCAScore; significant: XCAScore }
 export interface XCADetailResult { id: number; createdAt: string; summary: XCAAnalysisResult; series: XCASeriesDetail[] }
-export interface XCAArchivedFrame { id: number; detailId: number; sequenceId: number; number: string; index: number; width: number; height: number; sourceUrl: string; maskUrl: string | null }
+export interface XCAArchivedFrame { id: number; detailId: number; sequenceId: number; number: string; index: number; width: number; height: number; sourceUrl: string; maskUrl: string | null; previewUrl: string | null }
 function object(v: unknown): Record<string, unknown> { if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('XCA 상세 응답 형식 오류'); return v as Record<string, unknown> }
 function integer(v: unknown, min = 1): number { if (typeof v !== 'number' || !Number.isSafeInteger(v) || v < min) throw new Error('XCA 상세 ID·수량 오류'); return v }
 function score(v: unknown): XCAScore { const s = object(v); if (typeof s.ai_score !== 'number' || !Number.isFinite(s.ai_score) || s.ai_score < 0 || s.ai_score > 1 || s.prediction !== Number(s.ai_score >= .5)) throw new Error('XCA 상세 점수 오류'); return { aiScore: s.ai_score, prediction: s.prediction as 0 | 1 } }
@@ -35,7 +35,7 @@ export function parseXCAFrame(value: unknown, detail: XCADetailResult): XCAArchi
   const v = object(value), series = detail.series.find(s => s.sequenceId === v.sequence_id)
   const index = integer(v.frame_index, 0), width = integer(v.width), height = integer(v.height), localization = object(v.localization), transform = object(localization.transform)
   if (!series || v.detail_id !== detail.id || String(v.sequence_no) !== series.number || index >= series.frameCount || width * height > 4194304 || localization.validation !== 'weak_localization' || transform.coordinate_space !== 'source_png_pixels' || JSON.stringify(transform.source_hw) !== JSON.stringify([height, width])) throw new Error('보존 프레임 환자·시리즈·좌표 오류')
-  return { id: integer(v.id), detailId: detail.id, sequenceId: series.sequenceId, number: series.number, index, width, height, sourceUrl: assetUrl(v.source), maskUrl: v.mask === null ? null : assetUrl(v.mask) }
+  return { id: integer(v.id), detailId: detail.id, sequenceId: series.sequenceId, number: series.number, index, width, height, sourceUrl: assetUrl(v.source), maskUrl: v.mask === null ? null : assetUrl(v.mask), previewUrl: v.preview === null ? null : assetUrl(v.preview) }
 }
 export async function xcaRead(base: string, path: string, token: string | null): Promise<unknown> {
   if (!token) throw new Error('의료진 로그인이 필요합니다.')
