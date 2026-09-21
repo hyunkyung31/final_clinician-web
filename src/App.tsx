@@ -11,6 +11,7 @@ import { SessionLockOverlay } from "./components/SessionLockOverlay";
 import { HomeDashboard } from "./components/HomeDashboard";
 import { ConsultationWorkspace } from "./components/ConsultationWorkspace";
 import { ScheduleWorkspace } from "./components/ScheduleWorkspace";
+import { AppointmentWorkspace } from "./components/AppointmentWorkspace";
 import { ProcedureRecordWorkspace } from "./components/ProcedureRecordWorkspace";
 import { ClinicalAIAnalysisPanel } from "./components/ClinicalAIAnalysisPanel";
 import { StudyDicomViewer } from "./components/StudyDicomViewer";
@@ -45,6 +46,7 @@ import { resolveSelectedPatient } from "./api/patientSelection";
 import {
   Activity,
   BrainCircuit,
+  CalendarCheck2,
   CalendarDays,
   FileText,
   House,
@@ -118,6 +120,7 @@ type GlobalSection =
   | "홈"
   | "워크스테이션"
   | "일정"
+  | "예약"
   | "환자 관리"
   | "검사·영상"
   | "AI 분석"
@@ -136,6 +139,7 @@ const navItems: NavItem[] = [
   { icon: House, label: "홈" },
   { icon: LayoutDashboard, label: "워크스테이션" },
   { icon: CalendarDays, label: "일정" },
+  { icon: CalendarCheck2, label: "예약" },
   { icon: Users, label: "환자 관리" },
   { icon: MonitorPlay, label: "검사·영상" },
   { icon: BrainCircuit, label: "AI 분석" },
@@ -156,6 +160,7 @@ const connectedSections = new Set<GlobalSection>([
   "홈",
   "워크스테이션",
   "일정",
+  "예약",
   "환자 관리",
   "검사·영상",
   "AI 분석",
@@ -170,6 +175,7 @@ const nurseSections = new Set<GlobalSection>([
   "홈",
   "워크스테이션",
   "일정",
+  "예약",
   "환자 관리",
   "검사·영상",
   "시술기록",
@@ -1201,6 +1207,8 @@ function App() {
       )}
 
       {activeSection === "일정" && <ScheduleWorkspace />}
+
+      {activeSection === "예약" && <AppointmentWorkspace roles={staffIdentity?.roles ?? []} doctorId={staffDoctor?.id} />}
 
       {activeSection === "시술기록" && (
         <ProcedureRecordWorkspace
