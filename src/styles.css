@@ -2814,22 +2814,22 @@ button.feature-primary:disabled,
   padding: 0 24px;
   align-items: flex-end;
   gap: 24px;
-  border-bottom: 1px solid #dbe3ee;
-  background: #ffffff;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--workstation-header, var(--color-surface));
 }
 
 .feature-tabs button {
   height: 48px;
   padding: 0 3px;
   border-bottom: 2px solid transparent;
-  color: #78879b;
+  color: var(--color-text-subtle);
   background: transparent;
   font-size: calc(12px + var(--font-size-adjust));
 }
 
 .feature-tabs button.active {
-  border-color: #3f78e8;
-  color: #2f69d6;
+  border-color: var(--color-primary);
+  color: var(--color-primary-dark);
   font-weight: 800;
 }
 
@@ -3895,8 +3895,9 @@ button.feature-primary:disabled,
   margin: 0;
   border-radius: 8px;
   padding: 10px 12px;
-  background: #ecfdf3;
-  color: #087443;
+  border: 1px solid color-mix(in srgb, var(--color-success) 32%, transparent);
+  background: color-mix(in srgb, var(--color-success) 10%, var(--color-surface));
+  color: color-mix(in srgb, var(--color-success) 78%, var(--color-text));
   font-weight: 700;
 }
 
@@ -3949,7 +3950,8 @@ button.feature-primary:disabled,
   border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 10px;
-  background: #fff;
+  color: var(--color-text);
+  background: var(--workstation-input, var(--color-surface));
 }
 
 .appointment-calendar-panel dl {
@@ -3964,7 +3966,7 @@ button.feature-primary:disabled,
   gap: 4px;
   border-radius: 8px;
   padding: 11px;
-  background: var(--color-surface-muted);
+  background: var(--workstation-panel-muted, var(--color-surface-subtle));
 }
 
 .appointment-calendar-panel dt,
@@ -3991,7 +3993,8 @@ button.feature-primary:disabled,
   border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 9px;
-  background: #fff;
+  color: var(--color-text);
+  background: var(--color-surface);
   font-weight: 700;
 }
 
@@ -4013,7 +4016,8 @@ button.feature-primary:disabled,
   border: 1px solid var(--color-border);
   border-radius: 999px;
   padding: 7px 10px;
-  background: #fff;
+  color: var(--color-text-subtle);
+  background: var(--color-surface);
 }
 
 .appointment-list-panel > nav button.active {
@@ -4044,7 +4048,8 @@ button.feature-primary:disabled,
   border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 12px;
-  background: #fff;
+  color: var(--color-text);
+  background: var(--color-surface);
   text-align: left;
 }
 
@@ -4142,6 +4147,8 @@ button.feature-primary:disabled,
   width: min(430px, 100%);
   border-radius: 12px;
   padding: 24px;
+  color: var(--color-text);
+  border: 1px solid var(--color-border-strong);
   background: var(--color-surface);
   box-shadow: 0 22px 70px rgb(15 23 42 / 24%);
 }
@@ -4201,6 +4208,7 @@ button.feature-primary:disabled,
   border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 9px 14px;
+  color: var(--color-text);
   background: var(--color-surface);
   font-weight: 800;
 }
