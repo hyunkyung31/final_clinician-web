@@ -19,11 +19,12 @@
   font-weight: 700;
 }
 
-.report-row-select {
+.module-report-table .module-table-row > .report-row-select {
   display: grid;
   grid-template-columns: 1.1fr 0.9fr 0.9fr 1fr;
   gap: 8px;
   width: 100%;
+  height: auto;
   padding: 0;
   border: 0;
   background: transparent;
@@ -165,7 +166,8 @@
   padding: 0 14px;
   border-radius: 8px;
   border: 1px solid var(--color-border-strong);
-  background: #fff;
+  color: var(--color-text);
+  background: var(--color-surface);
   font-weight: 700;
 }
 
@@ -201,13 +203,13 @@
   padding: 10px 12px;
   border: 1px dashed #9aa9bc;
   border-radius: 10px;
-  background: #f7f9fc;
+  background: var(--color-surface-subtle);
   color: var(--color-text-subtle);
 }
 
 .report-signature-box small {
   font-weight: 800;
-  color: #5b6b80;
+  color: var(--color-text-subtle);
 }
 
 .report-approval-signature {
@@ -238,7 +240,9 @@
   width: min(480px, calc(100% - 32px));
   padding: 22px 22px 18px;
   border-radius: 14px;
-  background: #fff;
+  color: var(--color-text);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
   box-shadow: var(--shadow-card);
 }
 
