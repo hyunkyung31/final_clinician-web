@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { AlertTriangle, ArrowUpRight, Inbox, Plus, RefreshCw, Save, Search, Send, Stethoscope, X } from 'lucide-react'
-import { addConsultationOpinion, changeConsultationStatus, createConsultation, getConsultationDetail, getConsultations, getStaffDoctors, withdrawConsultation } from '../api/client'
+import { addConsultationOpinion, ApiError, changeConsultationStatus, createConsultation, getConsultationDetail, getConsultations, getStaffDoctors, withdrawConsultation } from '../api/client'
 import type { ConsultationDetail, ConsultationSummary, PatientSummary, StaffDoctor } from '../types'
 import { ConsultationReplyError, emptyReply, isOpenConsultation, isOverdue, matchesScope, publishConsultationReply, serializeReply, sortConsultations, type ConsultationPatientSection, type ConsultationScope, type ConsultationStatusFilter, type ReplyDraft } from './consultationWorkflow'
 
@@ -10,7 +10,12 @@ const links: { section: ConsultationPatientSection; label: string }[] = [
   { section: '워크스테이션', label: '진료이력·AI·CDSS' }, { section: '검사·영상', label: '혈액검사·2D·3D 영상' },
   { section: '시술기록', label: '시술기록지' }, { section: '결과보고서', label: '결과보고서' },
 ]
-const message = (error: unknown, fallback: string) => error instanceof Error ? error.message : fallback
+const message = (error: unknown, fallback: string) => {
+  if (error instanceof ApiError && error.status >= 500) return fallback
+  const text = error instanceof Error ? error.message.trim() : ''
+  if (!text || /API 요청에 실패했습니다/.test(text) || /^\d{3}$/.test(text)) return fallback
+  return text
+}
 function dateTime(value: string) {
   const date = new Date(value)
   return !value || !Number.isFinite(date.getTime()) ? '정보 없음' : new Intl.DateTimeFormat('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date)

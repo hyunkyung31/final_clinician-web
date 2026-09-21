@@ -51,6 +51,7 @@ import type {
   ScheduleChangeRequest,
   StaffDoctor,
   StaffIdentity,
+  StaffAnnouncement,
   StaffNotification,
   StaffReservation,
   StaffSchedule,
@@ -185,6 +186,15 @@ export class ApiError extends Error {
   }
 }
 
+function fallbackApiErrorMessage(status: number): string {
+  if (status >= 500) return '요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요.'
+  if (status === 404) return '요청한 정보를 찾을 수 없습니다.'
+  if (status === 403) return '이 작업을 수행할 권한이 없습니다.'
+  if (status === 409) return '현재 상태에서는 처리할 수 없습니다.'
+  if (status === 401) return '로그인이 필요합니다.'
+  return '요청을 완료하지 못했습니다.'
+}
+
 function getAccessTokenFromPayload(payload: StaffLoginResponse): string | undefined {
   return payload.access ?? payload.access_token ?? payload.token ?? payload.tokens?.access
 }
@@ -198,7 +208,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const errorPayload = payload as ApiErrorPayload | undefined
     throw new ApiError(
-      errorPayload?.detail ?? errorPayload?.message ?? `API 요청에 실패했습니다. (${response.status})`,
+      errorPayload?.detail ?? errorPayload?.message ?? fallbackApiErrorMessage(response.status),
       response.status,
       errorPayload,
     )
@@ -1954,6 +1964,42 @@ export async function getStaffNotifications(): Promise<StaffNotification[]> {
   return extractList(payload)
     .map(mapStaffNotification)
     .filter((item): item is StaffNotification => item !== null)
+}
+
+function mapStaffAnnouncement(item: unknown): StaffAnnouncement | null {
+  if (!isRecord(item)) return null
+  const id = readNumber(item, 'id')
+  if (id === undefined) return null
+  return {
+    id,
+    title: readString(item, 'title') || '공지사항',
+    body: readString(item, 'body'),
+    category: readString(item, 'category'),
+    categoryLabel: readString(item, 'category_label', 'categoryLabel'),
+    priority: readString(item, 'priority') || 'NORMAL',
+    priorityLabel: readString(item, 'priority_label', 'priorityLabel'),
+    author: readString(item, 'author') || '시스템관리자',
+    publishedAt: readString(item, 'published_at', 'publishedAt'),
+    expiresAt: readString(item, 'expires_at', 'expiresAt'),
+  }
+}
+
+export async function getStaffAnnouncements(): Promise<StaffAnnouncement[]> {
+  const payload = await request<unknown>('/api/announcements/', {
+    clearSessionOnUnauthorized: false,
+  })
+  return extractList(payload)
+    .map(mapStaffAnnouncement)
+    .filter((item): item is StaffAnnouncement => item !== null)
+}
+
+export async function getStaffAnnouncement(announcementId: number): Promise<StaffAnnouncement> {
+  const payload = await request<unknown>(`/api/announcements/${announcementId}/`, {
+    clearSessionOnUnauthorized: false,
+  })
+  const announcement = mapStaffAnnouncement(payload)
+  if (!announcement) throw new ApiError('공지사항을 확인하지 못했습니다.', 500)
+  return announcement
 }
 
 export async function getStaffNotificationUnreadCount(): Promise<number> {

@@ -7,7 +7,6 @@ import {
 import { LoginView } from "./components/LoginView";
 import { ChatDock } from "./components/ChatDock";
 import { NotificationCenter } from "./components/NotificationCenter";
-import { TodoCenter } from "./components/TodoCenter";
 import { SessionLockOverlay } from "./components/SessionLockOverlay";
 import { HomeDashboard } from "./components/HomeDashboard";
 import { ConsultationWorkspace } from "./components/ConsultationWorkspace";
@@ -1175,7 +1174,6 @@ function App() {
       </aside>
 
       <NotificationCenter onOpenNotification={handleOpenNotification} />
-      <TodoCenter />
 
       {activeSection === "홈" && (
         <HomeDashboard

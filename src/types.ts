@@ -120,6 +120,19 @@ export interface StaffTodoInput {
   description?: string
 }
 
+export interface StaffAnnouncement {
+  id: number
+  title: string
+  body: string
+  category: string
+  categoryLabel: string
+  priority: string
+  priorityLabel: string
+  author: string
+  publishedAt: string
+  expiresAt: string
+}
+
 export interface LesionResult {
   vessel: string
   location: string

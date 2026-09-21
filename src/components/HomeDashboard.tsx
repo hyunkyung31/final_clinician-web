@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   AlertTriangle,
   Bell,
@@ -11,17 +11,20 @@ import {
   FlaskConical,
   LoaderCircle,
   Megaphone,
+  Plus,
   RefreshCw,
   ShieldAlert,
   Stethoscope,
   UserRoundSearch,
-  UsersRound,
+  X,
 } from 'lucide-react'
 import {
+  createStaffTodo,
   getDashboardConsultations,
   getDashboardExaminationStats,
   getDashboardRecentPatients,
   getDashboardWorkItems,
+  getStaffAnnouncements,
   getStaffNotifications,
   getStaffReservations,
   getStaffSchedules,
@@ -36,6 +39,7 @@ import type {
   DashboardSummary,
   DashboardWorkItem,
   PatientSummary,
+  StaffAnnouncement,
   StaffNotification,
   StaffReservation,
   StaffSchedule,
@@ -158,6 +162,14 @@ export function HomeDashboard({
   const [todos, setTodos] = useState<StaffTodo[]>([])
   const [recentPatients, setRecentPatients] = useState<DashboardRecentPatient[]>([])
   const [notifications, setNotifications] = useState<StaffNotification[]>([])
+  const [announcements, setAnnouncements] = useState<StaffAnnouncement[]>([])
+  const [noticeError, setNoticeError] = useState(false)
+  const [noticeView, setNoticeView] = useState<'list' | StaffAnnouncement | null>(null)
+  const [todoComposerOpen, setTodoComposerOpen] = useState(false)
+  const [todoTitle, setTodoTitle] = useState('')
+  const [todoDueDate, setTodoDueDate] = useState(() => localDateKey())
+  const [todoSaving, setTodoSaving] = useState(false)
+  const [todoFormError, setTodoFormError] = useState('')
   const [loading, setLoading] = useState(true)
   const [errorCount, setErrorCount] = useState(0)
   const roleKey = roles.map((role) => role.toUpperCase()).sort().join(',')
@@ -183,6 +195,7 @@ export function HomeDashboard({
       getStaffTodos(),
       getDashboardRecentPatients(),
       getStaffNotifications(),
+      getStaffAnnouncements(),
     ])
 
     const value = <T,>(index: number, fallback: T): T =>
@@ -198,7 +211,9 @@ export function HomeDashboard({
     setTodos(value(5, [] as StaffTodo[]))
     setRecentPatients(value(6, [] as DashboardRecentPatient[]))
     setNotifications(value(7, [] as StaffNotification[]))
-    setErrorCount(results.filter((result) => result.status === 'rejected').length)
+    setAnnouncements(value(8, [] as StaffAnnouncement[]))
+    setNoticeError(results[8].status === 'rejected')
+    setErrorCount(results.filter((result, index) => result.status === 'rejected' && index !== 8).length)
     setLoading(false)
   }, [doctorId, roleKey])
 
@@ -235,10 +250,7 @@ export function HomeDashboard({
   const importantNotifications = notifications.filter((item) =>
     !item.isRead || ['HIGH', 'URGENT', 'CRITICAL'].includes(item.priority.toUpperCase()),
   )
-  const noticeItems = notifications.filter((item) => {
-    const key = `${item.type} ${item.referenceType}`.toUpperCase()
-    return ['NOTICE', 'ANNOUNCEMENT', 'BULLETIN'].some((value) => key.includes(value))
-  })
+  const noticeItems = announcements.slice(0, 4)
   const examinationTotal = examinationStats.scheduled + examinationStats.inProgress + examinationStats.completed
   const aiTotal = aiStatus?.total ?? 0
   const greetingName = (clinicianName || '의료진').trim().split(/\s+/)[0]
@@ -250,7 +262,27 @@ export function HomeDashboard({
       setTodos((current) => current.map((item) => item.id === updated.id ? updated : item))
       window.dispatchEvent(new CustomEvent('angiocad:todos-changed'))
     } catch {
-      // 전역 To-do 창에서 오류와 재시도를 제공한다.
+      setTodoFormError('To-do 상태를 변경하지 못했습니다.')
+    }
+  }
+  const submitTodo = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!todoTitle.trim() || todoSaving) return
+    setTodoSaving(true)
+    setTodoFormError('')
+    try {
+      const created = await createStaffTodo({
+        title: todoTitle.trim(),
+        dueAt: todoDueDate ? new Date(`${todoDueDate}T18:00:00`).toISOString() : null,
+      })
+      setTodos((current) => [created, ...current])
+      setTodoTitle('')
+      setTodoComposerOpen(false)
+      window.dispatchEvent(new CustomEvent('angiocad:todos-changed'))
+    } catch {
+      setTodoFormError('To-do를 등록하지 못했습니다.')
+    } finally {
+      setTodoSaving(false)
     }
   }
 
@@ -263,7 +295,7 @@ export function HomeDashboard({
           <p>{new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())}</p>
         </div>
         <div className="home-header-actions">
-          {errorCount > 0 && <span className="home-partial-error"><AlertTriangle size={13} /> 일부 API {errorCount}건 연결 대기</span>}
+          {errorCount > 0 && <span className="home-partial-error"><AlertTriangle size={13} /> 일부 정보를 불러오지 못했습니다.</span>}
           <button type="button" onClick={() => void loadDashboard()} disabled={loading}>
             {loading ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
             새로고침
@@ -327,7 +359,24 @@ export function HomeDashboard({
         </section>
 
         <section className="feature-card home-panel home-primary-todo">
-          <PanelHeader icon={CheckCircle2} title="오늘 To-do" count={pendingTodayTodos.length} onClick={() => window.dispatchEvent(new CustomEvent('angiocad:open-todos'))} />
+          <header className="home-panel-header">
+            <span><CheckCircle2 size={16} strokeWidth={1.8} /><strong>오늘 To-do</strong></span>
+            <div className="home-panel-header-actions">
+              {pendingTodayTodos.length > 0 && <b>{pendingTodayTodos.length}</b>}
+              <button className="home-todo-add" type="button" onClick={() => { setTodoComposerOpen((open) => !open); setTodoFormError('') }} aria-expanded={todoComposerOpen} aria-label="To-do 추가">
+                <Plus size={14} strokeWidth={2} /> 추가
+              </button>
+            </div>
+          </header>
+          {todoComposerOpen && (
+            <form className="home-todo-form" onSubmit={(event) => void submitTodo(event)}>
+              <input value={todoTitle} onChange={(event) => setTodoTitle(event.target.value)} maxLength={150} placeholder="할 일을 입력하세요" aria-label="새 To-do 제목" />
+              <input type="date" value={todoDueDate} onChange={(event) => setTodoDueDate(event.target.value)} aria-label="마감일" />
+              <button disabled={!todoTitle.trim() || todoSaving} type="submit">{todoSaving ? <LoaderCircle className="spin" size={14} /> : '생성'}</button>
+              <button type="button" onClick={() => { setTodoComposerOpen(false); setTodoFormError('') }}>취소</button>
+            </form>
+          )}
+          {todoFormError && <div className="home-todo-form-error">{todoFormError}</div>}
           <div className="home-todo-checklist">
             {todayTodos.slice(0, 7).map((todo) => (
               <article className={isTodoDone(todo) ? 'completed' : ''} key={todo.id}>
@@ -400,12 +449,27 @@ export function HomeDashboard({
 
           <div className="home-dashboard-column">
             <section className="feature-card home-panel">
-              <PanelHeader icon={Megaphone} title="공지사항" count={noticeItems.length} />
+              <header className="home-panel-header">
+                <span><Megaphone size={16} strokeWidth={1.8} /><strong>공지사항</strong></span>
+                <button type="button" onClick={() => setNoticeView('list')} disabled={!announcements.length}>
+                  {announcements.length > 0 && <b>{announcements.length}</b>}
+                  {announcements.length > 0 && <span>전체보기</span>}
+                  {announcements.length > 0 && <ChevronRight size={15} strokeWidth={1.8} />}
+                </button>
+              </header>
               <div className="home-list compact home-notice-list">
-                {noticeItems.slice(0, 4).map((notice) => (
-                  <div key={notice.recipientId}><Megaphone size={14} /><span><strong>{notice.title}</strong><small>{notice.body || formatShortDate(notice.createdAt)}</small></span><b>{notice.isRead ? '' : 'NEW'}</b></div>
+                {noticeError && <EmptyRow text="공지사항을 불러오지 못했습니다." />}
+                {!noticeError && noticeItems.map((notice) => (
+                  <button key={notice.id} type="button" onClick={() => setNoticeView(notice)}>
+                    <Megaphone size={14} />
+                    <span>
+                      <strong>{notice.title}</strong>
+                      <small>{formatShortDate(notice.publishedAt)}</small>
+                    </span>
+                    {notice.priority.toUpperCase() === 'IMPORTANT' && <b>중요</b>}
+                  </button>
                 ))}
-                {!noticeItems.length && <EmptyRow text="등록된 공지사항이 없습니다." />}
+                {!noticeError && !noticeItems.length && <EmptyRow text="등록된 공지사항이 없습니다." />}
               </div>
             </section>
 
@@ -429,6 +493,37 @@ export function HomeDashboard({
           </div>
         </div>
       </div>
+
+      {noticeView && (
+        <div className="home-notice-modal" role="dialog" aria-modal="true" aria-label={noticeView === 'list' ? '공지사항 목록' : noticeView.title}>
+          <div className="home-notice-dialog">
+            <header>
+              <strong>{noticeView === 'list' ? '공지사항' : noticeView.title}</strong>
+              <button type="button" onClick={() => setNoticeView(noticeView === 'list' ? null : 'list')} aria-label="닫기"><X size={16} /></button>
+            </header>
+            {noticeView === 'list' ? (
+              <div className="home-notice-modal-list">
+                {announcements.map((notice) => (
+                  <button key={notice.id} type="button" onClick={() => setNoticeView(notice)}>
+                    <span>
+                      <strong>{notice.title}</strong>
+                      <small>{formatShortDate(notice.publishedAt)}{notice.author ? ` · ${notice.author}` : ''}</small>
+                    </span>
+                    {notice.priority.toUpperCase() === 'IMPORTANT' && <b>중요</b>}
+                  </button>
+                ))}
+                {!announcements.length && <EmptyRow text="등록된 공지사항이 없습니다." />}
+              </div>
+            ) : (
+              <div className="home-notice-modal-body">
+                <small>{formatShortDate(noticeView.publishedAt)}{noticeView.author ? ` · ${noticeView.author}` : ''}{noticeView.categoryLabel ? ` · ${noticeView.categoryLabel}` : ''}</small>
+                {noticeView.priority.toUpperCase() === 'IMPORTANT' && <b>중요</b>}
+                <p>{noticeView.body || '본문이 없습니다.'}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </section>
   )
 }
