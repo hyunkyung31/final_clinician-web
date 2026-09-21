@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { LoaderCircle, Search, X } from 'lucide-react'
 import { getPatients } from '../api/client'
+import { exactPatientSearchMatch } from '../api/patientSelection'
 import type { PatientSummary } from '../types'
 
 export function ExaminationPatientSearch({ patients, onSelect }: {
@@ -27,6 +28,14 @@ export function ExaminationPatientSearch({ patients, onSelect }: {
     }, 250)
     return () => { active = false; window.clearTimeout(timer) }
   }, [keyword])
+
+  useEffect(() => {
+    if (loading || !results) return
+    const exact = exactPatientSearchMatch(keyword, results)
+    if (!exact) return
+    onSelect(exact)
+    setQuery('')
+  }, [keyword, loading, onSelect, results])
 
   const shown = (results ?? patients.filter((patient) =>
     `${patient.name} ${patient.id}`.toLowerCase().includes(keyword.toLowerCase()),

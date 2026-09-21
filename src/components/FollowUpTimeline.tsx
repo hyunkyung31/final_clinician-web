@@ -41,14 +41,14 @@ export function FollowUpTimeline({
       return
     }
     let active = true
+    const requestedPatientId = patientId
     setLoading(true)
     setError('')
-    void getPatientFollowUpRecords(patientId)
+    void getPatientFollowUpRecords(requestedPatientId)
       .then((payload) => {
-        if (active) {
-          setRecords(payload)
-          onRecords?.(payload)
-        }
+        if (!active || payload.patient.id !== requestedPatientId) return
+        setRecords(payload)
+        onRecords?.(payload)
       })
       .catch((requestError) => {
         if (active) setError(requestError instanceof Error ? requestError.message : '추적관찰 기록을 불러오지 못했습니다.')

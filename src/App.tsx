@@ -41,6 +41,7 @@ import {
   reauthenticateStaff,
   updatePatientMemo,
 } from "./api/client";
+import { resolveSelectedPatient } from "./api/patientSelection";
 
 import {
   Activity,
@@ -496,14 +497,13 @@ function App() {
     [staffIdentity],
   );
 
-  const selectedPatient =
-    patientList.find((patient) => patient.id === selectedId) ??
-    myPatientList.find((patient) => patient.id === selectedId) ??
-    consultationPatientList.find((patient) => patient.id === selectedId) ??
-    recentPatientList.find((patient) => patient.id === selectedId) ??
-    patientSearchResults?.find((patient) => patient.id === selectedId) ??
-    patientList[0] ??
-    null;
+  const selectedPatient = resolveSelectedPatient(selectedId, [
+    patientList,
+    myPatientList,
+    consultationPatientList,
+    recentPatientList,
+    patientSearchResults,
+  ]);
 
   const currentPatientDetail =
     patientDetail?.backendId === selectedPatient?.backendId
@@ -1256,6 +1256,7 @@ function App() {
           onSelectPatient={(patient) => {
             setPatientList((current) => [patient, ...current.filter((item) => item.id !== patient.id)]);
             setSelectedId(patient.id);
+            resetPatientData();
           }}
           onOpenPatient={(patientId) => {
             setSelectedId(patientId);

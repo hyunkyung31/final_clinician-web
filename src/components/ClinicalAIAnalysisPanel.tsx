@@ -7,6 +7,7 @@ import {
   type ClinicalInputPayload,
 } from '../api/client'
 import type { PatientDetail, PatientSummary } from '../types'
+import { patientExaminationMismatch, type ExaminationPatientIdentity } from '../api/patientSelection'
 
 type FieldKind = 'number' | 'binary' | 'select'
 
@@ -131,12 +132,14 @@ export function ClinicalAIAnalysisPanel({
   patient,
   patientDetail,
   examinationId,
+  examinationPatient,
   initialInput = {},
   sourceLabel = '',
 }: {
   patient: PatientSummary | null
   patientDetail: PatientDetail | null
   examinationId?: number
+  examinationPatient?: ExaminationPatientIdentity | null
   initialInput?: Record<string, number | string>
   sourceLabel?: string
 }) {
@@ -167,8 +170,15 @@ export function ClinicalAIAnalysisPanel({
     })
   }
 
+  const mismatch = patientExaminationMismatch(patient, examinationPatient)
+
   const submit = async (event: FormEvent) => {
     event.preventDefault()
+    if (mismatch) {
+      console.error('Selected patient and examination patient mismatch')
+      setError('선택한 환자의 검사정보를 다시 불러와 주세요.')
+      return
+    }
     if (!examinationId) {
       setError('AI 분석을 연결할 검사(Examination)가 없습니다. 먼저 검사 기록을 선택해주세요.')
       return
@@ -222,6 +232,7 @@ export function ClinicalAIAnalysisPanel({
         <div className="clinical-ai-progress"><strong>{completedCount}/54</strong><span>입력 완료</span></div>
       </header>
 
+      {mismatch && <div className="clinical-ai-warning"><TriangleAlert size={16} />선택한 환자의 검사정보를 다시 불러와 주세요.</div>}
       {!examinationId && <div className="clinical-ai-warning"><TriangleAlert size={16} />선택된 검사 ID가 없어 실행 버튼이 비활성화됩니다.</div>}
       {sourceLabel && <div className="clinical-ai-prefill"><CheckCircle2 size={16} /><span><strong>{sourceLabel}</strong>에 연결된 임상정보와 검사값을 자동 입력했습니다. 분석 전에 값을 확인할 수 있습니다.</span></div>}
       {completedCount < 54 && <div className="clinical-ai-warning"><TriangleAlert size={16} />현재 저장된 임상정보를 자동으로 불러왔습니다. 누락된 항목은 확인 후 직접 입력해 주세요.</div>}
@@ -264,7 +275,7 @@ export function ClinicalAIAnalysisPanel({
 
       <footer className="clinical-ai-actions">
         <span>Examination #{examinationId ?? '-'}</span>
-        <button className="primary" disabled={submitting || !examinationId || completedCount !== 54} type="submit">
+        <button className="primary" disabled={submitting || mismatch || !examinationId || completedCount !== 54} type="submit">
           {submitting ? <LoaderCircle className="spin" size={16} /> : <BrainCircuit size={16} />}
           {submitting ? 'AI 분석 중…' : 'Clinical AI 분석 실행'}
         </button>

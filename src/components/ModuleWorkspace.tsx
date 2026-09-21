@@ -295,6 +295,7 @@ export function ModuleWorkspace({
           description="영상검사 판독과 혈액검사 변화 추세를 함께 확인합니다."
         />
         <ExaminationImagingWorkspace
+          key={selectedPatient?.backendId ?? selectedPatient?.id ?? 'none'}
           patient={selectedPatient}
           patients={patients}
           imagingStudies={imagingStudies}

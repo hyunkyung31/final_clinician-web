@@ -88,6 +88,7 @@ import { FollowUpTimeline } from './FollowUpTimeline'
 import { ClinicalAIAnalysisPanel } from './ClinicalAIAnalysisPanel'
 import { XCAAnalysisPanel } from './XCAAnalysisPanel'
 import { ExaminationPatientSearch } from './ExaminationPatientSearch'
+import { selectLabExaminationForPatient } from '../api/patientSelection'
 import type { DicomAnnotationTransform } from './CornerstoneDicomViewer'
 
 const MedicalModelViewer = lazy(() =>
@@ -397,8 +398,22 @@ export function ExaminationImagingWorkspace({
 
   useEffect(() => {
     setClinicalAiOpen(false)
+    setXcaAiOpen(false)
+    setCtAiOpen(false)
+    setCreateRenderingOpen(false)
     setSelectedLabExaminationId(null)
     setFollowUpRecords(null)
+    setLabItems([])
+    setSequences([])
+    setClinicalFeatureSnapshot(null)
+    setSelectedAssetKey('')
+    setFrames([])
+    setStudySeries([])
+    setSelectedSeriesId(null)
+    setDicomManifest(null)
+    setRenderings3D([])
+    setSelectedRenderingId(null)
+    setModelUrl('')
     setLabEditorOpen(false)
     setLabEditorResultId(null)
     setAnnotationsByFrame({})
@@ -1194,8 +1209,12 @@ export function ExaminationImagingWorkspace({
         .map((exam) => ({ exam, stageLabel: visit.stageLabel, visitDate: visit.visitDate })),
     )
   }, [followUpRecords, patient?.backendId])
-  const selectedLabAi = labAiCandidates.find((candidate) => candidate.exam.examinationId === selectedLabExaminationId)
-    ?? labAiCandidates.at(-1)
+  const selectedLabAi = selectLabExaminationForPatient(
+    labAiCandidates,
+    selectedLabExaminationId,
+    patient?.backendId,
+    followUpRecords?.patient.id,
+  )
   const displayPatient = patient && followUpRecords && followUpRecords.patient.id === patient.backendId ? {
     ...patient,
     name: followUpRecords.patient.name || patient.name,
@@ -1222,8 +1241,10 @@ export function ExaminationImagingWorkspace({
     return payload
   }, [selectedLabAi, clinicalFeatureSnapshot])
   const openLabAi = (examinationId?: number) => {
+    if (followUpRecords?.patient.id !== patient?.backendId) return
     const targetId = examinationId ?? selectedLabAi?.exam.examinationId ?? labAiCandidates.at(-1)?.exam.examinationId
     if (!targetId) return
+    if (!labAiCandidates.some((candidate) => candidate.exam.examinationId === targetId)) return
     setSelectedLabExaminationId(targetId)
     setClinicalAiOpen(true)
   }
@@ -1646,10 +1667,11 @@ export function ExaminationImagingWorkspace({
               {labAiCandidates.map((candidate) => <button className={candidate.exam.examinationId === selectedLabAi?.exam.examinationId ? 'active' : ''} key={candidate.exam.examinationId} onClick={() => setSelectedLabExaminationId(candidate.exam.examinationId)} type="button"><strong>{candidate.stageLabel}</strong><small>{formatDate(candidate.visitDate || candidate.exam.performedAt)}</small></button>)}
             </nav>
             <ClinicalAIAnalysisPanel
-              key={selectedLabAi?.exam.examinationId}
+              key={`${patient.backendId ?? patient.id}-${selectedLabAi?.exam.examinationId ?? 'none'}`}
               patient={displayPatient}
               patientDetail={null}
               examinationId={selectedLabAi?.exam.examinationId}
+              examinationPatient={followUpRecords && followUpRecords.patient.id === patient.backendId ? followUpRecords.patient : null}
               initialInput={clinicalLabInput}
               sourceLabel={selectedLabAi?.stageLabel ?? (clinicalFeatureSnapshot ? '환자 등록 원본 임상기록' : '')}
             />
