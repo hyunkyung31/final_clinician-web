@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 const source = readFileSync(new URL('../src/components/consultationWorkflow.ts', import.meta.url), 'utf8')
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText
-const { matchesScope, isOverdue, sortConsultations, serializeReply, publishConsultationReply, ConsultationReplyError } = await import('data:text/javascript;base64,' + Buffer.from(compiled).toString('base64'))
+const { matchesScope, isOverdue, sortConsultations, serializeReply, publishConsultationReply, ConsultationReplyError, requesterDisplay, assigneeDisplay, formatRequestTime } = await import('data:text/javascript;base64,' + Buffer.from(compiled).toString('base64'))
 const item = (overrides = {}) => ({ id: 1, assignedDoctorId: 7, requestedById: 10, status: 'REQUESTED', priority: 'NORMAL', createdAt: '2026-09-17T00:00:00Z', dueAt: '', ...overrides })
 test('received uses doctor ID and sent uses requester user ID; missing identity never matches', () => {
   assert.equal(matchesScope(item(), 'received', 10, 7), true)
@@ -68,4 +68,10 @@ test('changed assignee and unaccepted requests block reply without mutations', a
   state.consultation.status = 'REQUESTED'
   await assert.rejects(publishConsultationReply(input), /협진 상태/)
   assert.deepEqual(calls, { opinions: 0, completions: 0, cleared: 0 })
+})
+test('requester and assignee copy uses names, 미배정, and request time without overdue UI helpers', () => {
+  assert.deepEqual(requesterDisplay(item({ requestedByName: '이서준', requestedDepartmentName: '순환기내과' })), { name: '이서준', department: '순환기내과' })
+  assert.equal(assigneeDisplay(item({ assignedDoctorId: undefined, assignedDoctorName: '' })).name, '미배정')
+  assert.deepEqual(assigneeDisplay(item({ assignedDoctorId: 3, assignedDoctorName: '김도윤', assignedDepartmentName: '순환기내과' })), { name: '김도윤', department: '순환기내과' })
+  assert.match(formatRequestTime('2026-09-19T18:13:25+00:00'), /^\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}$/)
 })

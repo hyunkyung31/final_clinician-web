@@ -2957,12 +2957,22 @@ function mapStaffDoctor(record: UnknownRecord): StaffDoctor | null {
   }
 }
 
+function profileDepartmentName(profile: UnknownRecord | null): string {
+  if (!profile) return ''
+  const department = nestedRecord(profile, 'department')
+  return readString(profile, 'department_name') || (department ? readString(department, 'name') : '')
+}
+
 function mapConsultation(record: UnknownRecord): ConsultationSummary | null {
   const id = readNumber(record, 'id', 'consultation_id')
   if (id === undefined) return null
   const patient = record.patient
-  const requester = record.requested_by ?? record.requester
-  const assignee = record.assigned_doctor ?? record.assignee
+  const requesterProfile = nestedRecord(record, 'requested_by_profile', 'requester_profile')
+  const assigneeProfile = nestedRecord(record, 'assigned_doctor_profile', 'assignee_profile')
+  const requesterNested = nestedRecord(record, 'requested_by', 'requester')
+  const assigneeNested = nestedRecord(record, 'assigned_doctor', 'assignee')
+  const requester = requesterProfile ?? requesterNested
+  const assignee = assigneeProfile ?? assigneeNested
   const priority = readString(record, 'priority').toUpperCase() === 'URGENT' ? 'URGENT' : 'NORMAL'
   const rawStatus = readString(record, 'status').toUpperCase()
   const status = rawStatus === 'CANCELLED' ? 'CANCELED' : rawStatus === 'ACCEPTED' || rawStatus === 'COMPLETED' || rawStatus === 'CANCELED' ? rawStatus : 'REQUESTED'
@@ -2973,13 +2983,25 @@ function mapConsultation(record: UnknownRecord): ConsultationSummary | null {
     subject: readString(record, 'subject', 'title') || '협진 요청',
     requestNote: readString(record, 'request_note', 'note'),
     requestedByName: readPersonName(requester, readString(record, 'requested_by_name', 'requester_name')),
-    requestedById: readNumber(record, 'requested_by_id', 'requester_id', 'requested_by', 'requester') ?? (isRecord(requester) ? readNumber(requester, 'user_id', 'id') : undefined),
-    requestedDepartmentName: readString(record, 'requested_department_name', 'requester_department_name') || (isRecord(requester) ? readString(requester, 'department_name') : ''),
+    requestedById:
+      readNumber(requesterProfile ?? {}, 'staff_id', 'user_id')
+      ?? readNumber(record, 'requested_by_id', 'requester_id')
+      ?? (requesterNested ? readNumber(requesterNested, 'user_id', 'staff_id', 'id') : undefined),
+    requestedDepartmentName:
+      profileDepartmentName(requester)
+      || readString(record, 'requested_department_name', 'requester_department_name'),
     patientNumber: readString(record, 'patient_number', 'medical_record_no') || (isRecord(patient) ? readString(patient, 'medical_record_no', 'patient_number') : ''),
     patientLocation: readString(record, 'patient_location', 'ward_name') || (isRecord(patient) ? readString(patient, 'ward_name', 'location') : ''),
-    assignedDoctorId: readNumber(record, 'assigned_doctor_id', 'assigned_doctor') ?? (isRecord(assignee) ? readNumber(assignee, 'id') : undefined),
+    assignedDoctorId:
+      readNumber(assigneeProfile ?? {}, 'doctor_id')
+      ?? readNumber(record, 'assigned_doctor_id')
+      ?? (typeof record.assigned_doctor === 'number' ? record.assigned_doctor : undefined)
+      ?? (typeof record.assignee === 'number' ? record.assignee : undefined)
+      ?? (assigneeNested ? readNumber(assigneeNested, 'doctor_id', 'id') : undefined),
     assignedDoctorName: readPersonName(assignee, readString(record, 'assigned_doctor_name')),
-    assignedDepartmentName: readString(record, 'assigned_department_name') || (isRecord(assignee) ? readString(assignee, 'department_name') : ''),
+    assignedDepartmentName:
+      profileDepartmentName(assignee)
+      || readString(record, 'assigned_department_name'),
     priority,
     status,
     dueAt: readString(record, 'due_at'),
@@ -2990,9 +3012,10 @@ function mapConsultation(record: UnknownRecord): ConsultationSummary | null {
 function mapConsultationOpinion(record: UnknownRecord): ConsultationOpinion | null {
   const id = readNumber(record, 'id', 'opinion_id')
   if (id === undefined) return null
+  const author = nestedRecord(record, 'author_profile', 'doctor')
   return {
     id,
-    doctorName: readPersonName(record.doctor, readString(record, 'doctor_name', 'author_name')) || '의료진',
+    doctorName: readPersonName(author, readString(record, 'doctor_name', 'author_name')) || '의료진',
     opinionText: readString(record, 'opinion_text', 'text', 'content'),
     isFinal: readBoolean(record, 'is_final'),
     createdAt: readString(record, 'created_at'),
@@ -3234,7 +3257,7 @@ export async function createConsultation(input: {
       assigned_doctor_id: input.assignedDoctorId,
       encounter_id: input.encounterId ?? null,
       priority: input.priority,
-      due_at: input.dueAt || null,
+      ...(input.dueAt ? { due_at: input.dueAt } : {}),
     }),
   })
 }

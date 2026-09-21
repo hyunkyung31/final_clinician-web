@@ -21,6 +21,28 @@ export function isOverdue(item: ConsultationSummary, now = Date.now()) {
   return isOpenConsultation(item) && Number.isFinite(due) && due < now
 }
 
+export function requesterDisplay(item: Pick<ConsultationSummary, 'requestedByName' | 'requestedDepartmentName'>) {
+  return {
+    name: item.requestedByName?.trim() || '',
+    department: item.requestedDepartmentName?.trim() || '',
+  }
+}
+
+export function assigneeDisplay(item: Pick<ConsultationSummary, 'assignedDoctorId' | 'assignedDoctorName' | 'assignedDepartmentName'>) {
+  const assigned = item.assignedDoctorId !== undefined || !!item.assignedDoctorName?.trim()
+  return {
+    name: assigned ? (item.assignedDoctorName?.trim() || '담당 의료진') : '미배정',
+    department: item.assignedDepartmentName?.trim() || '',
+  }
+}
+
+export function formatRequestTime(value: string) {
+  const date = new Date(value)
+  if (!value || !Number.isFinite(date.getTime())) return '요청 시각 없음'
+  const pad = (unit: number) => String(unit).padStart(2, '0')
+  return `${date.getFullYear()}.${pad(date.getMonth() + 1)}.${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 export function sortConsultations(items: ConsultationSummary[]) {
   const timestamp = (value: string) => Number.isFinite(Date.parse(value)) ? Date.parse(value) : Number.MAX_SAFE_INTEGER
   return [...items].sort((a, b) => Number(isOpenConsultation(b)) - Number(isOpenConsultation(a))

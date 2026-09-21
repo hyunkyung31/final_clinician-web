@@ -66,7 +66,7 @@
 .consult-detail-heading p { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0 0; font-size: calc(12px + var(--font-size-adjust)); }
 .consult-detail-heading p span, .consult-detail-heading > small { color: var(--color-text-subtle); }
 .consult-detail-heading > small { white-space: nowrap; }
-.consult-detail-meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--color-border); }
+.consult-detail-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--color-border); }
 .consult-detail-meta > div { display: flex; flex-direction: column; gap: 6px; padding: 14px; border-right: 1px solid var(--color-border); overflow-wrap: anywhere; }
 .consult-detail-meta > div:last-child { border-right: 0; }
 .consult-detail-meta span, .consult-detail-meta small { font-size: calc(11px + var(--font-size-adjust)); color: var(--color-text-subtle); }

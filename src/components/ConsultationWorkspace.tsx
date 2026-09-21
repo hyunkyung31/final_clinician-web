@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { AlertTriangle, ArrowUpRight, Inbox, Plus, RefreshCw, Save, Search, Send, Stethoscope, X } from 'lucide-react'
 import { addConsultationOpinion, ApiError, changeConsultationStatus, createConsultation, getConsultationDetail, getConsultations, getStaffDoctors, withdrawConsultation } from '../api/client'
 import type { ConsultationDetail, ConsultationSummary, PatientSummary, StaffDoctor } from '../types'
-import { ConsultationReplyError, emptyReply, isOpenConsultation, isOverdue, matchesScope, publishConsultationReply, serializeReply, sortConsultations, type ConsultationPatientSection, type ConsultationScope, type ConsultationStatusFilter, type ReplyDraft } from './consultationWorkflow'
+import { ConsultationReplyError, emptyReply, assigneeDisplay, formatRequestTime, isOpenConsultation, matchesScope, publishConsultationReply, requesterDisplay, serializeReply, sortConsultations, type ConsultationPatientSection, type ConsultationScope, type ConsultationStatusFilter, type ReplyDraft } from './consultationWorkflow'
 
 const labels: Record<ConsultationSummary['status'], string> = { REQUESTED: '접수 대기', ACCEPTED: '접수·검토 중', COMPLETED: '회신 완료', CANCELED: '철회' }
 const scopes: { key: ConsultationScope; label: string }[] = [{ key: 'received', label: '받은 협진' }, { key: 'sent', label: '보낸 협진' }, { key: 'all', label: '전체 협진' }]
@@ -30,8 +30,8 @@ function localDate(value: string) {
   const date = new Date(value)
   return Number.isFinite(date.getTime()) ? [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-') : ''
 }
-function Badges({ item, now }: { item: ConsultationSummary; now: number }) {
-  return <div className="consult-badges"><span className={'consult-priority ' + item.priority.toLowerCase()}>{item.priority === 'URGENT' ? '긴급' : '일반'}</span><span className={'consult-status ' + item.status.toLowerCase()}>{labels[item.status]}</span>{isOverdue(item, now) && <span className="consult-overdue">기한 경과</span>}</div>
+function Badges({ item }: { item: ConsultationSummary }) {
+  return <div className="consult-badges"><span className={'consult-priority ' + item.priority.toLowerCase()}>{item.priority === 'URGENT' ? '긴급' : '일반'}</span><span className={'consult-status ' + item.status.toLowerCase()}>{labels[item.status]}</span></div>
 }
 
 export function ConsultationWorkspace({ patients, initialPatientId, currentUserId, currentDoctorId, onOpenPatient }: {
@@ -69,7 +69,6 @@ export function ConsultationWorkspace({ patients, initialPatientId, currentUserI
   const [question, setQuestion] = useState('')
   const [background, setBackground] = useState('')
   const [priority, setPriority] = useState<'NORMAL' | 'URGENT'>('NORMAL')
-  const [dueAt, setDueAt] = useState('')
   const [createError, setCreateError] = useState('')
   const [withdrawOpen, setWithdrawOpen] = useState(false)
   const [withdrawReason, setWithdrawReason] = useState('')
@@ -100,6 +99,15 @@ export function ConsultationWorkspace({ patients, initialPatientId, currentUserI
   const doctorMap = useMemo(() => new Map(doctors.map((doctor) => [doctor.id, doctor])), [doctors])
   const patientMap = useMemo(() => new Map(patients.filter((patient) => patient.backendId !== undefined).map((patient) => [patient.backendId!, patient])), [patients])
   const departmentOf = useCallback((item: ConsultationSummary) => item.assignedDepartmentName || (item.assignedDoctorId !== undefined ? doctorMap.get(item.assignedDoctorId)?.departmentName : '') || '', [doctorMap])
+  const requesterOf = useCallback((item: ConsultationSummary) => requesterDisplay(item), [])
+  const assigneeOf = useCallback((item: ConsultationSummary) => {
+    const doctor = item.assignedDoctorId !== undefined ? doctorMap.get(item.assignedDoctorId) : undefined
+    return assigneeDisplay({
+      assignedDoctorId: item.assignedDoctorId,
+      assignedDoctorName: item.assignedDoctorName || doctor?.name || '',
+      assignedDepartmentName: item.assignedDepartmentName || doctor?.departmentName || '',
+    })
+  }, [doctorMap])
   const departments = useMemo(() => Array.from(new Set([...doctors.map((doctor) => doctor.departmentName), ...items.map(departmentOf)].filter(Boolean))).sort(), [doctors, items, departmentOf])
   const scoped = useMemo(() => items.filter((item) => matchesScope(item, scope, currentUserId, currentDoctorId)), [items, scope, currentUserId, currentDoctorId])
   const filtered = useMemo(() => sortConsultations(scoped.filter((item) => {
@@ -162,8 +170,8 @@ export function ConsultationWorkspace({ patients, initialPatientId, currentUserI
     if (note.length > 3000) { setCreateError('요청 내용은 합계 3,000자 이내로 입력해주세요.'); return }
     setSaving(true); setCreateError('')
     try {
-      await createConsultation({ patientId, assignedDoctorId: doctorId, subject: subject.trim(), note, priority, dueAt: dueAt ? new Date(dueAt).toISOString() : undefined })
-      setCreateOpen(false); setSubject(''); setQuestion(''); setBackground(''); setDueAt(''); setPriority('NORMAL')
+      await createConsultation({ patientId, assignedDoctorId: doctorId, subject: subject.trim(), note, priority })
+      setCreateOpen(false); setSubject(''); setQuestion(''); setBackground(''); setPriority('NORMAL')
       setScope(currentUserId !== undefined ? 'sent' : 'all'); setStatus('ALL'); setSearch(''); setDepartment(''); setPriorityFilter('ALL'); setFrom(''); setTo('')
       await loadItems()
     } catch (error) { setCreateError(message(error, '협진 의뢰 등록에 실패했습니다.')) }
@@ -187,24 +195,23 @@ export function ConsultationWorkspace({ patients, initialPatientId, currentUserI
       <label>요청 종료일<input type="date" value={to} min={from || undefined} disabled={saving} onChange={(event) => setTo(event.target.value)} /></label>
       <button disabled={saving} onClick={() => { setSearch(''); setStatus('ALL'); setPriorityFilter('ALL'); setDepartment(''); setFrom(''); setTo('') }} type="button">초기화</button>
     </div>
-    <div className="consult-counts"><span>접수 대기 <b>{scoped.filter((item) => item.status === 'REQUESTED').length}</b></span><span>검토 중 <b>{scoped.filter((item) => item.status === 'ACCEPTED').length}</b></span><span className="urgent">미완료 긴급 <b>{scoped.filter((item) => item.priority === 'URGENT' && isOpenConsultation(item)).length}</b></span><span>기한 경과 <b>{scoped.filter((item) => isOverdue(item, now)).length}</b></span><small>조회된 협진 기준 · 미완료·긴급 우선, 오래된 요청 순</small></div>
+    <div className="consult-counts"><span>접수 대기 <b>{scoped.filter((item) => item.status === 'REQUESTED').length}</b></span><span>검토 중 <b>{scoped.filter((item) => item.status === 'ACCEPTED').length}</b></span><span className="urgent">미완료 긴급 <b>{scoped.filter((item) => item.priority === 'URGENT' && isOpenConsultation(item)).length}</b></span><small>조회된 협진 기준 · 미완료·긴급 우선, 오래된 요청 순</small></div>
     <div className="consult-workbench">
       <aside className="consult-list-panel" aria-label="협진 의뢰 목록"><header><h2>{scopes.find((item) => item.key === scope)?.label}</h2><span>{filtered.length}건</span></header>
         {scopeUnavailable && <div className="consult-inline-hint">{scope === 'received' ? '로그인 의료진의 의사 계정 연결을 확인할 수 없습니다.' : '요청자 식별정보를 확인할 수 없습니다.'} 전체 협진에서 접근 가능한 목록을 확인해주세요.</div>}
         <div className="consult-list-scroll" aria-busy={loading}>{loading && <div className="consult-empty">협진 목록을 불러오는 중…</div>}
           {!loading && !filtered.length && <div className="consult-empty"><Inbox size={30} /><strong>{listError ? '목록을 확인할 수 없습니다' : '조건에 맞는 협진이 없습니다'}</strong><span>협진 구분이나 검색 조건을 변경해주세요.</span></div>}
-          {filtered.map((item) => { const record = item.patientId !== undefined ? patientMap.get(item.patientId) : undefined; return <button key={item.id} disabled={saving} aria-pressed={selectedId === item.id} className={'consult-list-item ' + (selectedId === item.id ? 'active' : '')} onClick={() => { setSelectedId(item.id); setTab('request') }} type="button"><Badges item={item} now={now} /><div className="consult-row-patient"><strong>{item.patientName || record?.name || '환자 정보 없음'}</strong><small>{item.patientNumber || record?.id || (item.patientId ? '내부 ID ' + item.patientId : '환자번호 없음')}</small></div><p className="consult-row-subject">{item.subject}</p><div className="consult-row-team"><span>{item.requestedDepartmentName || item.requestedByName || '요청자 정보 없음'} → {departmentOf(item) || '수신 진료과 정보 없음'}</span><span>담당 {item.assignedDoctorName || '정보 없음'}</span></div><div className="consult-row-time"><time>{dateTime(item.createdAt)}</time><span>{isOpenConsultation(item) ? elapsed(item.createdAt, now) : labels[item.status]}</span></div></button> })}
+          {filtered.map((item) => { const record = item.patientId !== undefined ? patientMap.get(item.patientId) : undefined; const requester = requesterOf(item); const assignee = assigneeOf(item); return <button key={item.id} disabled={saving} aria-pressed={selectedId === item.id} className={'consult-list-item ' + (selectedId === item.id ? 'active' : '')} onClick={() => { setSelectedId(item.id); setTab('request') }} type="button"><Badges item={item} /><div className="consult-row-patient"><strong>{item.patientName || record?.name || '환자 정보 없음'}</strong><small>{item.patientNumber || record?.id || (item.patientId ? '내부 ID ' + item.patientId : '환자번호 없음')}</small></div><p className="consult-row-subject">{item.subject}</p><div className="consult-row-team"><span>{requester.name || requester.department || '요청자'} → {assignee.department || departmentOf(item) || '수신 진료과'}</span><span>담당 {assignee.name}</span></div><div className="consult-row-time"><time>{dateTime(item.createdAt)}</time><span>{isOpenConsultation(item) ? elapsed(item.createdAt, now) : labels[item.status]}</span></div></button> })}
         </div>
       </aside>
       <main className="consult-detail-panel" aria-busy={detailLoading}>
         {detailLoading ? <div className="consult-empty">협진 상세정보를 불러오는 중…</div> : detailError ? <div className="consult-empty" role="alert"><AlertTriangle size={30} /><strong>{detailError}</strong><button onClick={() => setRevision((value) => value + 1)} type="button">다시 시도</button></div> : selected && detail ? <>
-          <header className="consult-detail-heading"><div><Badges item={selected} now={now} /><h2>{selected.subject}</h2><p><strong>{selected.patientName || patient?.name || '환자 정보 없음'}</strong><span>{selected.patientNumber || patient?.id || '환자번호 정보 없음'}</span>{patient && <span>{patient.sex === 'M' ? '남' : '여'} / {patient.age}세</span>}</p></div><small>의뢰 #{selected.id}</small></header>
+          <header className="consult-detail-heading"><div><Badges item={selected} /><h2>{selected.subject}</h2><p><strong>{selected.patientName || patient?.name || '환자 정보 없음'}</strong><span>{selected.patientNumber || patient?.id || '환자번호 정보 없음'}</span>{patient && <span>{patient.sex === 'M' ? '남' : '여'} / {patient.age}세</span>}</p></div><small>의뢰 #{selected.id}</small></header>
           <div className="consult-detail-meta">{[
-            ['요청자', selected.requestedByName || '정보 없음', selected.requestedDepartmentName || '진료과 정보 없음'],
-            ['담당 의료진', selected.assignedDoctorName || '정보 없음', departmentOf(selected) || '진료과 정보 없음'],
-            ['요청 시각', dateTime(selected.createdAt), isOpenConsultation(selected) ? elapsed(selected.createdAt, now) : labels[selected.status]],
-            ['회신 희망 기한', dateTime(selected.dueAt), isOverdue(selected, now) ? '기한 경과' : '병원별 응답 기준 적용'],
-          ].map(([title, value, hint]) => <div key={title} className={hint === '기한 경과' ? 'urgent' : ''}><span>{title}</span><strong>{value}</strong><small>{hint}</small></div>)}</div>
+            ['요청자', requesterOf(selected).name || '요청자', requesterOf(selected).department],
+            ['담당 의료진', assigneeOf(selected).name, assigneeOf(selected).department],
+            ['요청 시간', formatRequestTime(selected.createdAt), isOpenConsultation(selected) ? elapsed(selected.createdAt, now) : labels[selected.status]],
+          ].map(([title, value, hint]) => <div key={title}><span>{title}</span><strong>{value}</strong>{hint ? <small>{hint}</small> : null}</div>)}</div>
           {selected.priority === 'URGENT' && isOpenConsultation(selected) && <div className="consult-inline-hint urgent"><AlertTriangle size={16} />긴급 협진은 화면 알림만으로 전달을 보장하지 않습니다. 병원 규정에 따라 당직자 전화·호출을 병행해주세요.</div>}
           <div className="consult-detail-actions">{isAssignee && selected.status === 'REQUESTED' && <button className="feature-primary" disabled={saving || !!listError} onClick={() => void runAction('accept')} type="button">접수하고 검토 시작</button>}<button onClick={() => setTab('reply')} type="button">회신·기록 확인</button>{isRequester && isOpenConsultation(selected) && <button className="consult-danger-button" disabled={saving || !!listError} onClick={() => setWithdrawOpen((value) => !value)} type="button">의뢰 철회</button>}</div>
           {withdrawOpen && <form className="consult-withdraw-form" onSubmit={(event) => { event.preventDefault(); void runAction('withdraw') }}><label>철회 사유<textarea required value={withdrawReason} maxLength={1000} disabled={saving} onChange={(event) => setWithdrawReason(event.target.value)} /></label><button disabled={saving || !withdrawReason.trim()} className="consult-danger-button" type="submit">철회 확인</button><button disabled={saving} onClick={() => setWithdrawOpen(false)} type="button">닫기</button></form>}
@@ -213,13 +220,13 @@ export function ConsultationWorkspace({ patients, initialPatientId, currentUserI
           <div className="consult-detail-body">
             {tab === 'request' && <><section className="consult-document"><h3>협진 의뢰 내용</h3><p>{selected.requestNote || '요청 내용이 등록되지 않았습니다.'}</p></section><section className="consult-document"><h3>환자 기록 검토</h3><p className="consult-muted">검사·투약·진료기록은 원본 환자 차트에서 확인해주세요. 기존 오른쪽 채팅은 유지하며, 최종 의견은 공식 회신에 남깁니다.</p>{renderLinks()}</section></>}
             {tab === 'patient' && <><section className="consult-document"><h3>환자 요약</h3><dl className="consult-patient-summary">{[
-              ['환자번호', selected.patientNumber || patient?.id || '정보 없음'], ['병동·위치', selected.patientLocation || '연동 정보 없음'],
-              ['검사 정보', patient?.exam || '환자 차트에서 확인'], ['위험도', patient ? ({ high: '고위험', medium: '중간', normal: '정상' } as const)[patient.risk] : '연동 정보 없음'],
+              ['환자번호', selected.patientNumber || patient?.id || '정보 없음'],
+              ['검사 정보', patient?.exam || '환자 차트에서 확인'], ['위험도', patient ? ({ high: '고위험', medium: '중간', normal: '정상' } as const)[patient.risk] : '차트에서 확인'],
             ].map(([title, value]) => <div key={title}><dt>{title}</dt><dd>{value}</dd></div>)}</dl><p className="consult-muted">목록 기반 요약입니다. 최신 임상 정보·알레르기·투약 정보는 원본 차트에서 확인해주세요.</p></section><section className="consult-document"><h3>관련 의료정보 바로가기</h3>{renderLinks()}{!patient && <p className="consult-muted">현재 조회된 환자 목록에 없는 환자입니다. 환자관리에서 접근 권한을 확인하고 조회해주세요.</p>}<p className="consult-muted">AI·CDSS 결과는 의료진 판단을 보조하는 참고 자료입니다.</p></section></>}
             {tab === 'reply' && <><section className="consult-document"><h3>공식 회신 작성</h3><p className="consult-muted">담당 의료진이 접수한 뒤 작성합니다. 중간 소견만 등록하면 협진은 완료되지 않습니다.</p>
               {!isAssignee ? <div className="consult-inline-hint">배정된 담당 의료진만 회신을 작성할 수 있습니다.</div> : selected.status === 'REQUESTED' ? <div className="consult-inline-hint">먼저 ‘접수하고 검토 시작’을 눌러주세요.</div> : !isOpenConsultation(selected) ? <div className="consult-inline-hint">종료된 협진입니다. 아래에서 등록된 회신을 확인해주세요.</div> : hasFinal ? <div className="consult-inline-hint">최종 회신이 등록되어 있습니다. 완료 처리가 남아 있다면 마무리해주세요.<button className="feature-primary" disabled={saving || !!listError} onClick={() => void submitReply(true)} type="button">협진 완료 처리</button></div> :
               <form className="consult-reply-form" onSubmit={(event) => { event.preventDefault(); void submitReply(true) }}>{([{ key: 'assessment', label: '평가·소견', required: true, placeholder: '의뢰 질문에 대한 평가와 검토 결과' }, { key: 'recommendation', label: '권고사항', required: true, placeholder: '치료·처치·관리 관련 권고사항' }, { key: 'followUp', label: '추가 검사·추적 계획', required: false, placeholder: '추가 확인 사항과 재평가 계획' }] as const).map((field) => <label key={field.key}>{field.label}<span>{field.required ? '필수' : '선택'}</span><textarea required={field.required} disabled={!canReply} value={draft[field.key]} maxLength={2000} onChange={(event) => updateDraft(field.key, event.target.value)} placeholder={field.placeholder} /></label>)}<div className="consult-draft-help"><span>임시 내용은 현재 화면에서만 유지됩니다. 새로고침·화면 종료 시 사라집니다.</span><span className={text.length > 3000 ? 'urgent' : ''}>{text.length.toLocaleString()} / 3,000자</span></div><div className="consult-reply-buttons"><button disabled={!canReply} onClick={() => setNotice('현재 화면 메모리에 보관했습니다. 서버에는 저장되지 않습니다.')} type="button"><Save size={15} /> 임시 보관</button><button disabled={!canReply || !validReply} onClick={() => void submitReply(false)} type="button">중간 소견 등록</button><button className="feature-primary" disabled={!canReply || !validReply} type="submit"><Send size={15} /> 최종 회신 및 완료</button></div>{notice && <p className="consult-muted" role="status">{notice}</p>}<p className="consult-muted">로그인 계정으로 회신을 등록합니다. 별도 전자서명·공동서명 기능은 포함되지 않습니다.</p></form>}
-              </section><section className="consult-document"><header className="consult-section-heading"><h3>의뢰·회신 기록</h3><span>회신 {detail.opinions.length}건</span></header><div className="consult-history-entry"><div><b>협진 의뢰</b><time>{dateTime(selected.createdAt)}</time></div><p>{selected.requestedByName || '요청자 정보 없음'} · {selected.subject}</p></div>{[...detail.opinions].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id - b.id).map((entry) => <article className="consult-history-entry" key={entry.id}><div><b>{entry.doctorName}</b><span className={entry.isFinal ? 'consult-final-label' : 'consult-muted'}>{entry.isFinal ? '최종 회신' : '중간 소견'}</span><time>{dateTime(entry.createdAt)}</time></div><p>{entry.opinionText}</p></article>)}{!detail.opinions.length && <p className="consult-muted">등록된 회신이 없습니다.</p>}<p className="consult-muted">API에 기록된 의뢰·소견만 표시합니다. 접수·배정 변경 등의 전체 감사이력은 별도 연동이 필요합니다.</p></section></>}
+              </section><section className="consult-document"><header className="consult-section-heading"><h3>의뢰·회신 기록</h3><span>회신 {detail.opinions.length}건</span></header><div className="consult-history-entry"><div><b>협진 의뢰</b><time>{dateTime(selected.createdAt)}</time></div><p>{requesterOf(selected).name || '요청자'} · {selected.subject}</p></div>{[...detail.opinions].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id - b.id).map((entry) => <article className="consult-history-entry" key={entry.id}><div><b>{entry.doctorName}</b><span className={entry.isFinal ? 'consult-final-label' : 'consult-muted'}>{entry.isFinal ? '최종 회신' : '중간 소견'}</span><time>{dateTime(entry.createdAt)}</time></div><p>{entry.opinionText}</p></article>)}{!detail.opinions.length && <p className="consult-muted">등록된 회신이 없습니다.</p>}<p className="consult-muted">API에 기록된 의뢰·소견만 표시합니다. 접수·배정 변경 등의 전체 감사이력은 별도 연동이 필요합니다.</p></section></>}
           </div>
         </> : <div className="consult-empty"><Stethoscope size={34} /><strong>확인할 협진을 선택하세요</strong><span>왼쪽 목록에서 의뢰 내용과 환자 기록을 확인할 수 있습니다.</span></div>}
       </main>
@@ -232,7 +239,7 @@ export function ConsultationWorkspace({ patients, initialPatientId, currentUserI
       <label>의뢰 주제<input required value={subject} disabled={saving} maxLength={200} placeholder="협진 목적을 한 줄로 입력하세요" onChange={(event) => setSubject(event.target.value)} /></label>
       <label>임상 질문<textarea required value={question} disabled={saving} maxLength={2000} placeholder="담당 진료과에 확인하고 싶은 구체적인 질문" onChange={(event) => setQuestion(event.target.value)} /></label>
       <label>환자 상태·의뢰 배경 <span className="consult-muted">선택</span><textarea value={background} disabled={saving} maxLength={2000} placeholder="관련 진단, 주요 검사, 투약 및 의뢰 배경" onChange={(event) => setBackground(event.target.value)} /></label>
-      <div className="form-columns"><label>긴급도<select value={priority} disabled={saving} onChange={(event) => setPriority(event.target.value as 'NORMAL' | 'URGENT')}><option value="NORMAL">일반</option><option value="URGENT">긴급</option></select></label><label>회신 희망 기한 <span className="consult-muted">선택</span><input type="datetime-local" value={dueAt} disabled={saving} onChange={(event) => setDueAt(event.target.value)} /></label></div>
+      <label>긴급도<select value={priority} disabled={saving} onChange={(event) => setPriority(event.target.value as 'NORMAL' | 'URGENT')}><option value="NORMAL">일반</option><option value="URGENT">긴급</option></select></label>
       {priority === 'URGENT' && <div className="consult-inline-hint urgent"><AlertTriangle size={16} />긴급 의뢰는 병원 규정에 따라 전화·호출도 병행해주세요.</div>}
       <p className="consult-muted">진료과 선택은 담당자 검색용입니다. 현재 API는 개별 의료진에게 배정하며, 요청 후 재배정은 지원하지 않습니다.</p>
       <footer><button disabled={saving} onClick={() => setCreateOpen(false)} type="button">취소</button><button className="feature-primary" disabled={saving || !patientId || !doctorId || !subject.trim() || !question.trim()} type="submit">{saving ? '등록 중…' : '협진 의뢰 등록'}</button></footer>
