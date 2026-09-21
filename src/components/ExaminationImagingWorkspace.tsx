@@ -83,6 +83,7 @@ import {
   ANATOMY_VIEW_MODES,
   LOCAL_ANATOMY_GLB_URL,
   hasAnatomyGlbCapability,
+  isAnatomyGlbFormat,
   isLocalAnatomyGlbTest,
   visibleRenderingKinds,
   preferredRendering,
@@ -549,10 +550,6 @@ export function ExaminationImagingWorkspace({
   )
 
   const angiographyExaminations = useMemo(() => groupAngiographySequences(sequences), [sequences])
-  const imagingExaminationCount = new Set([
-    ...(activeTab === 'IMAGING_2D' ? angiographyExaminations : []).map((group) => group.key),
-    ...visibleStudies.map((study) => study.examinationId !== undefined ? `examination-${study.examinationId}` : `study-${study.id}`),
-  ]).size
 
   useEffect(() => {
     setSelectedAssetKey((current) =>
@@ -770,7 +767,8 @@ export function ExaminationImagingWorkspace({
     setModelUrl('')
     setModelStatus('')
     if (viewerMode !== '3D') return
-    if (localAnatomyTest) {
+    const backendGlbReady = selectedRendering?.status === 'COMPLETED' && isAnatomyGlbFormat(selectedRendering.fileFormat)
+    if (localAnatomyTest && !backendGlbReady) {
       setModelUrl(LOCAL_ANATOMY_GLB_URL)
       setModelFormat('GLB')
       setRenderingLoading(false)
@@ -1276,6 +1274,9 @@ export function ExaminationImagingWorkspace({
     if (selectedLabAi?.exam.clinicalInput) return { ...payload, ...selectedLabAi.exam.clinicalInput }
     return payload
   }, [selectedLabAi, clinicalFeatureSnapshot])
+  const anatomyCapable = localAnatomyTest || hasAnatomyGlbCapability({ rendering: selectedRendering, fileFormat: modelFormat })
+  const hasAuxImages = Boolean(renderingAuxImages.preview || renderingAuxImages.overlay)
+
   const openLabAi = (examinationId?: number) => {
     if (followUpRecords?.patient.id !== patient?.backendId) return
     const targetId = examinationId ?? selectedLabAi?.exam.examinationId ?? labAiCandidates.at(-1)?.exam.examinationId
@@ -1313,7 +1314,7 @@ export function ExaminationImagingWorkspace({
       {activeSection === 'IMAGING' && (
         <nav className="exam-imaging-subtabs" aria-label="영상검사 종류">
           <button className={activeTab === 'IMAGING_2D' ? 'active' : ''} aria-pressed={activeTab === 'IMAGING_2D'} onClick={() => setActiveTab('IMAGING_2D')} type="button"><Images size={15} />2D 혈관조영·영상 <b>{sequences.length + studyCategories.twoD.length}</b></button>
-          <button className={activeTab === 'IMAGING_3D' ? 'active' : ''} aria-pressed={activeTab === 'IMAGING_3D'} onClick={() => setActiveTab('IMAGING_3D')} type="button"><Rotate3D size={15} />3D 원본·렌더링 <b>{studyCategories.threeD.length}</b></button>
+          <button className={activeTab === 'IMAGING_3D' ? 'active' : ''} aria-pressed={activeTab === 'IMAGING_3D'} onClick={() => { setActiveTab('IMAGING_3D'); if (localAnatomyTest) setActive3DPane('RENDERED') }} type="button"><Rotate3D size={15} />3D 원본·렌더링 <b>{studyCategories.threeD.length}</b></button>
           <span>{activeTab === 'IMAGING_2D' ? '촬영 시리즈를 선택해 연속 프레임을 확인합니다.' : 'CT·MR 원본과 3D 렌더링 결과를 확인합니다.'}</span>
         </nav>
       )}
@@ -1322,7 +1323,7 @@ export function ExaminationImagingWorkspace({
       {activeSection === 'IMAGING' ? (
         <div className={`imaging-review-layout ${viewerMode === '3D' ? 'large-three-d-layout' : ''}`}>
           <section className="feature-card imaging-exam-list">
-            <header><div><h2>{viewerMode === '3D' ? '3D 원본 검사 목록' : '2D 영상검사 목록'}</h2><span>{viewerMode === '3D' ? '원본 검사를 선택해 렌더링을 확인합니다.' : '촬영 영상을 선택하면 영상이 열립니다.'}</span></div><b>{imagingExaminationCount}검사</b></header>
+            <header><div><h2>{viewerMode === '3D' ? '3D 원본 검사 목록' : '2D 영상검사 목록'}</h2><span>{viewerMode === '3D' ? '원본 검사를 선택해 렌더링을 확인합니다.' : '촬영 영상을 선택하면 영상이 열립니다.'}</span></div></header>
             <div>
               {viewerMode === '2D' && sequenceError && <p className="api-inline-notice" role="alert">Angio 촬영 영상 조회 실패: {sequenceError}</p>}
               {(viewerMode === '2D' ? angiographyExaminations : []).map((examination) => (
@@ -1385,7 +1386,7 @@ export function ExaminationImagingWorkspace({
                 <small>{viewerMode === '3D' ? (active3DPane === 'ORIGINAL' ? '원본 CT · 슬라이스 조회' : selectedRendering ? `${renderingLabel(selectedRendering.renderingType)} · v${selectedRendering.version}` : '3D 렌더링 결과 조회') : (currentFrame ? `${currentFrame.filename} · ${frameIndex + 1}/${viewerFrameCount}` : selectedStudy ? `Series ${studySeries.length}개 · Instance ${viewerFrameCount}개` : '검사를 선택해주세요.')}</small>
               </div>
               <div className="image-viewer-actions">
-                {viewerMode === '3D' && <button className="ct-ai-launch" type="button" disabled={!selectedStudy || selectedStudy.modality.toUpperCase() !== 'CT' || !selectedSeriesId} onClick={() => setCtAiOpen(true)}><BrainCircuit size={19} />석회화 AI 분석</button>}
+                {viewerMode === '3D' && <button className="ct-ai-launch" type="button" disabled={!selectedStudy || selectedStudy.modality.toUpperCase() !== 'CT' || !selectedSeriesId} onClick={() => setCtAiOpen(true)}><BrainCircuit size={15} />석회화 AI 분석</button>}
                 {viewerMode === '2D' && selectedAsset?.kind === 'SEQUENCE' && (
                   <>
                     <button className="xca-launch" type="button"
@@ -1459,7 +1460,7 @@ export function ExaminationImagingWorkspace({
             )}
 
             {selectedAsset?.kind === 'SEQUENCE' && <p className="api-inline-notice">이 Angio 시퀀스의 주석은 화면에서만 편집됩니다. 서버 저장에는 해당 Study·Series 연결이 필요합니다.</p>}
-            {viewerMode === '3D' && active3DPane === 'RENDERED' && selectedStudy && <div className="rendering-action-bar"><button type="button" disabled={renderingSaving} onClick={() => setRenderingRevision((value) => value + 1)}>목록 새로고침</button><span>{renderingSources.length ? `연결된 원본 ${renderingSources.length}개` : '연결된 렌더링 원본 없음'}</span><button type="button" disabled={renderingSaving || !selectedSeriesId} onClick={() => setCreateRenderingOpen(true)}>고급 생성 설정</button></div>}
+            {viewerMode === '3D' && active3DPane === 'RENDERED' && selectedStudy && <div className="rendering-action-bar"><button type="button" disabled={renderingSaving} onClick={() => setRenderingRevision((value) => value + 1)}>목록 새로고침</button><button type="button" disabled={renderingSaving || !selectedSeriesId} onClick={() => setCreateRenderingOpen(true)}>고급 생성 설정</button></div>}
 
             <div className={`clinical-image-stage viewer-${viewerMode.toLowerCase()} tool-${tool.toLowerCase()}`}>
               {viewerMode === '2D' && selectedAsset?.kind === 'SEQUENCE' && currentFrame && <img key={currentFrame.url} src={currentFrame.url} alt={`${currentFrame.filename} 혈관조영 영상`} draggable={false} onLoad={() => setImageLoadError('')} onError={() => setImageLoadError('2D 프레임 URL에 브라우저가 접근하지 못했습니다.')} />}
@@ -1508,21 +1509,17 @@ export function ExaminationImagingWorkspace({
                     onPointerDown={() => setActive3DPane('RENDERED')}
                   >
                     <header>
-                      <span><i className={modelUrl ? 'connected' : ''} />{localAnatomyTest ? 'anatomy.glb 로컬 테스트' : `${renderingLabel(renderingType)} 렌더링`}</span>
-                      <small>{localAnatomyTest ? 'patient 209 · /test/anatomy.glb' : selectedRendering ? `v${selectedRendering.version} · ${modelFormat}` : '결과 선택'}</small>
+                      <span><i className={modelUrl ? 'connected' : ''} />{localAnatomyTest ? 'CCTA 3D 렌더링' : `${renderingLabel(renderingType)} 렌더링`}</span>
+                      <small>{localAnatomyTest ? 'GLB · 혈관 · 석회화' : selectedRendering ? `v${selectedRendering.version} · ${modelFormat}` : '결과 선택'}</small>
                     </header>
                     <div className="ccta-summary-bar">
-                      <span className="ccta-summary-tag">{localAnatomyTest ? 'LOCAL GLB' : 'CCTA'}</span>
+                      <span className="ccta-summary-tag">CCTA</span>
                       <span className="ccta-summary-date">{selectedStudy?.studyDate ? formatDate(selectedStudy.studyDate) : '검사일 미등록'}</span>
-                      <span className={`ccta-status-badge status-${(selectedRendering?.status ?? 'empty').toLowerCase()}`}>{renderingStatusLabel(selectedRendering?.status)}</span>
+                      <span className={`ccta-status-badge status-${(localAnatomyTest ? 'completed' : selectedRendering?.status ?? 'empty').toLowerCase()}`}>{renderingStatusLabel(localAnatomyTest ? 'COMPLETED' : selectedRendering?.status)}</span>
                       {Number.isSafeInteger(CT_AI_VERSION_ID) && CT_AI_VERSION_ID > 0 && <small className="ccta-summary-model">AI 모델 v{CT_AI_VERSION_ID}</small>}
                     </div>
                     <nav className="rendering-kind-buttons" aria-label="렌더링 종류 바로 보기">
-                      {(localAnatomyTest || hasAnatomyGlbCapability({ rendering: selectedRendering, fileFormat: modelFormat })
-                        ? ANATOMY_VIEW_MODES
-                        : renderingKinds
-                      ).map((kind) => {
-                        const anatomyCapable = localAnatomyTest || hasAnatomyGlbCapability({ rendering: selectedRendering, fileFormat: modelFormat })
+                      {(anatomyCapable ? ANATOMY_VIEW_MODES : renderingKinds).map((kind) => {
                         const active = anatomyCapable ? anatomyViewMode === kind.value : renderingType === kind.value
                         return (
                           <button
@@ -1541,11 +1538,11 @@ export function ExaminationImagingWorkspace({
                         )
                       })}
                     </nav>
-                    <div className={`three-d-result-layout ${renderingType === 'CALCIFICATION_ONLY' ? 'has-result-panel' : ''}`}>
+                    <div className={`three-d-result-layout ${anatomyCapable ? 'anatomy-main-layout' : ''} ${hasAuxImages ? 'has-aux-side' : 'viewer-only'}`}>
                       <div className={`three-d-stage tool-${tool.toLowerCase()}`}>
                         {modelUrl ? (
                           <Suspense fallback={<div className="model-loading-state"><div className="model-skeleton" /><span><Loader2 size={16} className="spin-icon" />3D 모델을 불러오는 중…</span></div>}>
-                            <MedicalModelViewer sourceUrl={modelUrl} format={modelFormat} viewMode={anatomyViewMode} dumpScene={localAnatomyTest || modelFormat.toUpperCase() === 'GLB'} onStatus={handleModelStatus} onError={handleModelError} onCameraChange={handleCameraChange} cameraState={restoreCamera} />
+                            <MedicalModelViewer sourceUrl={modelUrl} format={modelFormat} viewMode={anatomyViewMode} dumpScene={false} onStatus={handleModelStatus} onError={handleModelError} onCameraChange={handleCameraChange} cameraState={restoreCamera} />
                           </Suspense>
                         ) : ['PENDING', 'PROCESSING'].includes(selectedRendering?.status ?? '') || modelWaiting || renderingLoading ? (
                           <div className="model-loading-state">
@@ -1565,9 +1562,9 @@ export function ExaminationImagingWorkspace({
                         )}
                         {renderAnnotationLayer(rendered3DAnnotationKey, Boolean(modelUrl))}
                       </div>
-                      {renderingType === 'CALCIFICATION_ONLY' && (
+                      {hasAuxImages && (
                         <aside className="ccta-result-panel" aria-label="석회화 AI 분석 보조 시각화">
-                          <h3>석회화 분할 결과</h3>
+                          <h3>보조 이미지</h3>
                           {renderingAuxImages.preview && (
                             <button type="button" className="ccta-result-card" onClick={() => setResultLightbox({ url: renderingAuxImages.preview!, title: '3D 석회화 시각화', caption: 'calcification_3d.png · 분할된 석회화를 3D로 시각화한 보조 이미지입니다.' })}>
                               <span className="ccta-result-card-image"><img src={renderingAuxImages.preview} alt="3D 석회화 시각화" /><em><ZoomIn size={14} />크게 보기</em></span>
@@ -1582,14 +1579,13 @@ export function ExaminationImagingWorkspace({
                               <small>calcification_overlay.png</small>
                             </button>
                           )}
-                          {!renderingAuxImages.preview && !renderingAuxImages.overlay && (
-                            <p className="ccta-result-empty">{renderingAuxError || (selectedRendering?.status === 'COMPLETED' ? '추가 시각화 자료가 제공되지 않았습니다.' : '분석이 완료되면 보조 시각화 자료가 표시됩니다.')}</p>
-                          )}
-                          <p className="ccta-result-disclaimer">AI 분석 보조 자료이며 진단을 대체하지 않습니다.</p>
                         </aside>
                       )}
                     </div>
-                    <footer>{renderingError || renderingAuxError || modelStatus || '렌더링 모델 선택 대기'}</footer>
+                    <footer>
+                      <span>{renderingError || renderingAuxError || modelStatus || '렌더링 모델 선택 대기'}</span>
+                      <small className="rendering-source-hint">{renderingSources.length ? `연결된 원본 ${renderingSources.length}개` : '연결된 렌더링 원본 없음'}</small>
+                    </footer>
                   </section>}
                 </div>
               )}
