@@ -14,10 +14,10 @@ export const ANATOMY_VIEW_MODES: Array<{ value: AnatomyViewMode; label: string }
   { value: 'VESSEL_CALCIFICATION', label: '혈관 + 석회화' },
 ]
 
-export const LOCAL_ANATOMY_GLB_URL = '/test/anatomy.glb'
+export const LOCAL_ANATOMY_GLB_URL = '/test/anatomy.glb?v=yup'
 
-/** Temporary local GLB test. Keep false in production builds. */
-export const FORCE_LOCAL_ANATOMY_GLB_TEST = false
+/** CCTA 3D 화면에 anatomy.glb를 직접 연결. backend GLB가 오면 false로 되돌린다. */
+export const SHOW_ANATOMY_GLB_ON_CCTA_3D = true
 
 export const CCTA_SUPPORTED_RENDERING_TYPES = ['CALCIFICATION_ONLY'] as const
 
@@ -27,22 +27,28 @@ export function isLocalAnatomyGlbTest() {
     if (params.has('anatomyTest')) return true
     if (window.location.pathname.replace(/\/$/, '') === '/anatomy-test') return true
   }
-  return FORCE_LOCAL_ANATOMY_GLB_TEST
+  return SHOW_ANATOMY_GLB_ON_CCTA_3D
+}
+
+export function isAnatomyGlbFormat(format?: string) {
+  const normalized = (format ?? '').toUpperCase()
+  return normalized === 'GLB' || normalized === 'GLTF'
 }
 
 export function hasAnatomyGlbCapability(input: {
   rendering?: Rendering3DSummary | null
   fileFormat?: string
+  localAnatomy?: boolean
 }) {
+  if (input.localAnatomy || isLocalAnatomyGlbTest()) return true
   const rendering = input.rendering
-  if (!rendering) return false
-  const format = (input.fileFormat || rendering.fileFormat || '').toUpperCase()
-  if (format !== 'GLB' && format !== 'GLTF') return false
-  const components = rendering.renderingConfig?.components
+  const format = input.fileFormat || rendering?.fileFormat
+  if (!isAnatomyGlbFormat(format)) return false
+  const components = rendering?.renderingConfig?.components
   if (Array.isArray(components)) {
     return components.some((item) => /heart|aorta|coronary|calcif/i.test(String(item)))
   }
-  return rendering.renderingType === 'VESSEL_CALCIFICATION'
+  return rendering?.renderingType === 'VESSEL_CALCIFICATION' || isAnatomyGlbFormat(format)
 }
 
 export function renderingLabel(kind: string) {

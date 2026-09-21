@@ -1,18 +1,104 @@
-.three-d-pane.three-d-rendered-pane { grid-template-rows: 34px auto auto minmax(0, 1fr) 30px; }
-.rendering-kind-buttons { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; border-bottom: 1px solid #253a51; background: #101e2e; }
-.rendering-kind-buttons button { padding: 8px 12px; border: 1px solid #37506d; border-radius: 7px; background: #15283c; color: #b6cae3; font-size: 12px; cursor: pointer; }
-.rendering-kind-buttons button.active { border-color: #659eff; background: #2d68cf; color: white; font-weight: 700; }
-.rendering-kind-buttons button:disabled { opacity: .5; cursor: default; }
-.rendering-kind-buttons button:focus-visible { outline: 2px solid #a7caff; outline-offset: 2px; }
-.imaging-review-layout.large-three-d-layout { grid-template-columns: 220px minmax(0, 1fr); min-height: 780px; }
-.large-three-d-layout .clinical-image-viewer > .clinical-image-stage { min-height: 650px; }
+.three-d-pane.three-d-rendered-pane { grid-template-rows: 34px auto auto minmax(0, 1fr) 28px; min-height: 0; }
+.imaging-review-layout.large-three-d-layout { grid-template-columns: 220px minmax(0, 1fr); min-height: 860px; }
+.large-three-d-layout .clinical-image-viewer > .clinical-image-stage { min-height: 780px; }
 .large-three-d-layout .image-viewer-header { flex-wrap: wrap; height: auto; min-height: 70px; gap: 12px; }
-.large-three-d-layout .image-viewer-actions { flex-wrap: wrap; gap: 10px; }
+.large-three-d-layout .image-viewer-actions { flex-wrap: wrap; gap: 8px; }
 .large-three-d-layout .annotation-toolbar { flex-wrap: wrap; }
+
+/* 3D 결과 화면 버튼 높이·패딩 통일 */
+.clinical-image-viewer .ct-view-tabs button,
+.clinical-image-viewer .rendering-kind-buttons button,
+.clinical-image-viewer .rendering-action-bar button,
+.large-three-d-layout .viewer-mode-switch button,
+.large-three-d-layout .annotation-target-switch button,
+.large-three-d-layout .annotation-toolbar button,
+.large-three-d-layout .image-viewer-actions > button:not(.ct-ai-launch):not(.xca-launch) {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid #3c5574;
+  border-radius: 8px;
+  background: #182c42;
+  color: #b9cce4;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.large-three-d-layout .annotation-toolbar button {
+  width: 36px;
+  padding: 0;
+}
 .large-three-d-layout .annotation-toolbar button[title='마지막 텍스트 주석 수정'],
-.large-three-d-layout .annotation-toolbar button:last-child:not([title]) { width: auto; padding: 0 9px; white-space: nowrap; }
-.image-viewer-actions .ct-ai-launch { display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; border: 1px solid #6e98ff; border-radius: 9px; background: #316ae0; color: white; font-size: 14px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.large-three-d-layout .annotation-toolbar button:last-child:not([title]) {
+  width: auto;
+  padding: 0 14px;
+}
+.clinical-image-viewer .ct-view-tabs button.active,
+.clinical-image-viewer .rendering-kind-buttons button.active,
+.large-three-d-layout .viewer-mode-switch button.active,
+.large-three-d-layout .annotation-target-switch button.active,
+.large-three-d-layout .annotation-toolbar button.active {
+  color: #fff;
+  background: #2d68d4;
+  border-color: #7baaff;
+}
+.clinical-image-viewer .rendering-kind-buttons button:disabled,
+.clinical-image-viewer .rendering-action-bar button:disabled {
+  opacity: .5;
+  cursor: default;
+}
+.clinical-image-viewer .ct-view-tabs button:focus-visible,
+.clinical-image-viewer .rendering-kind-buttons button:focus-visible,
+.clinical-image-viewer .rendering-action-bar button:focus-visible {
+  outline: 2px solid #a7caff;
+  outline-offset: 2px;
+}
+.ct-view-tabs { display: flex; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #2e435a; background: #101e2d; }
+.rendering-kind-buttons { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #253a51; background: #101e2e; }
+.clinical-image-viewer .rendering-action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #253a51;
+  background: #101e2e;
+  font-size: 13px;
+}
+html[data-theme='dark'] .clinical-image-viewer .rendering-action-bar button {
+  color: #b9cce4;
+  border-color: #3c5574;
+  background: #182c42;
+}
+.image-viewer-actions .ct-ai-launch {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid #7baaff;
+  border-radius: 8px;
+  background: #2d68d4;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
 .ct-ai-launch:disabled { opacity: .5; cursor: default; }
+.three-d-pane.three-d-rendered-pane > footer { justify-content: space-between; gap: 12px; }
+.rendering-source-hint { flex: none; color: #5b7590; font-size: 10px; font-weight: 600; }
 .cornerstone-dicom-viewer .dicom-fit-button { position: absolute; top: 12px; right: 12px; z-index: 5; padding: 8px 12px; border: 1px solid #526d8b; border-radius: 7px; background: #152a40e6; color: #e5efff; cursor: pointer; font-size: 12px; }
 .cornerstone-dicom-state.error { pointer-events: auto; }
 .ct-ai-modal { width: min(620px, 90vw); }
@@ -50,21 +136,84 @@
 .ccta-status-badge.status-completed { color: #5de1b0; background: #123d37; }
 .ccta-status-badge.status-failed { color: #ff8c94; background: #47242c; }
 
-/* 3D STL 뷰어 + 우측 보조 결과 카드 2단 레이아웃 */
-.three-d-result-layout { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; }
-.three-d-result-layout.has-result-panel { grid-template-columns: minmax(0, 1fr) 220px; }
-.three-d-result-layout .three-d-stage { border-radius: 0; }
+/* 3D 뷰어가 메인. 보조 PNG는 하단 고정 스트립. 절대배치 캔버스가 접히지 않게 스테이지 높이를 보장. */
+.three-d-result-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.three-d-result-layout.has-aux-side {
+  grid-template-columns: minmax(0, 1fr) 208px;
+  grid-template-rows: minmax(0, 1fr);
+}
+.three-d-result-layout .three-d-stage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 0;
+}
+.three-d-result-layout .medical-model-viewer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.large-three-d-layout .three-d-pane.three-d-rendered-pane { height: 100%; }
+.clinical-image-stage.viewer-3d .ccta-result-card-image img {
+  position: relative;
+  inset: auto;
+}
 
-.ccta-result-panel { display: flex; flex-direction: column; gap: 10px; padding: 12px; overflow-y: auto; border-left: 1px solid #253a51; background: #0c1826; }
-.ccta-result-panel h3 { margin: 0; color: #c4d5ea; font-size: 12px; font-weight: 800; }
-.ccta-result-card { display: flex; flex-direction: column; gap: 6px; padding: 0; border: 1px solid #2c4460; border-radius: 9px; background: #101f30; color: inherit; text-align: left; cursor: pointer; overflow: hidden; }
+.ccta-result-panel {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  padding: 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-left: 1px solid #253a51;
+  border-top: none;
+  background: #0c1826;
+}
+.ccta-result-panel h3 {
+  flex: none;
+  margin: 0;
+  color: #c4d5ea;
+  font-size: 12px;
+  font-weight: 800;
+}
+.ccta-result-card {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 0;
+  border: 1px solid #2c4460;
+  border-radius: 8px;
+  background: #101f30;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
 .ccta-result-card:hover, .ccta-result-card:focus-visible { border-color: #659eff; }
-.ccta-result-card-image { position: relative; display: block; aspect-ratio: 4 / 3; background: #06101a; }
-.ccta-result-card-image img { width: 100%; height: 100%; object-fit: contain; }
+.ccta-result-card-image { position: relative; display: block; height: 110px; background: #06101a; overflow: hidden; }
+.ccta-result-card-image img { width: 100%; height: 100%; object-fit: contain; object-position: center; }
 .ccta-result-card-image em { position: absolute; right: 6px; bottom: 6px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 999px; background: #0b1622d9; color: #d8e7f8; font-size: 10px; font-style: normal; font-weight: 700; opacity: 0; transition: opacity 120ms ease; }
 .ccta-result-card:hover .ccta-result-card-image em, .ccta-result-card:focus-visible .ccta-result-card-image em { opacity: 1; }
-.ccta-result-card strong { padding: 0 10px; color: #dce8f6; font-size: 12px; font-weight: 700; }
-.ccta-result-card small { padding: 0 10px 8px; color: #6f8bab; font-size: 10px; }
+.ccta-result-card strong { padding: 0 8px; color: #dce8f6; font-size: 11px; font-weight: 700; }
+.ccta-result-card small { padding: 0 8px 6px; color: #6f8bab; font-size: 10px; }
 .ccta-result-empty { margin: 0; padding: 12px; border: 1px dashed #2c4460; border-radius: 9px; color: #6f8bab; font-size: 11px; line-height: 1.6; }
 .ccta-result-disclaimer { margin: auto 0 0; padding-top: 8px; border-top: 1px solid #1e3149; color: #5b7590; font-size: 10px; line-height: 1.6; }
 
@@ -77,18 +226,27 @@
 @keyframes ccta-skeleton-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 @keyframes ccta-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-/* 결과 이미지 확대 보기 (lightbox) */
-.ccta-lightbox { width: min(720px, 92vw); }
+/* 결과 이미지 확대 보기 (lightbox) — 잘리지 않게 contain */
+.ccta-lightbox { width: min(960px, 94vw); max-height: 90vh; overflow: auto; }
 .ccta-lightbox header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .ccta-lightbox header h2 { margin: 0; font-size: 15px; }
-.ccta-lightbox img { width: 100%; max-height: 70vh; margin-top: 10px; border-radius: 8px; object-fit: contain; background: #06101a; }
+.ccta-lightbox img { display: block; width: 100%; max-height: min(78vh, 820px); margin-top: 10px; border-radius: 8px; object-fit: contain; background: #fff; }
 .ccta-lightbox footer { margin-top: 10px; color: #6f8bab; font-size: 12px; line-height: 1.6; }
 
 @media (max-width: 980px) {
-  .three-d-result-layout.has-result-panel { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
-  .ccta-result-panel { flex-direction: row; flex-wrap: wrap; max-height: 190px; border-left: none; border-top: 1px solid #253a51; }
-  .ccta-result-card { flex: 1 1 160px; }
-  .ccta-result-disclaimer { flex-basis: 100%; margin-top: 0; }
+  .three-d-result-layout.has-aux-side {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 128px;
+  }
+  .ccta-result-panel {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-left: none;
+    border-top: 1px solid #253a51;
+  }
+  .ccta-result-card { flex: 0 0 180px; width: 180px; }
+  .ccta-result-card-image { height: 72px; }
 }
 
 .three-d-pane.three-d-original-pane { grid-template-rows: 34px minmax(0, 1fr) 78px; }
@@ -101,15 +259,10 @@
 @media (max-width: 1100px) {
   .imaging-review-layout.large-three-d-layout { grid-template-columns: 180px minmax(0, 1fr); }
 }
-.large-three-d-layout .three-d-comparison.three-d-single-view { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-.large-three-d-layout .clinical-image-viewer > .clinical-image-stage { min-height: 720px; }
-.ct-view-tabs { display: flex; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #2e435a; background: #101e2d; }
-.ct-view-tabs button { display: flex; align-items: center; gap: 8px; border: 1px solid #3c5574; border-radius: 8px; padding: 12px 22px; color: #b9cce4; background: #182c42; font-size: 14px; font-weight: 700; cursor: pointer; }
-.ct-view-tabs button.active { color: #fff; background: #2d68d4; border-color: #7baaff; }
-.ct-view-tabs button:focus-visible { outline: 2px solid #a7caff; outline-offset: 2px; }
+.large-three-d-layout .three-d-comparison.three-d-single-view { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); min-height: 0; height: 100%; }
 @media (max-width: 720px) {
   .large-three-d-layout .clinical-image-viewer > .clinical-image-stage { min-height: 560px; }
-  .ct-view-tabs button { flex: 1; justify-content: center; padding: 12px; }
+  .clinical-image-viewer .ct-view-tabs button { flex: 1; }
 }
 @media (max-width: 720px) {
   .imaging-review-layout.large-three-d-layout { grid-template-columns: 1fr; }

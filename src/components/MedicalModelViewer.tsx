@@ -20,7 +20,16 @@ interface MedicalModelViewerProps {
   cameraState?: Record<string, unknown> | null
 }
 
-const HEART_CONTEXT_OPACITY = 0.08
+// U_Net_전이학습.ipynb "전체 구조" Plotly Mesh3d 색/opacity.
+const NOTEBOOK_ANATOMY_LOOK: Record<
+  Exclude<AnatomyRole, 'centerline' | 'other'>,
+  { color: number; opacity: number; roughness: number; metalness: number }
+> = {
+  heart: { color: 0xE9A6AF, opacity: 0.22, roughness: 0.75, metalness: 0.04 },
+  aorta: { color: 0xB22222, opacity: 0.68, roughness: 0.42, metalness: 0.08 },
+  coronary: { color: 0x4169E1, opacity: 1.0, roughness: 0.30, metalness: 0.10 },
+  calcification: { color: 0xFFA500, opacity: 1.0, roughness: 0.22, metalness: 0.06 },
+}
 
 function disposeObject(object: THREE.Object3D) {
   object.traverse((child) => {
@@ -31,16 +40,46 @@ function disposeObject(object: THREE.Object3D) {
   })
 }
 
-function fitModel(object: THREE.Object3D) {
+function fitModel(object: THREE.Object3D, targetSize = 3.4) {
   const bounds = new THREE.Box3().setFromObject(object)
   const size = bounds.getSize(new THREE.Vector3())
   const center = bounds.getCenter(new THREE.Vector3())
   const longest = Math.max(size.x, size.y, size.z)
   if (Number.isFinite(longest) && longest > 0) {
-    const scale = 3.4 / longest
-    object.scale.setScalar(scale)
+    object.scale.setScalar(targetSize / longest)
   }
   object.position.sub(center.multiplyScalar(object.scale.x))
+  object.updateMatrixWorld(true)
+}
+
+function frameOverview(
+  object: THREE.Object3D,
+  camera: THREE.PerspectiveCamera,
+  controls: OrbitControls,
+  direction: THREE.Vector3,
+  padding = 1.65,
+) {
+  const box = new THREE.Box3().setFromObject(object)
+  const size = box.getSize(new THREE.Vector3())
+  const center = box.getCenter(new THREE.Vector3())
+  const radius = Math.max(size.x, size.y, size.z, 0.01) * 0.5
+  const fov = (camera.fov * Math.PI) / 180
+  const aspect = Math.max(camera.aspect, 0.0001)
+  const fitByHeight = radius / Math.tan(fov / 2)
+  const fitByWidth = radius / (Math.tan(fov / 2) * aspect)
+  const distance = Math.max(fitByHeight, fitByWidth) * padding
+  const offset = direction.clone().normalize().multiplyScalar(distance)
+
+  camera.up.set(0, 1, 0)
+  camera.position.copy(center).add(offset)
+  camera.near = Math.max(distance / 120, 0.01)
+  camera.far = Math.max(distance * 24, 100)
+  camera.updateProjectionMatrix()
+  camera.lookAt(center)
+  controls.target.copy(center)
+  controls.minDistance = distance * 0.6
+  controls.maxDistance = distance * 4.5
+  controls.update()
 }
 
 function classifyAnatomyRole(name: string): AnatomyRole {
@@ -101,19 +140,27 @@ function dumpSceneGraph(root: THREE.Object3D) {
   return rows
 }
 
-function rememberOriginalAppearance(root: THREE.Object3D) {
+function applyNotebookLook(root: THREE.Object3D) {
   root.traverse((node) => {
     const role = classifyAnatomyRole(ancestryName(node))
     node.userData.anatomyRole = role
     node.userData.originalVisible = node.visible
-    eachMaterial(node, (material) => {
-      const opacityMaterial = material as THREE.MeshStandardMaterial
-      if (typeof opacityMaterial.opacity === 'number') {
-        material.userData.originalOpacity = opacityMaterial.opacity
-        material.userData.originalTransparent = opacityMaterial.transparent
-        material.userData.originalDepthWrite = opacityMaterial.depthWrite
-      }
+    const look = role in NOTEBOOK_ANATOMY_LOOK
+      ? NOTEBOOK_ANATOMY_LOOK[role as keyof typeof NOTEBOOK_ANATOMY_LOOK]
+      : null
+    if (!look || !(node instanceof THREE.Mesh)) return
+    node.renderOrder = role === 'heart' ? 0 : role === 'aorta' ? 1 : role === 'coronary' ? 2 : 3
+    const next = new THREE.MeshLambertMaterial({
+      color: look.color,
+      opacity: look.opacity,
+      transparent: look.opacity < 0.999,
+      depthWrite: look.opacity >= 0.999,
+      side: role === 'heart' ? THREE.FrontSide : THREE.DoubleSide,
     })
+    next.userData.originalOpacity = look.opacity
+    next.userData.originalTransparent = next.transparent
+    next.userData.originalDepthWrite = next.depthWrite
+    node.material = next
   })
 }
 
@@ -142,15 +189,9 @@ function applyAnatomyViewMode(root: THREE.Object3D, viewMode: AnatomyViewMode) {
       const originalOpacity = Number(material.userData.originalOpacity ?? opacityMaterial.opacity)
       const originalTransparent = Boolean(material.userData.originalTransparent)
       const originalDepthWrite = material.userData.originalDepthWrite as boolean | undefined
-      if (role === 'heart' && heartVisible) {
-        opacityMaterial.opacity = Math.min(originalOpacity, HEART_CONTEXT_OPACITY)
-        opacityMaterial.transparent = true
-        opacityMaterial.depthWrite = false
-      } else {
-        opacityMaterial.opacity = originalOpacity
-        opacityMaterial.transparent = originalTransparent
-        if (typeof originalDepthWrite === 'boolean') opacityMaterial.depthWrite = originalDepthWrite
-      }
+      opacityMaterial.opacity = originalOpacity
+      opacityMaterial.transparent = originalTransparent
+      if (typeof originalDepthWrite === 'boolean') opacityMaterial.depthWrite = originalDepthWrite
       opacityMaterial.needsUpdate = true
     })
   })
@@ -181,10 +222,12 @@ export function MedicalModelViewer({
     let animationFrame = 0
 
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color('#07111e')
+    const isAnatomyGlb = format.toUpperCase() === 'GLB' || format.toUpperCase() === 'GLTF'
+    scene.background = new THREE.Color(isAnatomyGlb ? '#050a16' : '#07111e')
 
     const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 1000)
     camera.position.set(0, 0.35, 5.4)
+    camera.up.set(0, 1, 0)
 
     let renderer: THREE.WebGLRenderer
     try {
@@ -195,8 +238,8 @@ export function MedicalModelViewer({
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.outputColorSpace = THREE.SRGBColorSpace
-    renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.15
+    renderer.toneMapping = isAnatomyGlb ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping
+    renderer.toneMappingExposure = isAnatomyGlb ? 1 : 1.15
     container.replaceChildren(renderer.domElement)
 
     const controls = new OrbitControls(camera, renderer.domElement)
@@ -207,7 +250,7 @@ export function MedicalModelViewer({
     controls.enableZoom = true
     controls.enablePan = true
     controls.minDistance = 1.2
-    controls.maxDistance = 12
+    controls.maxDistance = 20
     const applyCamera = () => {
       if (!cameraState) return
       if (Array.isArray(cameraState.position)) camera.position.fromArray(cameraState.position as number[])
@@ -218,21 +261,31 @@ export function MedicalModelViewer({
     const reportCamera = () => onCameraChange?.({ position: camera.position.toArray(), target: controls.target.toArray(), up: camera.up.toArray() })
     controls.addEventListener('change', reportCamera)
 
-    scene.add(new THREE.HemisphereLight('#d8e8ff', '#172235', 2.3))
-    const keyLight = new THREE.DirectionalLight('#ffffff', 3.4)
-    keyLight.position.set(4, 5, 5)
-    scene.add(keyLight)
-    const rimLight = new THREE.DirectionalLight('#4f8cff', 2.1)
-    rimLight.position.set(-4, 1, -3)
-    scene.add(rimLight)
-
-    const grid = new THREE.GridHelper(8, 16, '#24476d', '#152a43')
-    grid.position.y = -1.9
-    scene.add(grid)
+    if (isAnatomyGlb) {
+      scene.add(new THREE.AmbientLight('#ffffff', 0.82))
+      const keyLight = new THREE.DirectionalLight('#ffffff', 0.55)
+      keyLight.position.set(1, 1, 1)
+      scene.add(keyLight)
+      const fillLight = new THREE.DirectionalLight('#ffffff', 0.22)
+      fillLight.position.set(-0.8, 0.35, -0.6)
+      scene.add(fillLight)
+    } else {
+      scene.add(new THREE.HemisphereLight('#d8e8ff', '#172235', 2.3))
+      const keyLight = new THREE.DirectionalLight('#ffffff', 3.4)
+      keyLight.position.set(4, 5, 5)
+      scene.add(keyLight)
+      const rimLight = new THREE.DirectionalLight('#4f8cff', 2.1)
+      rimLight.position.set(-4, 1, -3)
+      scene.add(rimLight)
+      const grid = new THREE.GridHelper(8, 16, '#24476d', '#152a43')
+      grid.position.y = -1.9
+      scene.add(grid)
+    }
 
     const resize = () => {
-      const width = Math.max(container.clientWidth, 1)
-      const height = Math.max(container.clientHeight, 1)
+      const width = container.clientWidth
+      const height = container.clientHeight
+      if (width < 8 || height < 8) return
       camera.aspect = width / height
       camera.updateProjectionMatrix()
       renderer.setSize(width, height, false)
@@ -253,7 +306,7 @@ export function MedicalModelViewer({
       if (normalizedFormat === 'GLB' || normalizedFormat === 'GLTF') {
         const gltf = await new GLTFLoader().loadAsync(sourceUrl, progress)
         if (dumpScene) dumpSceneGraph(gltf.scene)
-        rememberOriginalAppearance(gltf.scene)
+        applyNotebookLook(gltf.scene)
         applyAnatomyViewMode(gltf.scene, viewModeRef.current)
         return gltf.scene
       }
@@ -296,10 +349,23 @@ export function MedicalModelViewer({
         }
         loadedObject = object
         loadedRootRef.current = object
-        fitModel(object)
-        scene.add(object)
-        controls.target.set(0, 0, 0)
-        controls.update()
+        if (isAnatomyGlb) {
+          fitModel(object, 2.2)
+          scene.add(object)
+          frameOverview(
+            object,
+            camera,
+            controls,
+            new THREE.Vector3(0.52, 0.16, -1),
+            1.75,
+          )
+        } else {
+          fitModel(object)
+          scene.add(object)
+          controls.target.set(0, 0, 0)
+          controls.update()
+        }
+        resize()
         applyCamera()
         reportCamera()
         onStatus?.('마우스로 회전 · 휠로 확대 · 우클릭으로 이동')
