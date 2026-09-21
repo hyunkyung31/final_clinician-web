@@ -4,6 +4,35 @@ import { loadApiTestModule } from './load-api-test-module.mjs'
 
 globalThis.sessionStorage = { getItem: () => 'test-token', removeItem: () => {} }
 
+test('release posts the medical result ID with staff authentication and no body', async () => {
+  const { releasePatientReport } = await loadApiTestModule()
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, '/api/medical-results/42/release/')
+    assert.equal(options.method, 'POST')
+    assert.equal(options.body, undefined)
+    assert.equal(new Headers(options.headers).get('Authorization'), 'Bearer test-token')
+    return Response.json({ medical_result: { id: 42, status: 'RELEASED' } })
+  }
+  await releasePatientReport(42)
+})
+
+test('release rejects a successful HTTP response without released status', async () => {
+  const { releasePatientReport } = await loadApiTestModule()
+  globalThis.fetch = async () => Response.json({ medical_result: { status: 'SIGNED' } })
+  await assert.rejects(releasePatientReport(42), /공개 결과를 확인하지 못했습니다/)
+})
+
+test('release does not automatically retry an unauthorized POST', async () => {
+  const { releasePatientReport } = await loadApiTestModule()
+  let requests = 0
+  globalThis.fetch = async () => {
+    requests += 1
+    return Response.json({ detail: '로그인이 필요합니다.' }, { status: 401 })
+  }
+  await assert.rejects(releasePatientReport(42))
+  assert.equal(requests, 1)
+})
+
 test('patient reports are read from the medical-results endpoint and mapped to camelCase', async () => {
   const { getPatientReports } = await loadApiTestModule()
   globalThis.fetch = async (url) => {
@@ -43,16 +72,20 @@ test('draft results without a version/report map optional fields to null', async
 
 test('report download reads the file download_url from the reports download endpoint', async () => {
   const { getReportDownload } = await loadApiTestModule()
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async (url, options) => {
     assert.equal(url, '/api/reports/9/download/')
+    assert.equal(new Headers(options.headers).get('Authorization'), 'Bearer test-token')
     return Response.json({
       report: { id: 9, report_name: 'r.pdf' },
-      file: { download_url: 'https://rustfs.example.com/reports/r.pdf', download_integration_status: 'CONFIGURED' },
+      file: { download_url: 'https://rustfs.example.com/reports/r.pdf', download_integration_status: 'CONFIGURED', download_expires_in: 300, download_expires_at: '2026-09-21T12:05:00Z', mime_type: 'application/pdf' },
     })
   }
   const info = await getReportDownload(9)
   assert.equal(info.downloadUrl, 'https://rustfs.example.com/reports/r.pdf')
   assert.equal(info.downloadIntegrationStatus, 'CONFIGURED')
+  assert.equal(info.downloadExpiresIn, 300)
+  assert.equal(info.downloadExpiresAt, '2026-09-21T12:05:00Z')
+  assert.equal(info.mimeType, 'application/pdf')
 })
 
 test('report download surfaces a null downloadUrl when storage is not configured', async () => {
@@ -64,4 +97,7 @@ test('report download surfaces a null downloadUrl when storage is not configured
   const info = await getReportDownload(9)
   assert.equal(info.downloadUrl, null)
   assert.equal(info.downloadIntegrationStatus, 'STORAGE_URL_NOT_CONFIGURED')
+  assert.equal(info.downloadExpiresIn, null)
+  assert.equal(info.downloadExpiresAt, null)
+  assert.equal(info.mimeType, null)
 })

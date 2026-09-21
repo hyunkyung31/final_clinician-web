@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   BrainCircuit,
   CheckCircle2,
@@ -19,7 +19,7 @@ import type {
   PatientReportSummary,
   PatientSummary,
 } from '../types'
-import { getPatientReports, getPatientsPage, getReportDownload } from '../api/client'
+import { getPatientReports, getPatientsPage, getReportDownload, releasePatientReport } from '../api/client'
 import { ExaminationImagingWorkspace } from './ExaminationImagingWorkspace'
 import { ReferenceRangeManager } from './ReferenceRangeManager'
 
@@ -111,6 +111,9 @@ export function ModuleWorkspace({
   const [reportsLoading, setReportsLoading] = useState(false)
   const [reportsError, setReportsError] = useState('')
   const [reportDownloadingId, setReportDownloadingId] = useState<number | null>(null)
+  const [releasingResultId, setReleasingResultId] = useState<number | null>(null)
+  const [reportReloadKey, setReportReloadKey] = useState(0)
+  const releaseLock = useRef(false)
 
   // '전체 환자' 통계/탭 배지는 그동안 `patients` prop(내 담당+협진+최근 조회를 합친
   // 부분집합, App.tsx의 초기 로딩에서만 채워짐)의 길이를 썼는데, 이 값은 실제
@@ -207,20 +210,61 @@ export function ModuleWorkspace({
       .catch((error) => { if (active) { setPatientReports([]); setReportsError(error instanceof Error ? error.message : '보고서 목록을 불러오지 못했습니다.') } })
       .finally(() => { if (active) setReportsLoading(false) })
     return () => { active = false }
-  }, [reportPatient?.backendId])
+  }, [reportPatient?.backendId, reportReloadKey])
 
   const reportStatusLabels: Record<string, string> = { DRAFT: '초안', REVIEWING: '검토 중', SIGNED: '서명 완료', RELEASED: '공개됨' }
 
+  const handleReleaseReport = async (item: PatientReportSummary) => {
+    if (releaseLock.current || reportsLoading || !reportPatient || item.status !== 'SIGNED') return
+    if (!window.confirm(
+      `${reportPatient.name} (${reportPatient.id}) 환자에게\n` +
+      `의료 결과 #${item.medicalResultId}를 공개할까요?\n\n` +
+      '공개 후 환자 앱에서 결과보고서를 볼 수 있습니다.',
+    )) return
+
+    releaseLock.current = true
+    setReleasingResultId(item.medicalResultId)
+    setReportsError('')
+    try {
+      await releasePatientReport(item.medicalResultId)
+    } catch (error) {
+      window.alert(
+        (error instanceof Error ? error.message : '공개 요청 실패') +
+        '\n목록을 다시 조회합니다. 상태 확인 후 진행하세요.',
+      )
+    } finally {
+      // Re-fetch even after a lost response: the server may have committed the release.
+      setReportsLoading(true)
+      setReportReloadKey(value => value + 1)
+      setReleasingResultId(null)
+      releaseLock.current = false
+    }
+  }
+
   const openReport = async (reportId: number) => {
+    setReportsError('')
+    // Open during the click event so the awaited API request does not trigger popup blocking.
+    const tab = window.open('about:blank', '_blank')
+    if (!tab) {
+      setReportsError('브라우저에서 팝업을 허용한 뒤 보고서 보기를 다시 눌러주세요.')
+      return
+    }
+    tab.opener = null
     setReportDownloadingId(reportId)
     try {
       const info = await getReportDownload(reportId)
-      if (info.downloadUrl) {
-        window.open(info.downloadUrl, '_blank', 'noopener')
-      } else {
-        setReportsError('보고서 파일 저장소(RustFS) 연결이 아직 설정되지 않아 다운로드할 수 없습니다.')
+      if (info.downloadIntegrationStatus !== 'CONFIGURED' || !info.downloadUrl) {
+        throw new Error(`보고서 다운로드 주소를 받지 못했습니다. 저장소 연결 상태: ${info.downloadIntegrationStatus}`)
       }
+      if ((info.downloadExpiresAt && Date.parse(info.downloadExpiresAt) <= Date.now()) || (info.downloadExpiresIn !== null && info.downloadExpiresIn <= 0)) {
+        throw new Error('다운로드 주소가 만료되었습니다. 보고서 보기를 다시 눌러 새 주소를 받아주세요.')
+      }
+      const downloadUrl = new URL(info.downloadUrl)
+      if (!['https:', 'http:'].includes(downloadUrl.protocol)) throw new Error('보고서 다운로드 주소 형식이 올바르지 않습니다.')
+      // Navigate directly: do not forward the staff JWT to the storage service.
+      if (!tab.closed) tab.location.replace(info.downloadUrl)
     } catch (error) {
+      tab.close()
       setReportsError(error instanceof Error ? error.message : '보고서 다운로드에 실패했습니다.')
     } finally {
       setReportDownloadingId(null)
@@ -377,6 +421,7 @@ export function ModuleWorkspace({
                     <span>{item.encounterType ?? '-'}</span>
                     <b className={`status-pill status-report-${item.status.toLowerCase()}`}>{reportStatusLabels[item.status] ?? item.status}</b>
                     <span>{item.latestSignoff?.doctorName ?? item.doctorName ?? '-'}</span>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button
                       disabled={!item.latestReport || reportDownloadingId === item.latestReport?.reportId}
                       onClick={() => item.latestReport && void openReport(item.latestReport.reportId)}
@@ -385,6 +430,16 @@ export function ModuleWorkspace({
                     >
                       {reportDownloadingId === item.latestReport?.reportId ? '여는 중…' : '보고서 보기'}
                     </button>
+                    {item.status === 'SIGNED' && <button
+                      type="button"
+                      className="primary"
+                      disabled={releasingResultId !== null || reportsLoading}
+                      onClick={() => void handleReleaseReport(item)}
+                    >
+                      {releasingResultId === item.medicalResultId ? '공개 중…' : '환자에게 공개'}
+                    </button>}
+                    {item.status === 'RELEASED' && <span>환자 공개 완료</span>}
+                    </div>
                   </div>
                 ))}
                 {!reportsLoading && patientReports.length === 0 && <div className="feature-empty"><FileText size={28} /><strong>등록된 보고서가 없습니다.</strong></div>}
