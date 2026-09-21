@@ -818,10 +818,84 @@ export async function getStaffReservations(
     id: readNumber(item, 'id') ?? 0,
     patientId: readNumber(item, 'patient', 'patient_id'),
     doctorId: readNumber(item, 'doctor', 'doctor_id'),
+    departmentId: readNumber(item, 'department', 'department_id'),
     applicantName: readString(item, 'applicant_name', 'patient_name') || '예약 환자',
+    applicantBirthDate: readString(item, 'applicant_birth_date'),
+    applicantContact: readString(item, 'applicant_contact'),
+    applicantGender: readString(item, 'applicant_gender'),
     reservedAt: readString(item, 'reserved_at'),
     status: readString(item, 'status') || 'REQUESTED',
+    acceptedAt: readString(item, 'accepted_at'),
+    createdAt: readString(item, 'created_at'),
   })).filter((item) => item.id > 0)
+}
+
+export async function getPendingStaffReservations(): Promise<StaffReservation[]> {
+  const payload = await request<unknown>('/api/staff/reservations/?status=REQUESTED')
+  return extractList(payload).map((item) => ({
+    id: readNumber(item, 'id') ?? 0,
+    patientId: readNumber(item, 'patient', 'patient_id'),
+    doctorId: readNumber(item, 'doctor', 'doctor_id'),
+    departmentId: readNumber(item, 'department', 'department_id'),
+    applicantName: readString(item, 'applicant_name', 'patient_name') || '예약 환자',
+    applicantBirthDate: readString(item, 'applicant_birth_date'),
+    applicantContact: readString(item, 'applicant_contact'),
+    applicantGender: readString(item, 'applicant_gender'),
+    reservedAt: readString(item, 'reserved_at'),
+    status: readString(item, 'status') || 'REQUESTED',
+    acceptedAt: readString(item, 'accepted_at'),
+    createdAt: readString(item, 'created_at'),
+  })).filter((item) => item.id > 0)
+}
+
+export async function getAllStaffReservations(doctorId?: number): Promise<StaffReservation[]> {
+  const params = new URLSearchParams()
+  if (doctorId) params.set('doctor_id', String(doctorId))
+  const query = params.size ? `?${params}` : ''
+  const payload = await request<unknown>(`/api/staff/reservations/${query}`)
+  return extractList(payload).map((item) => ({
+    id: readNumber(item, 'id') ?? 0,
+    patientId: readNumber(item, 'patient', 'patient_id'),
+    doctorId: readNumber(item, 'doctor', 'doctor_id'),
+    departmentId: readNumber(item, 'department', 'department_id'),
+    applicantName: readString(item, 'applicant_name', 'patient_name') || '예약 환자',
+    applicantBirthDate: readString(item, 'applicant_birth_date'),
+    applicantContact: readString(item, 'applicant_contact'),
+    applicantGender: readString(item, 'applicant_gender'),
+    reservedAt: readString(item, 'reserved_at'),
+    status: readString(item, 'status') || 'REQUESTED',
+    acceptedAt: readString(item, 'accepted_at'),
+    createdAt: readString(item, 'created_at'),
+  })).filter((item) => item.id > 0)
+}
+
+export async function acceptStaffReservation(
+  reservationId: number,
+  doctorId: number,
+  departmentId?: number,
+): Promise<StaffReservation> {
+  const payload = await request<unknown>(`/api/staff/reservations/${reservationId}/accept/`, {
+    method: 'POST',
+    refreshOnUnauthorized: false,
+    body: JSON.stringify({ doctor_id: doctorId, ...(departmentId ? { department_id: departmentId } : {}) }),
+  })
+  if (!isRecord(payload) || readNumber(payload, 'id') !== reservationId || readString(payload, 'status') !== 'ACCEPTED') {
+    throw new ApiError('예약 승인 결과를 확인하지 못했습니다.', 500)
+  }
+  return {
+    id: reservationId,
+    patientId: readNumber(payload, 'patient', 'patient_id'),
+    doctorId: readNumber(payload, 'doctor', 'doctor_id'),
+    departmentId: readNumber(payload, 'department', 'department_id'),
+    applicantName: readString(payload, 'applicant_name', 'patient_name') || '예약 환자',
+    applicantBirthDate: readString(payload, 'applicant_birth_date'),
+    applicantContact: readString(payload, 'applicant_contact'),
+    applicantGender: readString(payload, 'applicant_gender'),
+    reservedAt: readString(payload, 'reserved_at'),
+    status: 'ACCEPTED',
+    acceptedAt: readString(payload, 'accepted_at'),
+    createdAt: readString(payload, 'created_at'),
+  }
 }
 
 function mapStaffTodo(item: UnknownRecord): StaffTodo | null {

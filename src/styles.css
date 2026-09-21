@@ -3768,6 +3768,491 @@ button.feature-primary:disabled,
   }
 }
 
+.reservation-approval-page {
+  display: grid;
+  gap: 16px;
+  padding: 18px 20px 24px;
+}
+
+.reservation-approval-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.reservation-approval-heading small {
+  color: var(--color-primary);
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.reservation-approval-heading h2,
+.reservation-approval-heading p {
+  margin: 5px 0 0;
+}
+
+.reservation-approval-heading p {
+  color: var(--color-text-subtle);
+}
+
+.reservation-approval-heading button,
+.reservation-approve-button {
+  border: 1px solid var(--color-primary);
+  border-radius: 8px;
+  padding: 9px 14px;
+  background: #fff;
+  color: var(--color-primary);
+  font-weight: 800;
+}
+
+.reservation-approval-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.reservation-approval-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.reservation-approval-card > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.reservation-approval-card h3 {
+  margin: 4px 0 0;
+}
+
+.reservation-approval-card > header > span {
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: #fff7e6;
+  color: #a35b00;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.reservation-approval-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.reservation-approval-card dt,
+.reservation-approval-card dd {
+  margin: 0;
+}
+
+.reservation-approval-card dt,
+.reservation-approval-card label > span {
+  color: var(--color-text-subtle);
+  font-size: 12px;
+}
+
+.reservation-approval-card dd {
+  margin-top: 3px;
+  font-weight: 700;
+}
+
+.reservation-approval-card label {
+  display: grid;
+  gap: 6px;
+}
+
+.reservation-approval-card select {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+
+.reservation-approve-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.reservation-approve-button:disabled,
+.reservation-approval-heading button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.reservation-approval-success {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #ecfdf3;
+  color: #087443;
+  font-weight: 700;
+}
+
+.appointment-page > .reservation-approval-success {
+  margin: 14px 20px 0;
+}
+
+.appointment-layout {
+  display: grid;
+  grid-template-columns: 250px minmax(380px, 1fr) minmax(300px, .75fr);
+  gap: 14px;
+  padding: 18px 20px 24px;
+}
+
+.appointment-calendar-panel,
+.appointment-list-panel,
+.appointment-detail-panel {
+  min-height: 560px;
+  padding: 16px;
+}
+
+.appointment-calendar-panel > header,
+.appointment-detail-panel > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.appointment-calendar-panel > header div,
+.appointment-detail-panel > header div {
+  display: grid;
+  gap: 3px;
+}
+
+.appointment-calendar-panel > header small,
+.appointment-detail-panel > header small {
+  color: var(--color-text-subtle);
+}
+
+.appointment-detail-panel h2 {
+  margin: 0;
+}
+
+.appointment-calendar-panel > input {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 16px 0;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+
+.appointment-calendar-panel dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin: 0 0 16px;
+}
+
+.appointment-calendar-panel dl div {
+  display: grid;
+  gap: 4px;
+  border-radius: 8px;
+  padding: 11px;
+  background: var(--color-surface-muted);
+}
+
+.appointment-calendar-panel dt,
+.appointment-calendar-panel dd {
+  margin: 0;
+}
+
+.appointment-calendar-panel dt {
+  color: var(--color-text-subtle);
+  font-size: 12px;
+}
+
+.appointment-calendar-panel dd {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.appointment-calendar-panel > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 9px;
+  background: #fff;
+  font-weight: 700;
+}
+
+.appointment-list-panel {
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.appointment-list-panel > nav {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 13px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.appointment-list-panel > nav button {
+  white-space: nowrap;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: #fff;
+}
+
+.appointment-list-panel > nav button.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-weight: 800;
+}
+
+.appointment-list-panel > nav b {
+  margin-left: 4px;
+}
+
+.appointment-list-panel > div {
+  display: flex;
+  overflow-y: auto;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+}
+
+.appointment-list-panel > div > button {
+  display: grid;
+  grid-template-columns: 145px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 12px;
+  background: #fff;
+  text-align: left;
+}
+
+.appointment-list-panel > div > button.active {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+
+.appointment-list-panel time,
+.appointment-list-panel span {
+  display: flex;
+}
+
+.appointment-list-panel time {
+  align-items: center;
+  gap: 5px;
+  color: var(--color-text-subtle);
+  font-size: 12px;
+}
+
+.appointment-list-panel span {
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.appointment-list-panel span small {
+  overflow: hidden;
+  color: var(--color-text-subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.appointment-status {
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.appointment-status.status-requested { background: #fff7e6; color: #a35b00; }
+.appointment-status.status-accepted { background: #ecfdf3; color: #087443; }
+.appointment-status.status-canceled { background: #fef2f2; color: #b42318; }
+
+.appointment-detail-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.appointment-detail-panel dl {
+  display: grid;
+  gap: 0;
+  margin: 12px 0 auto;
+}
+
+.appointment-detail-panel dl div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 12px;
+  padding: 11px 2px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.appointment-detail-panel dt,
+.appointment-detail-panel dd {
+  margin: 0;
+}
+
+.appointment-detail-panel dt {
+  color: var(--color-text-subtle);
+}
+
+.appointment-detail-panel dd {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.appointment-detail-panel .reservation-approve-button {
+  width: 100%;
+  margin-top: 16px;
+}
+
+.appointment-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 420;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(15 23 42 / 45%);
+}
+
+.appointment-confirm-dialog {
+  width: min(430px, 100%);
+  border-radius: 12px;
+  padding: 24px;
+  background: var(--color-surface);
+  box-shadow: 0 22px 70px rgb(15 23 42 / 24%);
+}
+
+.appointment-confirm-dialog > span {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 50%;
+  background: #ecfdf3;
+  color: #087443;
+}
+
+.appointment-confirm-dialog h2 {
+  margin: 14px 0 8px;
+}
+
+.appointment-confirm-dialog p {
+  margin: 0;
+  color: var(--color-text-subtle);
+  line-height: 1.6;
+}
+
+.appointment-confirm-dialog dl {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0;
+}
+
+.appointment-confirm-dialog dl div {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.appointment-confirm-dialog dt,
+.appointment-confirm-dialog dd {
+  margin: 0;
+}
+
+.appointment-confirm-dialog dt {
+  color: var(--color-text-subtle);
+}
+
+.appointment-confirm-dialog dd {
+  font-weight: 700;
+}
+
+.appointment-confirm-dialog > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.appointment-confirm-dialog > div button {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 9px 14px;
+  background: var(--color-surface);
+  font-weight: 800;
+}
+
+.appointment-confirm-dialog > div .reservation-approve-button {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+}
+
+@media (max-width: 1180px) {
+  .appointment-layout {
+    grid-template-columns: 220px minmax(380px, 1fr);
+  }
+
+  .appointment-detail-panel {
+    grid-column: 1 / -1;
+    min-height: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .appointment-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .appointment-calendar-panel,
+  .appointment-list-panel,
+  .appointment-detail-panel {
+    min-height: auto;
+  }
+
+  .appointment-list-panel > div > button {
+    grid-template-columns: 1fr auto;
+  }
+
+  .appointment-list-panel time {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .reservation-approval-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .reservation-approval-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 .request-layout {
   display: grid;
   grid-template-columns: 320px minmax(380px, 1fr) minmax(320px, 0.8fr);

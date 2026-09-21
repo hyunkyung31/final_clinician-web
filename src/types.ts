@@ -98,9 +98,15 @@ export interface StaffReservation {
   id: number
   patientId?: number
   doctorId?: number
+  departmentId?: number
   applicantName: string
+  applicantBirthDate: string
+  applicantContact: string
+  applicantGender: string
   reservedAt: string
   status: string
+  acceptedAt: string
+  createdAt: string
 }
 
 export interface StaffTodo {
@@ -887,4 +893,3 @@ export interface AngiographyDetailedResponse {
   provenance: Record<string, string>;
   warnings: string[];
 }
-
