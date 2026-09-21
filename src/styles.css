@@ -9930,6 +9930,102 @@ html[data-theme='dark'] .notification-error {
   background: #321d26;
 }
 
+/* Dark theme: neutral controls and semantic badges */
+
+html[data-theme='dark'] :is(
+  .worklist .search-box,
+  .queue-tabs button,
+  .module-table-row > button,
+  .module-context-card > button,
+  .api-pagination button,
+  .rendering-action-bar button,
+  .reference-manager button,
+  .lab-result-table-card header button
+) {
+  color: var(--color-text-subtle);
+  border-color: var(--color-border-strong);
+  background: var(--color-surface);
+}
+
+html[data-theme='dark'] :is(
+  .module-table-row > button:hover:not(:disabled),
+  .module-context-card > button:hover:not(:disabled),
+  .api-pagination button:hover:not(:disabled)
+) {
+  color: var(--color-primary-dark);
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+html[data-theme='dark'] .module-report-table .module-table-row > .report-row-select {
+  color: var(--color-text);
+  border: 0;
+  background: transparent;
+}
+
+html[data-theme='dark'] .status-pill {
+  color: #b8c6d8;
+  background: #233449;
+}
+
+html[data-theme='dark'] :is(
+  .status-report-draft,
+  .status-report-reviewing,
+  .status-report-signed,
+  .status-report-released
+) {
+  color: #c3d3e7;
+  background: #22364d;
+}
+
+html[data-theme='dark'] .status-report-reviewing {
+  color: #f2c66f;
+  background: #3a301d;
+}
+
+html[data-theme='dark'] :is(.status-report-signed, .status-report-released) {
+  color: #78d9b1;
+  background: #17382f;
+}
+
+html[data-theme='dark'] .schedule-type-clinical {
+  color: #8ab6ff;
+  background: #193354;
+}
+
+html[data-theme='dark'] .schedule-type-consultation {
+  color: #72d5bc;
+  background: #183a35;
+}
+
+html[data-theme='dark'] .schedule-type-on_call {
+  color: #f0c46e;
+  background: #3b311e;
+}
+
+html[data-theme='dark'] .schedule-type-off {
+  color: #b3c0d0;
+  background: #293747;
+}
+
+html[data-theme='dark'] .schedule-type-personal {
+  color: #b7a9ff;
+  background: #30294f;
+}
+
+html[data-theme='dark'] .chat-dock-rail button {
+  color: #9fb2c9;
+  border: 1px solid #31465e;
+  background: #18283a;
+}
+
+html[data-theme='dark'] .chat-dock-rail button:hover,
+html[data-theme='dark'] .chat-dock-rail button.active {
+  color: #ffffff;
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+}
+
 /* Chat follows the selected global theme */
 
 html[data-theme='dark'] .chat-dock {
