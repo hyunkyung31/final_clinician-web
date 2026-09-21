@@ -40,6 +40,8 @@ import type {
   PatientMemo,
   PatientReportSummary,
   PatientSummary,
+  MedicalResultDetail,
+  ReportAiSummary,
   PrescriptionDetail,
   PrescriptionItemInput,
   PrescriptionItemSummary,
@@ -1475,6 +1477,7 @@ export async function getPatientReports(patientId: number): Promise<PatientRepor
     const latestVersionRaw = item.latest_version
     const latestSignoffRaw = item.latest_signoff
     const latestReportRaw = item.latest_report
+    const latestReleaseRaw = item.latest_release
     return {
       medicalResultId: readNumber(item, 'medical_result_id') ?? 0,
       encounterId: readNumber(item, 'encounter_id') ?? null,
@@ -1496,6 +1499,10 @@ export async function getPatientReports(patientId: number): Promise<PatientRepor
         reportName: readString(latestReportRaw, 'report_name'),
         status: readString(latestReportRaw, 'status'),
         createdAt: readString(latestReportRaw, 'created_at'),
+      } : null,
+      latestRelease: isRecord(latestReleaseRaw) ? {
+        releasedAt: readString(latestReleaseRaw, 'released_at'),
+        releaseStatus: readString(latestReleaseRaw, 'release_status'),
       } : null,
       createdAt: readString(item, 'created_at'),
       updatedAt: readString(item, 'updated_at'),
@@ -1522,6 +1529,124 @@ export async function getReportDownload(reportId: number): Promise<ReportDownloa
     downloadUrl: readString(file, 'download_url') || null,
     downloadIntegrationStatus: readString(file, 'download_integration_status') || 'UNKNOWN',
   }
+}
+
+function mapReportAiSummary(raw: unknown): ReportAiSummary | null {
+  if (!isRecord(raw)) return null
+  const sidesRaw = Array.isArray(raw.sides) ? raw.sides : []
+  return {
+    examinationId: readNumber(raw, 'examination_id') ?? null,
+    examName: readString(raw, 'exam_name') || null,
+    examCode: readString(raw, 'exam_code') || null,
+    performedAt: readString(raw, 'performed_at') || null,
+    analysisId: readNumber(raw, 'analysis_id') ?? null,
+    jobId: readNumber(raw, 'job_id') ?? null,
+    resultId: readNumber(raw, 'result_id') ?? null,
+    modelName: readString(raw, 'model_name') || null,
+    modelVersion: readString(raw, 'model_version') || null,
+    probability: readNumber(raw, 'probability') ?? null,
+    prediction: readString(raw, 'prediction') || null,
+    summary: readString(raw, 'summary') || null,
+    overlayFileAssetId: readNumber(raw, 'overlay_file_asset_id') ?? null,
+    sourceFileAssetId: readNumber(raw, 'source_file_asset_id') ?? null,
+    previewFileAssetId: readNumber(raw, 'preview_file_asset_id') ?? null,
+    sides: sidesRaw.filter(isRecord).map((item) => ({
+      side: readString(item, 'side') || null,
+      anyStenosis: readNumber(item, 'any_stenosis') ?? null,
+      significantStenosis: readNumber(item, 'significant_stenosis') ?? null,
+    })),
+  }
+}
+
+function mapMedicalResultDetail(payload: unknown): MedicalResultDetail {
+  if (!isRecord(payload)) throw new ApiError('결과보고서 응답 형식이 올바르지 않습니다.', 500)
+  const medical = isRecord(payload.medical_result) ? payload.medical_result : payload
+  const patient = isRecord(payload.patient) ? payload.patient : {}
+  const encounter = isRecord(payload.encounter) ? payload.encounter : {}
+  const workflow = isRecord(payload.workflow) ? payload.workflow : {}
+  const summaries = isRecord(payload.ai_summaries) ? payload.ai_summaries : {}
+  return {
+    medicalResultId: readNumber(medical, 'id', 'medical_result_id') ?? 0,
+    encounterId: readNumber(medical, 'encounter', 'encounter_id') ?? readNumber(encounter, 'id') ?? null,
+    status: readString(medical, 'status') || readString(workflow, 'status'),
+    conclusion: readString(medical, 'conclusion'),
+    summary: readString(medical, 'summary'),
+    patient: {
+      id: readNumber(patient, 'id') ?? 0,
+      name: readString(patient, 'name'),
+      medicalRecordNo: readString(patient, 'medical_record_no'),
+      birthDate: readString(patient, 'birth_date') || null,
+      gender: readString(patient, 'gender') || null,
+    },
+    encounter: {
+      id: readNumber(encounter, 'id') ?? null,
+      visitDate: readString(encounter, 'visit_date') || null,
+      encounterType: readString(encounter, 'encounter_type') || null,
+      doctorName: readString(encounter, 'doctor_name') || null,
+    },
+    workflow: {
+      status: readString(workflow, 'status') || readString(medical, 'status'),
+      canEdit: workflow.can_edit !== false,
+      canSignoff: workflow.can_signoff === true,
+      canRelease: workflow.can_release === true,
+      signedBy: readString(workflow, 'signed_by') || null,
+      signedDepartment: readString(workflow, 'signed_department') || null,
+      signedAt: readString(workflow, 'signed_at') || null,
+      signedVersionId: readNumber(workflow, 'signed_version_id') ?? null,
+      signedVersionNo: readNumber(workflow, 'signed_version_no') ?? null,
+      signatureFileAssetId: readNumber(workflow, 'signature_file_asset_id') ?? null,
+      releasedAt: readString(workflow, 'released_at') || null,
+      patientVisible: workflow.patient_visible === true,
+      latestReportId: readNumber(workflow, 'latest_report_id') ?? null,
+      examName: readString(workflow, 'exam_name') || null,
+    },
+    aiSummaries: {
+      clinical: mapReportAiSummary(summaries.clinical),
+      xca: mapReportAiSummary(summaries.xca),
+      ccta: mapReportAiSummary(summaries.ccta),
+    },
+  }
+}
+
+export async function getMedicalResultDetail(resultId: number): Promise<MedicalResultDetail> {
+  return mapMedicalResultDetail(await request<unknown>(`/api/medical-results/${resultId}/`))
+}
+
+export async function saveMedicalResultConclusion(resultId: number, conclusion: string): Promise<MedicalResultDetail> {
+  await request<unknown>(`/api/medical-results/${resultId}/`, {
+    method: 'PATCH',
+    body: JSON.stringify({ conclusion }),
+  })
+  return getMedicalResultDetail(resultId)
+}
+
+export async function signoffMedicalResult(resultId: number, conclusion?: string): Promise<MedicalResultDetail> {
+  return mapMedicalResultDetail(await request<unknown>(`/api/medical-results/${resultId}/signoff/`, {
+    method: 'POST',
+    body: JSON.stringify(conclusion ? { conclusion } : {}),
+  }))
+}
+
+export async function releaseMedicalResult(resultId: number): Promise<MedicalResultDetail> {
+  return mapMedicalResultDetail(await request<unknown>(`/api/medical-results/${resultId}/release/`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  }))
+}
+
+export async function createPatientMedicalResult(patientId: number): Promise<MedicalResultDetail> {
+  const encounters = await request<unknown>(`/api/encounters/?patient_id=${patientId}`)
+  const latest = Array.isArray(encounters) ? encounters.find(isRecord) : null
+  const encounterId = latest ? readNumber(latest, 'id') : undefined
+  if (!encounterId) throw new ApiError('이 환자의 진료 기록이 없어 결과보고서를 만들 수 없습니다.', 404)
+  const created = await request<unknown>(`/api/encounters/${encounterId}/medical-results/`, {
+    method: 'POST',
+    body: JSON.stringify({ patient_id: patientId }),
+  })
+  const medical = isRecord(created) ? created : {}
+  const resultId = readNumber(medical, 'id')
+  if (!resultId) throw new ApiError('결과보고서 초안을 만들지 못했습니다.', 500)
+  return getMedicalResultDetail(resultId)
 }
 
 export async function getAngiographyFrames(

@@ -1249,6 +1249,8 @@ function App() {
           dashboardSummary={dashboardSummary}
           aiStatus={aiStatus}
           staffRoles={staffIdentity?.roles ?? []}
+          staffIdentity={staffIdentity}
+          staffDoctor={staffDoctor}
           fontSize={fontSize}
           onFontSizeChange={setFontSize}
           onSelectPatient={(patient) => {

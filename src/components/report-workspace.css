@@ -1,0 +1,180 @@
+.report-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.report-workspace .module-split {
+  align-items: stretch;
+}
+
+.report-primary-btn {
+  margin-top: 12px;
+  height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: 700;
+}
+
+.report-row-select {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr 0.9fr 1fr;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: inherit;
+}
+
+.module-report-table .module-table-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px;
+  gap: 8px;
+  align-items: center;
+}
+
+.module-report-table .module-table-row.is-selected {
+  background: var(--color-primary-soft);
+}
+
+.status-report-draft { color: #5b6b80; background: #eef2f6; }
+.status-report-reviewing { color: #8a5b12; background: #fff3d8; }
+.status-report-signed { color: #1f6b4a; background: #def7ea; }
+.status-report-released { color: #1d4f9c; background: #dce9ff; }
+
+.report-detail-card {
+  margin: 0 24px 24px;
+  padding: 20px 22px 24px;
+}
+
+.report-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.report-section {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.report-section h3 {
+  margin: 0 0 10px;
+  font-size: calc(14px + var(--font-size-adjust));
+}
+
+.report-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+
+.report-meta-grid dt {
+  color: var(--color-text-subtle);
+  font-size: calc(11px + var(--font-size-adjust));
+}
+
+.report-meta-grid dd {
+  margin: 2px 0 0;
+  font-weight: 700;
+}
+
+.report-section textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 10px;
+  resize: vertical;
+  font: inherit;
+}
+
+.report-preview-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.report-preview-image {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #0f1724;
+}
+
+.report-empty-inline,
+.report-side-list {
+  margin: 8px 0 0;
+  color: var(--color-text-subtle);
+}
+
+.report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.report-actions button {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-strong);
+  background: #fff;
+  font-weight: 700;
+}
+
+.report-signature-box {
+  display: grid;
+  gap: 6px;
+  width: min(280px, 100%);
+  min-height: 92px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px dashed #9aa9bc;
+  border-radius: 10px;
+  background: #f7f9fc;
+  color: var(--color-text-subtle);
+}
+
+.report-signature-box small {
+  font-weight: 800;
+  color: #5b6b80;
+}
+
+.report-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgba(17, 28, 45, 0.45);
+}
+
+.report-modal {
+  width: min(480px, calc(100% - 32px));
+  padding: 22px 22px 18px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: var(--shadow-card);
+}
+
+.report-modal h3 {
+  margin: 0 0 8px;
+}
+
+.report-modal > p {
+  margin: 0 0 12px;
+  color: var(--color-text-subtle);
+}
