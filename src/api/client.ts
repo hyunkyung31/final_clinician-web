@@ -1515,6 +1515,9 @@ export interface ReportDownloadInfo {
   reportName: string
   downloadUrl: string | null
   downloadIntegrationStatus: string
+  downloadExpiresIn: number | null
+  downloadExpiresAt: string | null
+  mimeType: string | null
 }
 
 /** GET /api/reports/{id}/download/ - FileAsset 기반 다운로드 URL 조회 (RustFS 미설정 시 downloadUrl=null). */
@@ -1528,9 +1531,33 @@ export async function getReportDownload(reportId: number): Promise<ReportDownloa
     reportName: readString(report, 'report_name'),
     downloadUrl: readString(file, 'download_url') || null,
     downloadIntegrationStatus: readString(file, 'download_integration_status') || 'UNKNOWN',
+    downloadExpiresIn: readNumber(file, 'download_expires_in') ?? null,
+    downloadExpiresAt: readString(file, 'download_expires_at') || null,
+    mimeType: readString(file, 'mime_type') || null,
   }
 }
 
+export async function releasePatientReport(
+  medicalResultId: number,
+): Promise<void> {
+  const payload = await request<unknown>(
+    `/api/medical-results/${medicalResultId}/release/`,
+    {
+      method: 'POST',
+      refreshOnUnauthorized: false,
+    },
+  );
+
+  if (
+    !isRecord(payload) ||
+    !isRecord(payload.medical_result) ||
+    payload.medical_result.status !== 'RELEASED'
+  ) {
+    throw new Error(
+      '공개 결과를 확인하지 못했습니다. 목록을 새로고침해 상태를 확인하세요.',
+    );
+  }
+}
 function mapReportAiSummary(raw: unknown): ReportAiSummary | null {
   if (!isRecord(raw)) return null
   const sidesRaw = Array.isArray(raw.sides) ? raw.sides : []
@@ -1623,6 +1650,7 @@ export async function saveMedicalResultConclusion(resultId: number, conclusion: 
 export async function signoffMedicalResult(resultId: number, conclusion?: string): Promise<MedicalResultDetail> {
   return mapMedicalResultDetail(await request<unknown>(`/api/medical-results/${resultId}/signoff/`, {
     method: 'POST',
+    refreshOnUnauthorized: false,
     body: JSON.stringify(conclusion ? { conclusion } : {}),
   }))
 }
@@ -1630,6 +1658,7 @@ export async function signoffMedicalResult(resultId: number, conclusion?: string
 export async function releaseMedicalResult(resultId: number): Promise<MedicalResultDetail> {
   return mapMedicalResultDetail(await request<unknown>(`/api/medical-results/${resultId}/release/`, {
     method: 'POST',
+    refreshOnUnauthorized: false,
     body: JSON.stringify({}),
   }))
 }

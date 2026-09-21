@@ -218,12 +218,28 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
   }
 
   const openReport = async (reportId: number) => {
+    setReportsError('')
+    const tab = window.open('about:blank', '_blank')
+    if (!tab) {
+      setReportsError('브라우저에서 팝업을 허용한 뒤 보고서 보기를 다시 눌러주세요.')
+      return
+    }
+    tab.opener = null
     setReportDownloadingId(reportId)
     try {
       const info = await getReportDownload(reportId)
-      if (info.downloadUrl) window.open(info.downloadUrl, '_blank', 'noopener')
-      else setReportsError('보고서 파일 저장소(RustFS) 연결이 아직 설정되지 않아 다운로드할 수 없습니다.')
+      if (info.downloadIntegrationStatus !== 'CONFIGURED' || !info.downloadUrl) {
+        throw new Error(`보고서 다운로드 주소를 받지 못했습니다. 저장소 연결 상태: ${info.downloadIntegrationStatus}`)
+      }
+      if ((info.downloadExpiresAt && Date.parse(info.downloadExpiresAt) <= Date.now()) || (info.downloadExpiresIn !== null && info.downloadExpiresIn <= 0)) {
+        throw new Error('다운로드 주소가 만료되었습니다. 보고서 보기를 다시 눌러주세요.')
+      }
+      const url = new URL(info.downloadUrl)
+      if (!['https:', 'http:'].includes(url.protocol)) throw new Error('보고서 다운로드 주소 형식이 올바르지 않습니다.')
+      // Navigate without forwarding the staff JWT to the storage service.
+      if (!tab.closed) tab.location.replace(info.downloadUrl)
     } catch (error) {
+      tab.close()
       setReportsError(error instanceof Error ? error.message : '보고서 다운로드에 실패했습니다.')
     } finally {
       setReportDownloadingId(null)
