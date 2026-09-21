@@ -107,6 +107,7 @@ import { FollowUpTimeline } from './FollowUpTimeline'
 import { ClinicalAIAnalysisPanel } from './ClinicalAIAnalysisPanel'
 import { XCAAnalysisPanel } from './XCAAnalysisPanel'
 import { ExaminationPatientSearch } from './ExaminationPatientSearch'
+import { buildClinicalAiInput } from '../api/clinicalAiInput'
 import { selectLabExaminationForPatient } from '../api/patientSelection'
 import type { DicomAnnotationTransform } from './CornerstoneDicomViewer'
 
@@ -1255,25 +1256,10 @@ export function ExaminationImagingWorkspace({
     sex: followUpRecords.patient.sex ?? patient.sex,
     age: followUpRecords.patient.age ?? patient.age,
   } : patient
-  const clinicalLabInput = useMemo(() => {
-    // 우선순위: (1) dataset clinical_feature_snapshot
-    // → (2) 선택한(기본: 최신) 검사 차수의 확정 lab 수치가 snapshot을 덮어씀
-    // → (3) 검사에 이미 저장된 clinicalInput이 있으면 그것을 최우선.
-    // 없는 항목은 0/정상으로 채우지 않는다.
-    const payload: Record<string, number | string> = { ...(clinicalFeatureSnapshot ?? {}) }
-
-    const supported = new Set(['FBS', 'CR', 'TG', 'LDL', 'HDL', 'BUN', 'ESR', 'HB', 'K', 'NA', 'WBC', 'LYMPH', 'NEUT', 'PLT', 'EF-TTE'])
-    const decimalFields = new Set(['CR', 'HDL', 'HB', 'K'])
-    ;(selectedLabAi?.exam.result?.measurements ?? []).forEach((item) => {
-      const code = item.code.trim().toUpperCase()
-      if (!supported.has(code) || item.valueNumeric === undefined) return
-      const modelName = code === 'NA' ? 'Na' : code === 'LYMPH' ? 'Lymph' : code === 'NEUT' ? 'Neut' : code
-      payload[modelName] = decimalFields.has(code) ? item.valueNumeric : Math.round(item.valueNumeric)
-    })
-
-    if (selectedLabAi?.exam.clinicalInput) return { ...payload, ...selectedLabAi.exam.clinicalInput }
-    return payload
-  }, [selectedLabAi, clinicalFeatureSnapshot])
+  const clinicalLabInput = useMemo(
+    () => buildClinicalAiInput(clinicalFeatureSnapshot, selectedLabAi?.exam),
+    [selectedLabAi, clinicalFeatureSnapshot],
+  )
   const anatomyCapable = localAnatomyTest || hasAnatomyGlbCapability({ rendering: selectedRendering, fileFormat: modelFormat })
   const hasAuxImages = Boolean(renderingAuxImages.preview || renderingAuxImages.overlay)
 
