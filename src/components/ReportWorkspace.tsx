@@ -180,6 +180,7 @@ function AiBlock({ title, summary, kind, attachments = [] }: { title: string; su
           ))}
         </ul>
       )}
+<<<<<<< HEAD
       </>}
       {kind === 'xca' && (attachments.length ? attachments.map((attachment, index) => <section key={index}>
         <h4>XCA 선택 첨부 {index + 1}</h4>
@@ -190,6 +191,15 @@ function AiBlock({ title, summary, kind, attachments = [] }: { title: string; su
         </div>)}
       </section>) : <ReportXcaImages sourceId={summary?.sourceFileAssetId ?? null} maskId={summary?.overlayFileAssetId ?? null} />)}
       {kind === 'ccta' && summary && (
+=======
+      {kind === 'xca' && (
+        <div className="report-preview-row">
+          <ReportFilePreview fileId={summary.sourceFileAssetId} label="원본 대표 프레임" />
+          <ReportFilePreview fileId={summary.previewFileAssetId} label="협착 의심 영역 합성본" />
+        </div>
+      )}
+      {kind === 'ccta' && (
+>>>>>>> origin/main
         <div className="report-preview-row">
           <ReportFilePreview fileId={summary.previewFileAssetId} label="석회화 preview" />
           <ReportFilePreview fileId={summary.overlayFileAssetId} label="석회화 overlay" />
