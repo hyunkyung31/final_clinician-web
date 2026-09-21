@@ -5,15 +5,22 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { VTKLoader } from 'three/examples/jsm/loaders/VTKLoader.js'
 
+export type AnatomyViewMode = 'VESSEL' | 'CALCIFICATION' | 'VESSEL_CALCIFICATION'
+export type AnatomyRole = 'heart' | 'aorta' | 'coronary' | 'calcification' | 'centerline' | 'other'
+
 interface MedicalModelViewerProps {
   sourceUrl: string
   format: string
   color?: string
+  viewMode?: AnatomyViewMode
+  dumpScene?: boolean
   onStatus?: (status: string) => void
   onError?: (message: string) => void
   onCameraChange?: (state: Record<string, unknown>) => void
   cameraState?: Record<string, unknown> | null
 }
+
+const HEART_CONTEXT_OPACITY = 0.08
 
 function disposeObject(object: THREE.Object3D) {
   object.traverse((child) => {
@@ -36,16 +43,134 @@ function fitModel(object: THREE.Object3D) {
   object.position.sub(center.multiplyScalar(object.scale.x))
 }
 
+function classifyAnatomyRole(name: string): AnatomyRole {
+  const normalized = name.toLowerCase()
+  if (normalized.includes('calcif') || normalized.includes('calcium')) return 'calcification'
+  if (normalized.includes('coronar')) return 'coronary'
+  if (normalized.includes('aorta')) return 'aorta'
+  if (normalized.includes('heart') || normalized.includes('cardiac')) return 'heart'
+  if (normalized.includes('centerline') || normalized.includes('centreline')) return 'centerline'
+  return 'other'
+}
+
+function ancestryName(object: THREE.Object3D) {
+  const parts: string[] = []
+  let current: THREE.Object3D | null = object
+  while (current) {
+    if (current.name) parts.push(current.name)
+    current = current.parent
+  }
+  return parts.join(' ')
+}
+
+function materialNames(object: THREE.Object3D) {
+  if (!(object instanceof THREE.Mesh)) return ''
+  const materials = Array.isArray(object.material) ? object.material : [object.material]
+  return materials.map((material) => material?.name || '(unnamed)').join(', ')
+}
+
+function eachMaterial(object: THREE.Object3D, visit: (material: THREE.Material) => void) {
+  if (!(object instanceof THREE.Mesh)) return
+  const materials = Array.isArray(object.material) ? object.material : [object.material]
+  materials.forEach((material) => {
+    if (material) visit(material)
+  })
+}
+
+function dumpSceneGraph(root: THREE.Object3D) {
+  const rows: Array<Record<string, unknown>> = []
+  root.traverse((node) => {
+    const isMesh = node instanceof THREE.Mesh
+    const box = isMesh ? new THREE.Box3().setFromObject(node) : null
+    rows.push({
+      name: node.name || '(unnamed)',
+      type: node.type,
+      isMesh,
+      material: materialNames(node) || null,
+      visible: node.visible,
+      role: classifyAnatomyRole(ancestryName(node)),
+      worldBounds: box && !box.isEmpty()
+        ? { min: box.min.toArray(), max: box.max.toArray() }
+        : null,
+    })
+  })
+  console.info('[anatomy.glb] scene dump', rows)
+  if (typeof window !== 'undefined') {
+    ;(window as Window & { __anatomySceneDump?: unknown }).__anatomySceneDump = rows
+  }
+  return rows
+}
+
+function rememberOriginalAppearance(root: THREE.Object3D) {
+  root.traverse((node) => {
+    const role = classifyAnatomyRole(ancestryName(node))
+    node.userData.anatomyRole = role
+    node.userData.originalVisible = node.visible
+    eachMaterial(node, (material) => {
+      const opacityMaterial = material as THREE.MeshStandardMaterial
+      if (typeof opacityMaterial.opacity === 'number') {
+        material.userData.originalOpacity = opacityMaterial.opacity
+        material.userData.originalTransparent = opacityMaterial.transparent
+        material.userData.originalDepthWrite = opacityMaterial.depthWrite
+      }
+    })
+  })
+}
+
+function applyAnatomyViewMode(root: THREE.Object3D, viewMode: AnatomyViewMode) {
+  root.traverse((node) => {
+    const role = (node.userData.anatomyRole as AnatomyRole | undefined)
+      ?? classifyAnatomyRole(ancestryName(node))
+
+    if (role === 'centerline') {
+      node.visible = false
+      return
+    }
+
+    const vesselVisible = viewMode === 'VESSEL' || viewMode === 'VESSEL_CALCIFICATION'
+    const calcVisible = viewMode === 'CALCIFICATION' || viewMode === 'VESSEL_CALCIFICATION'
+    const heartVisible = viewMode !== 'CALCIFICATION'
+
+    if (role === 'coronary' || role === 'aorta') node.visible = vesselVisible
+    else if (role === 'calcification') node.visible = calcVisible
+    else if (role === 'heart') node.visible = heartVisible
+    else node.visible = node.userData.originalVisible !== false
+
+    eachMaterial(node, (material) => {
+      const opacityMaterial = material as THREE.MeshStandardMaterial
+      if (typeof opacityMaterial.opacity !== 'number') return
+      const originalOpacity = Number(material.userData.originalOpacity ?? opacityMaterial.opacity)
+      const originalTransparent = Boolean(material.userData.originalTransparent)
+      const originalDepthWrite = material.userData.originalDepthWrite as boolean | undefined
+      if (role === 'heart' && heartVisible) {
+        opacityMaterial.opacity = Math.min(originalOpacity, HEART_CONTEXT_OPACITY)
+        opacityMaterial.transparent = true
+        opacityMaterial.depthWrite = false
+      } else {
+        opacityMaterial.opacity = originalOpacity
+        opacityMaterial.transparent = originalTransparent
+        if (typeof originalDepthWrite === 'boolean') opacityMaterial.depthWrite = originalDepthWrite
+      }
+      opacityMaterial.needsUpdate = true
+    })
+  })
+}
+
 export function MedicalModelViewer({
   sourceUrl,
   format,
   color = '#ef5d63',
+  viewMode = 'VESSEL_CALCIFICATION',
+  dumpScene = true,
   onStatus,
   onError,
   onCameraChange,
   cameraState,
 }: MedicalModelViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const loadedRootRef = useRef<THREE.Object3D | null>(null)
+  const viewModeRef = useRef(viewMode)
+  viewModeRef.current = viewMode
 
   useEffect(() => {
     const container = containerRef.current
@@ -78,6 +203,9 @@ export function MedicalModelViewer({
     controls.enableDamping = true
     controls.dampingFactor = 0.075
     controls.screenSpacePanning = true
+    controls.enableRotate = true
+    controls.enableZoom = true
+    controls.enablePan = true
     controls.minDistance = 1.2
     controls.maxDistance = 12
     const applyCamera = () => {
@@ -124,6 +252,9 @@ export function MedicalModelViewer({
 
       if (normalizedFormat === 'GLB' || normalizedFormat === 'GLTF') {
         const gltf = await new GLTFLoader().loadAsync(sourceUrl, progress)
+        if (dumpScene) dumpSceneGraph(gltf.scene)
+        rememberOriginalAppearance(gltf.scene)
+        applyAnatomyViewMode(gltf.scene, viewModeRef.current)
         return gltf.scene
       }
 
@@ -164,6 +295,7 @@ export function MedicalModelViewer({
           return
         }
         loadedObject = object
+        loadedRootRef.current = object
         fitModel(object)
         scene.add(object)
         controls.target.set(0, 0, 0)
@@ -192,6 +324,7 @@ export function MedicalModelViewer({
 
     return () => {
       disposed = true
+      loadedRootRef.current = null
       window.cancelAnimationFrame(animationFrame)
       resizeObserver.disconnect()
       controls.dispose()
@@ -199,7 +332,12 @@ export function MedicalModelViewer({
       renderer.dispose()
       renderer.domElement.remove()
     }
-  }, [color, format, onError, onStatus, sourceUrl, onCameraChange, cameraState])
+  }, [color, dumpScene, format, onError, onStatus, sourceUrl, onCameraChange, cameraState])
 
-  return <div className="medical-model-viewer" ref={containerRef} />
+  useEffect(() => {
+    if (!loadedRootRef.current) return
+    applyAnatomyViewMode(loadedRootRef.current, viewMode)
+  }, [viewMode])
+
+  return <div className="medical-model-viewer" ref={containerRef} role="application" aria-label="3D anatomy viewer" />
 }

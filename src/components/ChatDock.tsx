@@ -11,6 +11,7 @@ import {
   LogOut,
   Menu,
   MessageSquarePlus,
+  Minimize2,
   Search,
   Send,
   UserRound,
@@ -53,10 +54,12 @@ export function ChatDock({
   open,
   onToggle,
   onUnreadCountChange,
+  patientContext,
 }: {
   open: boolean
   onToggle: () => void
   onUnreadCountChange?: (count: number) => void
+  patientContext?: { name: string; id: string } | null
 }) {
   const [rooms, setRooms] = useState<ChatRoom[]>([])
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null)
@@ -399,14 +402,38 @@ export function ChatDock({
           title={open ? '채팅 접기' : '채팅 펼치기'}
           aria-label={open ? '채팅 접기' : '채팅 펼치기'}
         >
-          <Menu size={20} strokeWidth={1.8} />
+          <Menu size={18} strokeWidth={1.8} />
           {totalUnreadCount > 0 && (
             <b className="chat-unread-badge">
               {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
             </b>
           )}
         </button>
-        {open && <><strong>Chat</strong><span><i />연결됨</span></>}
+        {open && (
+          <>
+            <div className="chat-dock-title">
+              <strong>DUGN Assistant</strong>
+              {patientContext ? <small>{patientContext.name} · {patientContext.id}</small> : <small>채팅</small>}
+            </div>
+            <div className="chat-dock-header-actions">
+              <button onClick={onToggle} title="최소화" type="button" aria-label="채팅 최소화">
+                <Minimize2 size={15} strokeWidth={1.8} />
+              </button>
+              <button
+                onClick={() => {
+                  setView('ROOMS')
+                  setSelectedRoomId(null)
+                  onToggle()
+                }}
+                title="닫기"
+                type="button"
+                aria-label="채팅 닫기"
+              >
+                <X size={15} strokeWidth={1.8} />
+              </button>
+            </div>
+          </>
+        )}
       </header>
 
       {!open && (

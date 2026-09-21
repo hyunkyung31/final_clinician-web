@@ -5,24 +5,32 @@ import {
 } from "react";
 
 import { LoginView } from "./components/LoginView";
+import { AppPageHeader } from "./components/AppPageHeader";
 import { ChatDock } from "./components/ChatDock";
 import { NotificationCenter } from "./components/NotificationCenter";
 import { SessionLockOverlay } from "./components/SessionLockOverlay";
 import { HomeDashboard } from "./components/HomeDashboard";
+import {
+  fallbackSectionForRole,
+  initialActiveSection,
+  landingSectionAfterLogin,
+  pageHeaderCopy,
+  SECTION_STORAGE_KEY,
+  showChatPatientContext,
+  type AppShellSection,
+} from "./appShell";
 import { ConsultationWorkspace } from "./components/ConsultationWorkspace";
 import { ScheduleWorkspace } from "./components/ScheduleWorkspace";
 import { AppointmentWorkspace } from "./components/AppointmentWorkspace";
 import { ProcedureRecordWorkspace } from "./components/ProcedureRecordWorkspace";
-import { ClinicalAIAnalysisPanel } from "./components/ClinicalAIAnalysisPanel";
-import { StudyDicomViewer } from "./components/StudyDicomViewer";
 import {
   ModuleWorkspace,
   type ModuleSection,
 } from "./components/ModuleWorkspace";
+import { WorkstationHub } from "./components/WorkstationHub";
 
 import {
   ApiError,
-  createPatientMemo,
   getDashboardAIStatus,
   getDashboardRecentPatients,
   getDashboardSummary,
@@ -39,7 +47,6 @@ import {
   loginStaff,
   logoutStaff,
   reauthenticateStaff,
-  updatePatientMemo,
 } from "./api/client";
 import { resolveSelectedPatient } from "./api/patientSelection";
 
@@ -50,7 +57,6 @@ import {
   CalendarDays,
   FileText,
   House,
-  Images,
   LayoutDashboard,
   LoaderCircle,
   LogOut,
@@ -58,17 +64,14 @@ import {
   MonitorPlay,
   PanelLeftClose,
   PanelLeftOpen,
-  Pencil,
   ClipboardPenLine,
   Plus,
-  Save,
   Search,
   Settings,
   ShieldCheck,
   Stethoscope,
   Sun,
   Users,
-  X,
   type LucideIcon,
 } from "lucide-react";
 
@@ -87,11 +90,6 @@ import type {
   WorkStatus,
 } from "./types";
 
-import { OrderWorkspace } from "./components/OrderWorkspace";
-
-type WorkspaceTab = "영상" | "AI 분석" | "정량 지표" | "이전 검사 비교";
-
-type ReportTab = "판독·보고" | "환자 메모" | "오더" | "기록";
 type ThemeMode = "light" | "dark";
 type FontSizeMode = "small" | "normal" | "large" | "xlarge";
 type PatientScope = "mine" | "consultation" | "recent" | "all";
@@ -116,19 +114,7 @@ function initialFontSize(): FontSizeMode {
     : "normal";
 }
 
-type GlobalSection =
-  | "홈"
-  | "워크스테이션"
-  | "일정"
-  | "예약"
-  | "환자 관리"
-  | "검사·영상"
-  | "AI 분석"
-  | "시술기록"
-  | "협진"
-  | "채팅"
-  | "결과보고서"
-  | "설정";
+type GlobalSection = AppShellSection;
 
 interface NavItem {
   icon: LucideIcon;
@@ -199,15 +185,6 @@ function getRoleSections(roles: string[]): Set<GlobalSection> {
   return new Set<GlobalSection>(["홈", "워크스테이션", "설정"]);
 }
 
-const workspaceTabs: WorkspaceTab[] = [
-  "영상",
-  "AI 분석",
-  "정량 지표",
-  "이전 검사 비교",
-];
-
-const reportTabs: ReportTab[] = ["판독·보고", "환자 메모", "오더", "기록"];
-
 const riskLabel: Record<RiskLevel, string> = {
   high: "고위험",
   medium: "중위험",
@@ -219,20 +196,6 @@ const statusLabel: Record<WorkStatus, string> = {
   running: "진행중",
   complete: "완료",
   urgent: "긴급",
-};
-
-const workspaceEmptyDescription: Record<WorkspaceTab, string> = {
-  영상: "환자의 영상검사를 선택하면 DICOM 영상이 표시됩니다.",
-  "AI 분석": "완료된 AI 분석을 선택하거나 새 분석을 요청해주세요.",
-  "정량 지표": "AI 분석이 완료되면 정량 분석 결과가 표시됩니다.",
-  "이전 검사 비교": "비교할 수 있는 이전 검사가 없습니다.",
-};
-
-const reportEmptyDescription: Record<ReportTab, string> = {
-  "판독·보고": "검사 및 AI 분석 결과를 선택하면 보고서를 작성할 수 있습니다.",
-  "환자 메모": "이 환자에게 등록된 의료진 메모가 없습니다.",
-  오더: "이 환자에게 등록된 검사 오더가 없습니다.",
-  기록: "표시할 의료진 업무 기록이 없습니다.",
 };
 
 function PatientRow({
@@ -296,25 +259,6 @@ function EmptyState({
   );
 }
 
-function formatMemoDate(value: string) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("ko-KR", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
-
 function App() {
   const [theme, setTheme] = useState<ThemeMode>(initialTheme);
   const [fontSize, setFontSize] = useState<FontSizeMode>(initialFontSize);
@@ -323,7 +267,7 @@ function App() {
   );
 
   const [activeSection, setActiveSection] =
-    useState<GlobalSection>("홈");
+    useState<GlobalSection>(() => initialActiveSection(hasSession(), window.sessionStorage.getItem(SECTION_STORAGE_KEY)));
 
   const [chatDockOpen, setChatDockOpen] = useState(false);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
@@ -347,9 +291,15 @@ function App() {
   }, [fontSize]);
 
   useEffect(() => {
+    if (mode === "api") {
+      window.sessionStorage.setItem(SECTION_STORAGE_KEY, activeSection);
+    }
+  }, [activeSection, mode]);
+
+  useEffect(() => {
     if (activeSection === "채팅") {
-      setActiveSection("워크스테이션");
       setChatDockOpen(true);
+      setActiveSection("홈");
     }
   }, [activeSection]);
 
@@ -428,6 +378,11 @@ function App() {
   const [examDateTo, setExamDateTo] = useState("");
   const [examinationStatusFilter, setExaminationStatusFilter] = useState("");
   const [aiStatusFilter, setAiStatusFilter] = useState("");
+  const [draftExamDateFrom, setDraftExamDateFrom] = useState("");
+  const [draftExamDateTo, setDraftExamDateTo] = useState("");
+  const [draftExaminationStatus, setDraftExaminationStatus] = useState("");
+  const [draftAiStatus, setDraftAiStatus] = useState("");
+  const [imagingLaunchFocus, setImagingLaunchFocus] = useState<'xca' | 'ccta3d' | 'imaging' | null>(null);
 
   const [patientDetail, setPatientDetail] = useState<PatientDetail | null>(
     null,
@@ -465,21 +420,10 @@ function App() {
   const [loginError, setLoginError] = useState("");
   const [search, setSearch] = useState("");
 
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>("영상");
-
-  const [activeReportTab, setActiveReportTab] =
-    useState<ReportTab>("판독·보고");
-
   const [patientMemos, setPatientMemos] = useState<PatientMemo[]>([]);
 
-  const [memoDraft, setMemoDraft] = useState("");
   const [memosLoading, setMemosLoading] = useState(false);
-  const [memoSaving, setMemoSaving] = useState(false);
   const [memoError, setMemoError] = useState("");
-
-  const [editingMemoId, setEditingMemoId] = useState<number | null>(null);
-
-  const [editingMemoContent, setEditingMemoContent] = useState("");
 
   const clinicianName =
     staffDoctor?.name ||
@@ -738,7 +682,7 @@ function App() {
 
   useEffect(() => {
     if (staffIdentity && !roleSections.has(activeSection)) {
-      setActiveSection("워크스테이션");
+      setActiveSection(fallbackSectionForRole(activeSection, roleSections));
     }
   }, [activeSection, roleSections, staffIdentity]);
 
@@ -872,10 +816,7 @@ function App() {
   useEffect(() => {
     if (mode !== "api" || !selectedPatient?.backendId) {
       setPatientMemos([]);
-      setMemoDraft("");
       setMemoError("");
-      setEditingMemoId(null);
-      setEditingMemoContent("");
       setMemosLoading(false);
       return;
     }
@@ -884,8 +825,6 @@ function App() {
 
     setPatientMemos([]);
     setMemoError("");
-    setEditingMemoId(null);
-    setEditingMemoContent("");
     setMemosLoading(true);
 
     getPatientMemos(selectedPatient.backendId)
@@ -921,6 +860,9 @@ function App() {
 
     try {
       await loginStaff(username, password);
+      const landing = landingSectionAfterLogin();
+      window.sessionStorage.setItem(SECTION_STORAGE_KEY, landing);
+      setActiveSection(landing);
       setMode("api");
     } catch (error) {
       setLoginError(
@@ -936,68 +878,6 @@ function App() {
     setPatientMemos(memos);
   };
 
-  const handleCreateMemo = async () => {
-    const patientId = selectedPatient?.backendId;
-    const content = memoDraft.trim();
-
-    if (!patientId || !content || memoSaving) {
-      return;
-    }
-
-    setMemoSaving(true);
-    setMemoError("");
-
-    try {
-      await createPatientMemo(patientId, content);
-      await reloadPatientMemos(patientId);
-      setMemoDraft("");
-    } catch (error) {
-      setMemoError(
-        error instanceof Error ? error.message : "메모를 저장하지 못했습니다.",
-      );
-    } finally {
-      setMemoSaving(false);
-    }
-  };
-
-  const handleStartMemoEdit = (memo: PatientMemo) => {
-    setEditingMemoId(memo.id);
-    setEditingMemoContent(memo.content);
-    setMemoError("");
-  };
-
-  const handleCancelMemoEdit = () => {
-    setEditingMemoId(null);
-    setEditingMemoContent("");
-  };
-
-  const handleUpdateMemo = async () => {
-    const patientId = selectedPatient?.backendId;
-    const content = editingMemoContent.trim();
-
-    if (!patientId || editingMemoId === null || !content || memoSaving) {
-      return;
-    }
-
-    setMemoSaving(true);
-    setMemoError("");
-
-    try {
-      await updatePatientMemo(editingMemoId, content);
-
-      await reloadPatientMemos(patientId);
-
-      setEditingMemoId(null);
-      setEditingMemoContent("");
-    } catch (error) {
-      setMemoError(
-        error instanceof Error ? error.message : "메모를 수정하지 못했습니다.",
-      );
-    } finally {
-      setMemoSaving(false);
-    }
-  };
-
   const handleLogout = async () => {
     await logoutStaff().catch(() => undefined);
 
@@ -1009,6 +889,7 @@ function App() {
     setSearch("");
     setApiError("");
     setLoginError("");
+    window.sessionStorage.removeItem(SECTION_STORAGE_KEY);
     setActiveSection("홈");
     setChatDockOpen(false);
     setChatUnreadCount(0);
@@ -1074,6 +955,14 @@ function App() {
     setActiveSection("워크스테이션");
   };
 
+  const headerCopy = pageHeaderCopy(
+    activeSection,
+    selectedPatient ? { name: selectedPatient.name, id: selectedPatient.id } : null,
+  );
+  const chatPatient = showChatPatientContext(activeSection) && selectedPatient
+    ? { name: selectedPatient.name, id: selectedPatient.id }
+    : null;
+
   if (mode === "auth") {
     return (
       <LoginView
@@ -1087,8 +976,8 @@ function App() {
   return (
     <main
       data-theme={theme}
-      className={`app-shell chat-dock-present ${
-        chatDockOpen ? "chat-dock-open" : ""
+      className={`app-shell ${
+        chatDockOpen ? "chat-dock-open" : "chat-dock-collapsed"
       } ${worklistCollapsed ? "worklist-collapsed" : ""}`}
     >
       <aside className="global-nav" aria-label="전역 메뉴">
@@ -1179,8 +1068,21 @@ function App() {
         </div>
       </aside>
 
-      <NotificationCenter onOpenNotification={handleOpenNotification} />
+      <div className="app-shell-main">
+        <AppPageHeader
+          title={headerCopy.title}
+          subtitle={headerCopy.subtitle}
+          userName={clinicianName}
+          userDepartment={clinicianDepartment}
+          chatOpen={chatDockOpen}
+          chatUnreadCount={chatUnreadCount}
+          onToggleChat={() => setChatDockOpen((current) => !current)}
+          onLogout={() => void handleLogout()}
+        >
+          <NotificationCenter onOpenNotification={handleOpenNotification} />
+        </AppPageHeader>
 
+        <div className={`app-shell-content ${activeSection === "워크스테이션" ? "is-workstation" : ""}`}>
       {activeSection === "홈" && (
         <HomeDashboard
           summary={dashboardSummary}
@@ -1197,9 +1099,13 @@ function App() {
             setActiveSection(destination);
           }}
           onOpenPatient={(patientId) => {
-            const patient = patientList.find(
-              (item) => item.backendId === patientId,
-            );
+            const patient = resolveSelectedPatient(String(patientId), [
+              patientList,
+              myPatientList,
+              consultationPatientList,
+              recentPatientList,
+              patientSearchResults,
+            ]);
             if (patient) setSelectedId(patient.id);
             setActiveSection("워크스테이션");
           }}
@@ -1261,6 +1167,7 @@ function App() {
           staffDoctor={staffDoctor}
           fontSize={fontSize}
           onFontSizeChange={setFontSize}
+          imagingLaunchFocus={imagingLaunchFocus}
           onSelectPatient={(patient) => {
             setPatientList((current) => [patient, ...current.filter((item) => item.id !== patient.id)]);
             setSelectedId(patient.id);
@@ -1321,13 +1228,25 @@ function App() {
           </label>
 
           <details className="patient-detail-filters">
-            <summary>상세 필터</summary>
+            <summary>상세 필터{[examDateFrom, examDateTo, examinationStatusFilter, aiStatusFilter].filter(Boolean).length ? ` ● ${[examDateFrom, examDateTo, examinationStatusFilter, aiStatusFilter].filter(Boolean).length}` : ''}</summary>
             <div>
-              <label>검사 시작일<input type="date" value={examDateFrom} onChange={(event) => setExamDateFrom(event.target.value)} /></label>
-              <label>검사 종료일<input type="date" value={examDateTo} onChange={(event) => setExamDateTo(event.target.value)} /></label>
-              <label>검사 상태<select value={examinationStatusFilter} onChange={(event) => setExaminationStatusFilter(event.target.value)}><option value="">전체</option><option value="ORDERED">접수</option><option value="SCHEDULED">예약</option><option value="IN_PROGRESS">진행중</option><option value="COMPLETED">완료</option><option value="CANCELED">취소</option></select></label>
-              <label>AI 상태<select value={aiStatusFilter} onChange={(event) => setAiStatusFilter(event.target.value)}><option value="">전체</option><option value="QUEUED">대기</option><option value="RUNNING">진행중</option><option value="SUCCEEDED">완료</option><option value="FAILED">실패</option></select></label>
-              <button onClick={() => { setExamDateFrom(""); setExamDateTo(""); setExaminationStatusFilter(""); setAiStatusFilter(""); }} type="button">초기화</button>
+              <div className="filter-range">
+                <label>검사 기간<input type="date" value={draftExamDateFrom} onChange={(event) => setDraftExamDateFrom(event.target.value)} /></label>
+                <span>~</span>
+                <label>종료일<input type="date" value={draftExamDateTo} onChange={(event) => setDraftExamDateTo(event.target.value)} /></label>
+              </div>
+              <label>검사 상태<select value={draftExaminationStatus} onChange={(event) => setDraftExaminationStatus(event.target.value)}><option value="">전체</option><option value="ORDERED">접수</option><option value="SCHEDULED">예약</option><option value="IN_PROGRESS">진행중</option><option value="COMPLETED">완료</option><option value="CANCELED">취소</option></select></label>
+              <label>AI 상태<select value={draftAiStatus} onChange={(event) => setDraftAiStatus(event.target.value)}><option value="">전체</option><option value="QUEUED">대기</option><option value="RUNNING">진행중</option><option value="SUCCEEDED">완료</option><option value="FAILED">실패</option></select></label>
+              <div className="filter-actions">
+                <button onClick={() => {
+                  setDraftExamDateFrom(""); setDraftExamDateTo(""); setDraftExaminationStatus(""); setDraftAiStatus("");
+                  setExamDateFrom(""); setExamDateTo(""); setExaminationStatusFilter(""); setAiStatusFilter("");
+                }} type="button">초기화</button>
+                <button className="primary" onClick={() => {
+                  setExamDateFrom(draftExamDateFrom); setExamDateTo(draftExamDateTo);
+                  setExaminationStatusFilter(draftExaminationStatus); setAiStatusFilter(draftAiStatus);
+                }} type="button">적용</button>
+              </div>
             </div>
           </details>
 
@@ -1445,425 +1364,53 @@ function App() {
         )}
 
         {selectedPatient && (
-          <>
-            <header className="patient-context">
-              <div className="patient-name">
-                <strong>
-                  {currentPatientDetail?.name ?? selectedPatient.name}
-                </strong>
-
-                <span>
-                  {currentPatientDetail?.sex ?? selectedPatient.sex}
-                  {" / "}
-                  {currentPatientDetail?.age ?? selectedPatient.age}
-                </span>
-
-                <b className={`risk-chip risk-${selectedPatient.risk}`}>
-                  {riskLabel[selectedPatient.risk]}
-                </b>
-
-                <small>
-                  {patientDetailLoading
-                    ? "환자 상세정보를 불러오는 중…"
-                    : patientDetailError
-                      ? "상세정보 조회 실패"
-                      : `${
-                          currentPatientDetail?.medicalRecordNo ??
-                          selectedPatient.id
-                        } · 생년월일 ${currentPatientDetail?.birthDate ?? "-"}`}
-                </small>
-              </div>
-
-              <div className="header-actions">
-                <button
-                  className="secondary"
-                  type="button"
-                  disabled
-                  title={
-                    selectedStudy
-                      ? "Viewer token 연결 예정"
-                      : "선택된 영상검사가 없습니다"
-                  }
-                >
-                  원본 영상
-                </button>
-
-                <button
-                  className="primary"
-                  type="button"
-                  disabled
-                  title="보고서 API 연결 예정"
-                >
-                  리포트 생성
-                </button>
-              </div>
-            </header>
-
-            <div className="clinical-strip">
-              <span className="source-badge source-api">LIVE API</span>
-
-              <span>
-                환자번호{" "}
-                <strong>
-                  {currentPatientDetail?.medicalRecordNo ?? selectedPatient.id}
-                </strong>
-              </span>
-
-              <span>
-                연락처 <strong>{currentPatientDetail?.contact || "-"}</strong>
-              </span>
-
-              <span>
-                영상검사 <strong>{imagingStudies.length}건</strong>
-              </span>
-
-              <span>
-                AI 대기 <strong>{aiStatus?.queued ?? 0}건</strong>
-              </span>
-
-              <span>
-                AI 진행 <strong>{aiStatus?.running ?? 0}건</strong>
-              </span>
-
-              <span className="recent-note">
-                API 기준일 <strong>{dashboardSummary?.date ?? "-"}</strong>
-              </span>
-            </div>
-
-            <div className="workspace-grid">
-              <aside className="timeline-panel">
-                <div className="panel-heading">
-                  <h3>진료 타임라인</h3>
-                  <span>{timelineItems.length}건</span>
-                </div>
-
-                <div className="compact-tabs">
-                  <button className="active" type="button">
-                    전체
-                  </button>
-
-                  <button type="button" disabled>
-                    검사
-                  </button>
-
-                  <button type="button" disabled>
-                    진료
-                  </button>
-
-                  <button type="button" disabled>
-                    메모
-                  </button>
-                </div>
-
-                <div className="study-list-block">
-                  <div className="study-list-title">
-                    <span>영상 검사</span>
-                    <b>{imagingStudies.length}</b>
-                  </div>
-
-                  {studiesLoading && (
-                    <div className="study-list-message">
-                      <LoaderCircle
-                        size={14}
-                        strokeWidth={1.8}
-                        className="spin"
-                      />
-                      검사 목록을 불러오는 중
-                    </div>
-                  )}
-
-                  {!studiesLoading && studiesError && (
-                    <div className="study-list-error">{studiesError}</div>
-                  )}
-
-                  {!studiesLoading &&
-                    !studiesError &&
-                    imagingStudies.map((study) => (
-                      <button
-                        key={study.id}
-                        className={`study-row ${
-                          selectedStudy?.id === study.id ? "active" : ""
-                        }`}
-                        onClick={() => {
-                          setSelectedStudyId(study.id);
-                          setActiveTab("영상");
-                        }}
-                        type="button"
-                      >
-                        <Images size={15} strokeWidth={1.8} />
-
-                        <span>
-                          <strong>{study.description}</strong>
-                          <small>
-                            {study.modality} · {study.studyDate || "날짜 없음"}
-                          </small>
-                        </span>
-
-                        <b>{study.status}</b>
-                      </button>
-                    ))}
-
-                  {!studiesLoading &&
-                    !studiesError &&
-                    imagingStudies.length === 0 && (
-                      <p className="study-list-message">
-                        등록된 영상검사가 없습니다.
-                      </p>
-                    )}
-                </div>
-
-                {timelineLoading && (
-                  <div className="panel-loading">
-                    타임라인을 불러오는 중입니다.
-                  </div>
-                )}
-
-                {!timelineLoading && timelineItems.length > 0 && (
-                  <div className="timeline">
-                    {timelineItems.map((item, index) => (
-                      <article
-                        key={`${item.date}-${item.title}-${index}`}
-                        className={`timeline-item ${
-                          item.active ? "active" : ""
-                        }`}
-                      >
-                        <time>{item.date}</time>
-                        <strong>{item.title}</strong>
-                        <p>{item.detail}</p>
-                      </article>
-                    ))}
-                  </div>
-                )}
-
-                {!timelineLoading && timelineItems.length === 0 && (
-                  <EmptyState
-                    compact
-                    title="진료 이력이 없습니다"
-                    description="등록된 진료·검사·보고서 이력이 없습니다."
-                  />
-                )}
-              </aside>
-
-              <section className="analysis-panel">
-                <div className="analysis-tabs compact-tabs">
-                  <div>
-                    {workspaceTabs.map((tab) => (
-                      <button
-                        key={tab}
-                        className={activeTab === tab ? "active" : ""}
-                        onClick={() => setActiveTab(tab)}
-                        type="button"
-                      >
-                        {tab}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {activeTab === "AI 분석" ? (
-                  <ClinicalAIAnalysisPanel
-                    patient={selectedPatient}
-                    patientDetail={currentPatientDetail}
-                    examinationId={selectedExaminationId}
-                  />
-                ) : activeTab === "영상" && selectedStudy ? (
-                  <StudyDicomViewer key={`${selectedPatient?.backendId}-${selectedStudy.id}`} study={selectedStudy} />
-                ) : (
-                  <div className="analysis-empty-card">
-                    <EmptyState
-                      title={
-                        studiesLoading && activeTab === "영상"
-                          ? "영상검사를 불러오는 중입니다"
-                          : `${activeTab} 데이터가 없습니다`
-                      }
-                      description={workspaceEmptyDescription[activeTab]}
-                    />
-
-                    <span className="connection-label">
-                      {studiesError && activeTab === "영상"
-                        ? "API 연결 실패"
-                        : "LIVE API"}
-                    </span>
-                  </div>
-                )}
-              </section>
-
-              <aside className="report-panel">
-                <div className="report-tabs compact-tabs">
-                  {reportTabs.map((tab) => (
-                    <button
-                      key={tab}
-                      className={activeReportTab === tab ? "active" : ""}
-                      onClick={() => setActiveReportTab(tab)}
-                      type="button"
-                    >
-                      {tab}
-                    </button>
-                  ))}
-                </div>
-
-                {activeReportTab === "환자 메모" ? (
-                  <div className="memo-panel">
-                    <div className="memo-panel-heading">
-                      <div>
-                        <strong>환자 메모</strong>
-                        <span>{patientMemos.length}건</span>
-                      </div>
-
-                      <small>선택한 환자에게만 표시됩니다.</small>
-                    </div>
-
-                    {memoError && (
-                      <div className="memo-error" role="alert">
-                        {memoError}
-                      </div>
-                    )}
-
-                    {memosLoading && (
-                      <div className="memo-loading">
-                        <LoaderCircle
-                          className="spin"
-                          size={16}
-                          strokeWidth={1.8}
-                        />
-                        메모를 불러오는 중입니다.
-                      </div>
-                    )}
-
-                    {!memosLoading && (
-                      <div className="memo-list">
-                        {patientMemos.map((memo) => (
-                          <article key={memo.id} className="memo-card">
-                            <div className="memo-card-header">
-                              <span>
-                                <strong>{memo.authorName}</strong>
-                                <time>{formatMemoDate(memo.updatedAt)}</time>
-                              </span>
-
-                              {editingMemoId !== memo.id && (
-                                <button
-                                  onClick={() => handleStartMemoEdit(memo)}
-                                  type="button"
-                                  aria-label="메모 수정"
-                                  title="메모 수정"
-                                >
-                                  <Pencil size={14} strokeWidth={1.8} />
-                                </button>
-                              )}
-                            </div>
-
-                            {editingMemoId === memo.id ? (
-                              <div className="memo-edit">
-                                <textarea
-                                  value={editingMemoContent}
-                                  onChange={(event) =>
-                                    setEditingMemoContent(event.target.value)
-                                  }
-                                  maxLength={2000}
-                                />
-
-                                <div className="memo-edit-actions">
-                                  <button
-                                    className="secondary"
-                                    onClick={handleCancelMemoEdit}
-                                    disabled={memoSaving}
-                                    type="button"
-                                  >
-                                    <X size={13} strokeWidth={1.8} />
-                                    취소
-                                  </button>
-
-                                  <button
-                                    className="primary"
-                                    onClick={() => void handleUpdateMemo()}
-                                    disabled={
-                                      memoSaving || !editingMemoContent.trim()
-                                    }
-                                    type="button"
-                                  >
-                                    <Save size={13} strokeWidth={1.8} />
-                                    저장
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <p>{memo.content}</p>
-                            )}
-                          </article>
-                        ))}
-
-                        {patientMemos.length === 0 && (
-                          <div className="memo-empty">
-                            등록된 환자 메모가 없습니다.
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="memo-compose">
-                      <label htmlFor="patient-memo">새 메모</label>
-
-                      <textarea
-                        id="patient-memo"
-                        value={memoDraft}
-                        onChange={(event) => setMemoDraft(event.target.value)}
-                        placeholder="진료 시 확인할 내용을 입력하세요."
-                        maxLength={2000}
-                      />
-
-                      <div className="memo-compose-footer">
-                        <span>{memoDraft.length}/2000</span>
-
-                        <button
-                          className="primary"
-                          onClick={() => void handleCreateMemo()}
-                          disabled={memoSaving || !memoDraft.trim()}
-                          type="button"
-                        >
-                          <Save size={14} strokeWidth={1.8} />
-                          {memoSaving ? "저장 중…" : "메모 저장"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : activeReportTab === '오더' ? (
-                  <OrderWorkspace
-                    patientId={selectedPatient.backendId}
-                    encounterId={currentEncounterId}
-                  />                
-                ) : (
-                  <div className="report-empty-card">
-                    <EmptyState
-                      title={`${activeReportTab} 데이터가 없습니다`}
-                      description={reportEmptyDescription[activeReportTab]}
-                    />
-
-                    <span className="connection-label">API 연결 예정</span>
-                  </div>
-                )}
-              </aside>
-            </div>
-
-            <footer className="system-status">
-              <span>
-                <i /> CDSS API 연결됨
-              </span>
-
-              <span>
-                <i /> AI 서버{" "}
-                {aiStatus?.failed ? `실패 ${aiStatus.failed}건` : "정상"}
-              </span>
-
-              <small>API 기준일 {dashboardSummary?.date ?? "-"}</small>
-            </footer>
-          </>
+          <WorkstationHub
+            patient={selectedPatient}
+            patientDetail={currentPatientDetail}
+            patientDetailLoading={patientDetailLoading}
+            patientDetailError={patientDetailError}
+            imagingStudies={imagingStudies}
+            studiesLoading={studiesLoading}
+            studiesError={studiesError}
+            selectedStudy={selectedStudy}
+            onSelectStudy={(studyId) => setSelectedStudyId(studyId)}
+            timelineItems={timelineItems}
+            timelineLoading={timelineLoading}
+            memos={patientMemos}
+            memosLoading={memosLoading}
+            memoError={memoError}
+            onReloadMemos={async () => {
+              if (selectedPatient.backendId) await reloadPatientMemos(selectedPatient.backendId)
+            }}
+            encounterId={currentEncounterId}
+            examinationId={selectedExaminationId}
+            aiStatus={aiStatus}
+            staffIdentity={staffIdentity}
+            staffDoctor={staffDoctor}
+            onOpenReports={() => setActiveSection('결과보고서')}
+            onOpenExamImaging={() => {
+              setImagingLaunchFocus('imaging')
+              setActiveSection('검사·영상')
+            }}
+            onOpenXcaDetail={() => {
+              setImagingLaunchFocus('xca')
+              setActiveSection('검사·영상')
+            }}
+            onOpenCcta3d={() => {
+              setImagingLaunchFocus('ccta3d')
+              setActiveSection('검사·영상')
+            }}
+          />
         )}
       </section>
+        </div>
+      </div>
 
       <ChatDock
         open={chatDockOpen}
         onToggle={() => setChatDockOpen((current) => !current)}
         onUnreadCountChange={setChatUnreadCount}
+        patientContext={chatPatient}
       />
 
       {privacyShieldVisible && (
