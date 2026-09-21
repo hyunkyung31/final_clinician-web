@@ -2908,15 +2908,17 @@ button.feature-primary:disabled,
 
 .feature-segmented button {
   height: 31px;
+  border: 1px solid var(--color-border);
   border-radius: 6px;
-  color: #77879a;
-  background: #f3f6fa;
+  color: var(--color-text-subtle);
+  background: var(--color-surface-subtle);
   font-size: calc(10px + var(--font-size-adjust));
 }
 
 .feature-segmented button.active {
-  color: #2f69d6;
-  background: #eaf2ff;
+  color: var(--color-primary-dark);
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
   font-weight: 800;
 }
 
@@ -3801,8 +3803,8 @@ button.feature-primary:disabled,
   border: 1px solid var(--color-primary);
   border-radius: 8px;
   padding: 9px 14px;
-  background: #fff;
-  color: var(--color-primary);
+  background: var(--color-surface);
+  color: var(--color-primary-dark);
   font-weight: 800;
 }
 
@@ -3867,10 +3869,11 @@ button.feature-primary:disabled,
 
 .reservation-approval-card select {
   width: 100%;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-strong);
   border-radius: 8px;
   padding: 10px;
-  background: #fff;
+  color: var(--color-text);
+  background: var(--workstation-input, var(--color-surface));
 }
 
 .reservation-approve-button {
@@ -6579,7 +6582,7 @@ button.feature-primary:disabled,
   width: 100%;
   padding: 9px 10px;
   color: var(--color-text);
-  background: #fff;
+  background: var(--workstation-input, var(--color-surface));
   border: 1px solid var(--color-border-strong);
   border-radius: 8px;
   outline: none;
@@ -6650,7 +6653,8 @@ button.feature-primary:disabled,
 
 .order-card {
   padding: 10px;
-  background: #fff;
+  color: var(--color-text);
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 8px;
 }
@@ -6908,25 +6912,23 @@ button.feature-primary:disabled,
   gap: 3px;
   margin-top: 10px;
   padding: 3px;
-  background: #eef2f7;
+  background: var(--color-surface-subtle);
   border-radius: 8px;
 }
 
 .order-workspace-tabs button {
   min-height: 29px;
-  color: #6c7c91;
+  color: var(--color-text-subtle);
   background: transparent;
   border: 0;
   border-radius: 6px;
-  font-size: calc(9px + var(--font-size-adjust));
   font-weight: 700;
-  cursor: pointer;
 }
 
 .order-workspace-tabs button.active {
   color: var(--color-primary-dark);
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(25, 48, 78, 0.1);
+  background: var(--color-surface);
+  box-shadow: 0 1px 3px rgb(25 48 78 / 10%);
 }
 
 /* Prescription panel */
@@ -7076,7 +7078,8 @@ button.feature-primary:disabled,
   margin-top: 10px;
   padding: 0 8px;
   min-height: 32px;
-  background: #fff;
+  color: var(--color-text);
+  background: var(--workstation-input, var(--color-surface));
   border: 1px solid var(--color-border-strong);
   border-radius: 7px;
 }
@@ -7333,7 +7336,8 @@ button.feature-primary:disabled,
 
 .prescription-item {
   padding: 8px;
-  background: #fff;
+  color: var(--color-text);
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 7px;
 }
@@ -7909,18 +7913,17 @@ button.feature-primary:disabled,
   gap: 7px;
   min-height: 34px;
   padding: 0 12px;
-  border: 1px solid #d8e2ed;
+  border: 1px solid var(--color-border);
   border-radius: 7px;
-  color: #63758d;
-  background: #fff;
-  font-size: calc(10px + var(--font-size-adjust));
+  color: var(--color-text-subtle);
+  background: var(--color-surface);
   font-weight: 700;
 }
 
 .exam-imaging-subtabs button.active {
-  border-color: #91b4f0;
-  color: #2f6fdc;
-  background: #edf4ff;
+  border-color: var(--color-primary);
+  color: var(--color-primary-dark);
+  background: var(--color-primary-soft);
 }
 
 .exam-imaging-subtabs button b {
@@ -9870,31 +9873,29 @@ html[data-theme='dark'] :is(
 }
 
 html[data-theme='dark'] :is(
-  input,
-  textarea,
-  select,
-  .search-box,
-  .feature-search,
-  .chat-dock-search
-) {
-  color: var(--color-text);
-  border-color: var(--color-border-strong);
-  background: var(--workstation-input);
-}
-
-html[data-theme='dark'] :is(input, textarea)::placeholder {
-  color: #667b94;
-}
-
-html[data-theme='dark'] :is(
-  .header-actions button,
-  .calendar-actions > button,
-  .feature-header-actions > button,
-  .item-actions button
+  .feature-segmented button,
+  .reservation-approval-heading button,
+  .leave-duration-row button,
+  .order-workspace-tabs button,
+  .exam-imaging-subtabs button,
+  .api-pagination button,
+  .rendering-action-bar button,
+  .reference-manager button,
+  .lab-result-table-card header button
 ) {
   color: var(--color-text-subtle);
   border-color: var(--color-border-strong);
-  background: var(--workstation-panel);
+  background: var(--color-surface);
+}
+
+html[data-theme='dark'] :is(
+  .feature-segmented button.active,
+  .order-workspace-tabs button.active,
+  .exam-imaging-subtabs button.active
+) {
+  color: var(--color-primary-dark);
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
 }
 
 html[data-theme='dark'] .header-actions button:disabled {
