@@ -1584,6 +1584,14 @@ function mapMedicalResultDetail(payload: unknown): MedicalResultDetail {
   const encounter = isRecord(payload.encounter) ? payload.encounter : {}
   const workflow = isRecord(payload.workflow) ? payload.workflow : {}
   const summaries = isRecord(payload.ai_summaries) ? payload.ai_summaries : {}
+  const versions = (Array.isArray(payload.versions) ? payload.versions : []).filter(isRecord)
+  const signedVersionId = readNumber(workflow, 'signed_version_id')
+  // Approved reports must show the attachments of the approved version.
+  const version = signedVersionId
+    ? versions.find(item => readNumber(item, 'id') === signedVersionId)
+    : [...versions].sort((a, b) => (readNumber(b, 'version_no') ?? 0) - (readNumber(a, 'version_no') ?? 0))[0]
+  const content = version && isRecord(version.content_json) ? version.content_json : {}
+  const attachments = Array.isArray(content.xca_attachments) ? content.xca_attachments : []
   return {
     medicalResultId: readNumber(medical, 'id', 'medical_result_id') ?? 0,
     encounterId: readNumber(medical, 'encounter', 'encounter_id') ?? readNumber(encounter, 'id') ?? null,
@@ -1619,6 +1627,18 @@ function mapMedicalResultDetail(payload: unknown): MedicalResultDetail {
       latestReportId: readNumber(workflow, 'latest_report_id') ?? null,
       examName: readString(workflow, 'exam_name') || null,
     },
+    xcaAttachments: attachments.filter(isRecord).map(attachment => ({
+      note: readString(attachment, 'review_note'),
+      frames: (Array.isArray(attachment.frames) ? attachment.frames : []).filter(isRecord)
+        .filter(frame => (readNumber(frame, 'source_file_asset_id') ?? 0) > 0)
+        .map(frame => ({
+          id: readNumber(frame, 'id') ?? 0,
+          sequenceNo: String(frame.sequence_no ?? ''),
+          frameIndex: readNumber(frame, 'frame_index') ?? 0,
+          sourceFileAssetId: readNumber(frame, 'source_file_asset_id')!,
+          maskFileAssetId: readNumber(frame, 'mask_file_asset_id') ?? null,
+        })),
+    })),
     aiSummaries: {
       clinical: mapReportAiSummary(summaries.clinical),
       xca: mapReportAiSummary(summaries.xca),

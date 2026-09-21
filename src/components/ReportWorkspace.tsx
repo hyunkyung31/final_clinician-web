@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { FileText, LoaderCircle, Search } from 'lucide-react'
-import type { MedicalResultDetail, PatientReportSummary, PatientSummary, ReportAiSummary, StaffDoctor, StaffIdentity } from '../types'
+import type { MedicalResultDetail, PatientReportSummary, PatientSummary, ReportAiSummary, ReportXcaAttachment, StaffDoctor, StaffIdentity } from '../types'
 import {
   createPatientMedicalResult,
   getFileContentObjectUrl,
@@ -12,6 +12,7 @@ import {
   saveMedicalResultConclusion,
   signoffMedicalResult,
 } from '../api/client'
+import { getDoctorSignature } from '../doctorSignatures'
 import './report-workspace.css'
 
 interface ReportWorkspaceProps {
@@ -71,8 +72,81 @@ function ReportFilePreview({ fileId, label }: { fileId: number | null; label: st
   return <img alt={label} className="report-preview-image" src={url} />
 }
 
-function AiBlock({ title, summary, kind }: { title: string; summary: ReportAiSummary | null; kind: 'clinical' | 'xca' | 'ccta' }) {
-  if (!summary) {
+function ReportXcaImages({ sourceId, maskId }: { sourceId: number | null; maskId: number | null }) {
+  const svgId = useId().replace(/[^a-zA-Z0-9_-]/g, '')
+  const [images, setImages] = useState<{ source: string; mask: string } | null>(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    let active = true
+    const urls: string[] = []
+    setImages(null)
+    setFailed(false)
+    const load = async (id: number) => {
+      const url = await getFileContentObjectUrl(id)
+      if (active) urls.push(url)
+      else URL.revokeObjectURL(url)
+      return url
+    }
+    if (sourceId) void Promise.all([load(sourceId), maskId ? load(maskId) : Promise.resolve('')])
+      .then(([source, mask]) => { if (active) setImages({ source, mask }) })
+      .catch(() => { if (active) setFailed(true) })
+    return () => { active = false; urls.forEach(url => URL.revokeObjectURL(url)) }
+  }, [sourceId, maskId])
+  if (!sourceId) return <p className="report-empty-inline">저장된 원본 이미지가 없습니다.</p>
+  if (failed) return <p role="alert">첨부 이미지를 불러오지 못했습니다.</p>
+  if (!images) return <p className="report-empty-inline">첨부 이미지 불러오는 중…</p>
+  return <div className="report-preview-row">
+    <figure><figcaption>원본</figcaption><img className="report-preview-image" src={images.source} alt="XCA 원본" onError={() => setFailed(true)} /></figure>
+    {images.mask ? <figure><figcaption>협착 의심 영역</figcaption>
+      <svg className="report-preview-image" viewBox="0 0 1 1" role="img" aria-label="협착 의심 영역 합성 이미지">
+        <image href={images.source} width="1" height="1" onError={() => setFailed(true)} />
+        <defs><mask id={svgId} maskUnits="userSpaceOnUse" x="0" y="0" width="1" height="1" style={{ maskType: 'luminance' }}>
+          <image href={images.mask} width="1" height="1" onError={() => setFailed(true)} />
+        </mask></defs>
+        <rect width="1" height="1" fill="red" opacity="0.45" mask={`url(#${svgId})`} />
+      </svg>
+    </figure> : <p className="report-empty-inline">이 프레임에는 저장된 협착 의심 영역이 없습니다.</p>}
+  </div>
+}
+
+function ReportSignature({ fileId, doctorName, fallbackUrl }: { fileId: number | null; doctorName?: string | null; fallbackUrl?: string }) {
+  const [url, setUrl] = useState('')
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    setFailed(false)
+    setUrl('')
+    if (!fileId) {
+      setUrl('')
+      return
+    }
+    let active = true
+    let objectUrl = ''
+    void getFileContentObjectUrl(fileId)
+      .then((next) => {
+        if (!active) {
+          URL.revokeObjectURL(next)
+          return
+        }
+        objectUrl = next
+        setUrl(next)
+      })
+      .catch(() => {
+        if (active) { setUrl(''); setFailed(true) }
+      })
+    return () => {
+      active = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [fileId])
+  const source = url || (!fileId ? fallbackUrl : undefined)
+  if (source) return <img alt={`${doctorName || '의료진'} 서명`} className="report-signature-image" src={source} />
+  if (fileId && !failed) return <span>서명 불러오는 중…</span>
+  if (failed) return <span>등록된 서명을 불러오지 못했습니다.</span>
+  return <span>등록된 서명이 없습니다.</span>
+}
+
+function AiBlock({ title, summary, kind, attachments = [] }: { title: string; summary: ReportAiSummary | null; kind: 'clinical' | 'xca' | 'ccta'; attachments?: ReportXcaAttachment[] }) {
+  if (!summary && !attachments.length) {
     return (
       <article className="report-section">
         <h3>{title}</h3>
@@ -83,7 +157,7 @@ function AiBlock({ title, summary, kind }: { title: string; summary: ReportAiSum
   return (
     <article className="report-section">
       <h3>{title}</h3>
-      <dl className="report-meta-grid">
+      {summary && <><dl className="report-meta-grid">
         <div><dt>검사</dt><dd>{summary.examName ?? '-'}</dd></div>
         <div><dt>검사일</dt><dd>{formatDate(summary.performedAt)}</dd></div>
         {kind === 'clinical' && (
@@ -106,13 +180,27 @@ function AiBlock({ title, summary, kind }: { title: string; summary: ReportAiSum
           ))}
         </ul>
       )}
-      {kind === 'xca' && (
+      </>}
+      {kind === 'xca' && (attachments.length ? attachments.map((attachment, index) => (
+        <section key={index}>
+          <h4>XCA 선택 첨부 {index + 1}</h4>
+          {attachment.note && <p>의료진 의견: {attachment.note}</p>}
+          {attachment.frames.map(frame => (
+            <div key={frame.id}>
+              <p>촬영 {frame.sequenceNo} · frame_index {frame.frameIndex}</p>
+              <ReportXcaImages sourceId={frame.sourceFileAssetId} maskId={frame.maskFileAssetId} />
+            </div>
+          ))}
+        </section>
+      )) : summary?.previewFileAssetId ? (
         <div className="report-preview-row">
           <ReportFilePreview fileId={summary.sourceFileAssetId} label="원본 대표 프레임" />
           <ReportFilePreview fileId={summary.previewFileAssetId} label="협착 의심 영역 합성본" />
         </div>
-      )}
-      {kind === 'ccta' && (
+      ) : (
+        <ReportXcaImages sourceId={summary?.sourceFileAssetId ?? null} maskId={summary?.overlayFileAssetId ?? null} />
+      ))}
+      {kind === 'ccta' && summary && (
         <div className="report-preview-row">
           <ReportFilePreview fileId={summary.previewFileAssetId} label="석회화 preview" />
           <ReportFilePreview fileId={summary.overlayFileAssetId} label="석회화 overlay" />
@@ -138,6 +226,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
   const [busyAction, setBusyAction] = useState('')
   const [reportDownloadingId, setReportDownloadingId] = useState<number | null>(null)
   const [confirmSignoff, setConfirmSignoff] = useState(false)
+  const currentDoctorSignature = getDoctorSignature(staffIdentity?.username)
 
   useEffect(() => {
     if (!reportPatient && selectedPatient) setReportPatient(selectedPatient)
@@ -362,7 +451,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
               </article>
 
               <AiBlock kind="clinical" summary={detail.aiSummaries.clinical} title="2. Clinical AI 분석 결과" />
-              <AiBlock kind="xca" summary={detail.aiSummaries.xca} title="3. 2D XCA 분석 결과" />
+              <AiBlock kind="xca" summary={detail.aiSummaries.xca} attachments={detail.xcaAttachments} title="3. 2D XCA 분석 결과" />
               <AiBlock kind="ccta" summary={detail.aiSummaries.ccta} title="4. 3D CCTA 석회화 결과" />
 
               <article className="report-section">
@@ -381,32 +470,40 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
                 {detail.workflow.status === 'SIGNED' || detail.workflow.status === 'RELEASED' ? (
                   <>
                     <p><strong>최종 승인 완료</strong></p>
-                    <dl className="report-meta-grid">
-                      <div><dt>승인 의료진</dt><dd>{detail.workflow.signedBy ?? '-'}</dd></div>
-                      <div><dt>진료과</dt><dd>{detail.workflow.signedDepartment ?? '-'}</dd></div>
-                      <div><dt>승인 일시</dt><dd>{formatDate(detail.workflow.signedAt)}</dd></div>
-                      <div><dt>승인 버전</dt><dd>{detail.workflow.signedVersionNo ? `v${detail.workflow.signedVersionNo}` : '-'}</dd></div>
-                    </dl>
+                    <div className="report-approval-summary">
+                      <dl className="report-approval-meta">
+                        <div><dt>진료과</dt><dd>{detail.workflow.signedDepartment ?? '-'}</dd></div>
+                        <div><dt>승인 일시</dt><dd>{formatDate(detail.workflow.signedAt)}</dd></div>
+                        <div><dt>승인 버전</dt><dd>{detail.workflow.signedVersionNo ? `v${detail.workflow.signedVersionNo}` : '-'}</dd></div>
+                        <div><dt>승인 의료진</dt><dd>{detail.workflow.signedBy ?? '-'}</dd></div>
+                      </dl>
+                      <div className="report-signature-box report-approval-signature">
+                        <small>서명</small>
+                        <ReportSignature fileId={detail.workflow.signatureFileAssetId} doctorName={detail.workflow.signedBy} fallbackUrl={detail.workflow.signedBy && detail.workflow.signedBy === (staffDoctor?.name || staffIdentity?.name) ? currentDoctorSignature : undefined} />
+                      </div>
+                    </div>
                   </>
                 ) : (
-                  <dl className="report-meta-grid">
-                    <div><dt>승인 예정 의료진</dt><dd>{staffDoctor?.name || staffIdentity?.name || '-'}</dd></div>
-                    <div><dt>진료과</dt><dd>{staffDoctor?.departmentName || staffIdentity?.departmentName || '-'}</dd></div>
-                    <div><dt>대상 버전</dt><dd>{detail.workflow.signedVersionNo ? `v${detail.workflow.signedVersionNo}` : '현재 초안'}</dd></div>
-                  </dl>
+                  <>
+                    <dl className="report-meta-grid">
+                      <div><dt>승인 예정 의료진</dt><dd>{staffDoctor?.name || staffIdentity?.name || '-'}</dd></div>
+                      <div><dt>진료과</dt><dd>{staffDoctor?.departmentName || staffIdentity?.departmentName || '-'}</dd></div>
+                      <div><dt>대상 버전</dt><dd>{detail.workflow.signedVersionNo ? `v${detail.workflow.signedVersionNo}` : '현재 초안'}</dd></div>
+                    </dl>
+                    <div className="report-signature-box">
+                      <small>서명</small>
+                      <ReportSignature fileId={detail.workflow.signatureFileAssetId} doctorName={staffDoctor?.name || staffIdentity?.name} fallbackUrl={currentDoctorSignature} />
+                    </div>
+                  </>
                 )}
-                <div className="report-signature-box">
-                  <small>서명</small>
-                  <span>등록된 서명이 없습니다.</span>
-                </div>
                 {detail.workflow.patientVisible ? (
-                  <p>환자 공개 완료 · 공개 일시: {formatDate(detail.workflow.releasedAt)}</p>
+                  <p className="report-release-status">환자 공개 완료 · 공개 일시: {formatDate(detail.workflow.releasedAt)}</p>
                 ) : (
-                  <p>환자 미공개</p>
+                  <p className="report-release-status">환자 미공개</p>
                 )}
               </article>
 
-              <div className="report-actions">
+              <div className="report-actions report-actions-end">
                 {canSave && (
                   <button disabled={busyAction === 'save'} onClick={() => void runAction('save', () => saveMedicalResultConclusion(detail.medicalResultId, conclusion))} type="button">
                     {busyAction === 'save' ? '저장 중…' : '초안 저장'}
@@ -418,7 +515,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
                   </button>
                 )}
                 {detail.workflow.canRelease && (
-                  <button className="report-primary-btn" disabled={Boolean(busyAction)} onClick={() => void runAction('release', () => releaseMedicalResult(detail.medicalResultId))} type="button">
+                  <button className="report-primary-btn report-release-btn" disabled={Boolean(busyAction)} onClick={() => void runAction('release', () => releaseMedicalResult(detail.medicalResultId))} type="button">
                     {busyAction === 'release' ? '공개 중…' : '환자에게 공개'}
                   </button>
                 )}
@@ -436,7 +533,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
         <div className="report-modal-backdrop" role="presentation" onClick={() => setConfirmSignoff(false)}>
           <div className="report-modal" role="dialog" aria-labelledby="report-signoff-title" onClick={(event) => event.stopPropagation()}>
             <h3 id="report-signoff-title">최종 승인하시겠습니까?</h3>
-            <p>승인 후 현재 보고서 버전이 최종본으로 확정됩니다. 서명 이미지는 아직 등록되지 않아 서명란은 공란으로 유지됩니다.</p>
+            <p>승인 후 현재 보고서 버전이 최종본으로 확정되고, 로그인한 의료진의 등록 서명이 PDF에 반영됩니다.</p>
             <dl className="report-meta-grid">
               <div><dt>의료진</dt><dd>{staffDoctor?.name || staffIdentity?.name || '-'}</dd></div>
               <div><dt>진료과</dt><dd>{staffDoctor?.departmentName || staffIdentity?.departmentName || '-'}</dd></div>
@@ -444,7 +541,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
             </dl>
             <div className="report-signature-box">
               <small>서명</small>
-              <span>등록된 서명이 없습니다.</span>
+              <ReportSignature fileId={null} doctorName={staffDoctor?.name || staffIdentity?.name} fallbackUrl={currentDoctorSignature} />
             </div>
             <div className="report-actions">
               <button disabled={Boolean(busyAction)} onClick={() => setConfirmSignoff(false)} type="button">취소</button>

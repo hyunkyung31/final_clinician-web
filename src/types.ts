@@ -238,6 +238,11 @@ export interface ReportAiSummary {
   sides: Array<{ side: string | null; anyStenosis: number | null; significantStenosis: number | null }>
 }
 
+export interface ReportXcaAttachment {
+  note: string
+  frames: Array<{ id: number; sequenceNo: string; frameIndex: number; sourceFileAssetId: number; maskFileAssetId: number | null }>
+}
+
 export interface MedicalResultDetail {
   medicalResultId: number
   encounterId: number | null
@@ -262,6 +267,7 @@ export interface MedicalResultDetail {
     latestReportId: number | null
     examName: string | null
   }
+  xcaAttachments: ReportXcaAttachment[]
   aiSummaries: {
     clinical: ReportAiSummary | null
     xca: ReportAiSummary | null
