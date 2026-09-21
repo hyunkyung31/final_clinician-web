@@ -40,6 +40,8 @@ import type {
   PatientMemo,
   PatientReportSummary,
   PatientSummary,
+  MedicalResultDetail,
+  ReportAiSummary,
   PrescriptionDetail,
   PrescriptionItemInput,
   PrescriptionItemSummary,
@@ -1475,6 +1477,7 @@ export async function getPatientReports(patientId: number): Promise<PatientRepor
     const latestVersionRaw = item.latest_version
     const latestSignoffRaw = item.latest_signoff
     const latestReportRaw = item.latest_report
+    const latestReleaseRaw = item.latest_release
     return {
       medicalResultId: readNumber(item, 'medical_result_id') ?? 0,
       encounterId: readNumber(item, 'encounter_id') ?? null,
@@ -1496,6 +1499,10 @@ export async function getPatientReports(patientId: number): Promise<PatientRepor
         reportName: readString(latestReportRaw, 'report_name'),
         status: readString(latestReportRaw, 'status'),
         createdAt: readString(latestReportRaw, 'created_at'),
+      } : null,
+      latestRelease: isRecord(latestReleaseRaw) ? {
+        releasedAt: readString(latestReleaseRaw, 'released_at'),
+        releaseStatus: readString(latestReleaseRaw, 'release_status'),
       } : null,
       createdAt: readString(item, 'created_at'),
       updatedAt: readString(item, 'updated_at'),
@@ -1551,6 +1558,126 @@ export async function releasePatientReport(
     );
   }
 }
+function mapReportAiSummary(raw: unknown): ReportAiSummary | null {
+  if (!isRecord(raw)) return null
+  const sidesRaw = Array.isArray(raw.sides) ? raw.sides : []
+  return {
+    examinationId: readNumber(raw, 'examination_id') ?? null,
+    examName: readString(raw, 'exam_name') || null,
+    examCode: readString(raw, 'exam_code') || null,
+    performedAt: readString(raw, 'performed_at') || null,
+    analysisId: readNumber(raw, 'analysis_id') ?? null,
+    jobId: readNumber(raw, 'job_id') ?? null,
+    resultId: readNumber(raw, 'result_id') ?? null,
+    modelName: readString(raw, 'model_name') || null,
+    modelVersion: readString(raw, 'model_version') || null,
+    probability: readNumber(raw, 'probability') ?? null,
+    prediction: readString(raw, 'prediction') || null,
+    summary: readString(raw, 'summary') || null,
+    overlayFileAssetId: readNumber(raw, 'overlay_file_asset_id') ?? null,
+    sourceFileAssetId: readNumber(raw, 'source_file_asset_id') ?? null,
+    previewFileAssetId: readNumber(raw, 'preview_file_asset_id') ?? null,
+    sides: sidesRaw.filter(isRecord).map((item) => ({
+      side: readString(item, 'side') || null,
+      anyStenosis: readNumber(item, 'any_stenosis') ?? null,
+      significantStenosis: readNumber(item, 'significant_stenosis') ?? null,
+    })),
+  }
+}
+
+function mapMedicalResultDetail(payload: unknown): MedicalResultDetail {
+  if (!isRecord(payload)) throw new ApiError('결과보고서 응답 형식이 올바르지 않습니다.', 500)
+  const medical = isRecord(payload.medical_result) ? payload.medical_result : payload
+  const patient = isRecord(payload.patient) ? payload.patient : {}
+  const encounter = isRecord(payload.encounter) ? payload.encounter : {}
+  const workflow = isRecord(payload.workflow) ? payload.workflow : {}
+  const summaries = isRecord(payload.ai_summaries) ? payload.ai_summaries : {}
+  return {
+    medicalResultId: readNumber(medical, 'id', 'medical_result_id') ?? 0,
+    encounterId: readNumber(medical, 'encounter', 'encounter_id') ?? readNumber(encounter, 'id') ?? null,
+    status: readString(medical, 'status') || readString(workflow, 'status'),
+    conclusion: readString(medical, 'conclusion'),
+    summary: readString(medical, 'summary'),
+    patient: {
+      id: readNumber(patient, 'id') ?? 0,
+      name: readString(patient, 'name'),
+      medicalRecordNo: readString(patient, 'medical_record_no'),
+      birthDate: readString(patient, 'birth_date') || null,
+      gender: readString(patient, 'gender') || null,
+    },
+    encounter: {
+      id: readNumber(encounter, 'id') ?? null,
+      visitDate: readString(encounter, 'visit_date') || null,
+      encounterType: readString(encounter, 'encounter_type') || null,
+      doctorName: readString(encounter, 'doctor_name') || null,
+    },
+    workflow: {
+      status: readString(workflow, 'status') || readString(medical, 'status'),
+      canEdit: workflow.can_edit !== false,
+      canSignoff: workflow.can_signoff === true,
+      canRelease: workflow.can_release === true,
+      signedBy: readString(workflow, 'signed_by') || null,
+      signedDepartment: readString(workflow, 'signed_department') || null,
+      signedAt: readString(workflow, 'signed_at') || null,
+      signedVersionId: readNumber(workflow, 'signed_version_id') ?? null,
+      signedVersionNo: readNumber(workflow, 'signed_version_no') ?? null,
+      signatureFileAssetId: readNumber(workflow, 'signature_file_asset_id') ?? null,
+      releasedAt: readString(workflow, 'released_at') || null,
+      patientVisible: workflow.patient_visible === true,
+      latestReportId: readNumber(workflow, 'latest_report_id') ?? null,
+      examName: readString(workflow, 'exam_name') || null,
+    },
+    aiSummaries: {
+      clinical: mapReportAiSummary(summaries.clinical),
+      xca: mapReportAiSummary(summaries.xca),
+      ccta: mapReportAiSummary(summaries.ccta),
+    },
+  }
+}
+
+export async function getMedicalResultDetail(resultId: number): Promise<MedicalResultDetail> {
+  return mapMedicalResultDetail(await request<unknown>(`/api/medical-results/${resultId}/`))
+}
+
+export async function saveMedicalResultConclusion(resultId: number, conclusion: string): Promise<MedicalResultDetail> {
+  await request<unknown>(`/api/medical-results/${resultId}/`, {
+    method: 'PATCH',
+    body: JSON.stringify({ conclusion }),
+  })
+  return getMedicalResultDetail(resultId)
+}
+
+export async function signoffMedicalResult(resultId: number, conclusion?: string): Promise<MedicalResultDetail> {
+  return mapMedicalResultDetail(await request<unknown>(`/api/medical-results/${resultId}/signoff/`, {
+    method: 'POST',
+    refreshOnUnauthorized: false,
+    body: JSON.stringify(conclusion ? { conclusion } : {}),
+  }))
+}
+
+export async function releaseMedicalResult(resultId: number): Promise<MedicalResultDetail> {
+  return mapMedicalResultDetail(await request<unknown>(`/api/medical-results/${resultId}/release/`, {
+    method: 'POST',
+    refreshOnUnauthorized: false,
+    body: JSON.stringify({}),
+  }))
+}
+
+export async function createPatientMedicalResult(patientId: number): Promise<MedicalResultDetail> {
+  const encounters = await request<unknown>(`/api/encounters/?patient_id=${patientId}`)
+  const latest = Array.isArray(encounters) ? encounters.find(isRecord) : null
+  const encounterId = latest ? readNumber(latest, 'id') : undefined
+  if (!encounterId) throw new ApiError('이 환자의 진료 기록이 없어 결과보고서를 만들 수 없습니다.', 404)
+  const created = await request<unknown>(`/api/encounters/${encounterId}/medical-results/`, {
+    method: 'POST',
+    body: JSON.stringify({ patient_id: patientId }),
+  })
+  const medical = isRecord(created) ? created : {}
+  const resultId = readNumber(medical, 'id')
+  if (!resultId) throw new ApiError('결과보고서 초안을 만들지 못했습니다.', 500)
+  return getMedicalResultDetail(resultId)
+}
+
 export async function getAngiographyFrames(
   sequenceId: number,
 ): Promise<AngiographyFrame[]> {
@@ -3433,7 +3560,8 @@ export interface ProcedureEventData {
 }
 
 function mapProcedureRecord(payload: UnknownRecord): ProcedureRecordData {
-  const record = nestedRecord(payload, 'latest_record', 'record', 'procedure_record') ?? payload
+  const nested = nestedRecord(payload, 'latest', 'latest_record', 'record', 'procedure_record')
+  const record = nested ?? (Object.prototype.hasOwnProperty.call(payload, 'latest') || Array.isArray(payload.history) ? {} : payload)
   return {
     id: readNumber(record, 'id'),
     status: readString(record, 'status') || 'DRAFT',
@@ -3447,7 +3575,9 @@ function mapProcedureRecord(payload: UnknownRecord): ProcedureRecordData {
 function mapProcedureEvent(payload: UnknownRecord): ProcedureEventData | null {
   const id = readNumber(payload, 'id')
   if (id === undefined) return null
-  const creator = nestedRecord(payload, 'created_by', 'performed_by')
+  const creator = nestedRecord(payload, 'created_by', 'performed_by', 'recorded_by')
+  const status = readString(payload, 'status').toUpperCase()
+  if (status === 'CANCELED' || status === 'CANCELLED' || status === 'CORRECTED') return null
   return {
     id,
     eventCode: readString(payload, 'event_code'),
@@ -3457,7 +3587,7 @@ function mapProcedureEvent(payload: UnknownRecord): ProcedureEventData | null {
     actualDoseOrSpec: readString(payload, 'actual_dose_or_spec'),
     note: readString(payload, 'note'),
     eventAt: readString(payload, 'event_at'),
-    createdByName: readPersonName(creator, readString(payload, 'created_by_name')) || '의료진',
+    createdByName: readPersonName(creator, readString(payload, 'created_by_name', 'recorded_by_name')) || '의료진',
     prescriptionItemId: readNumber(payload, 'prescription_item_id', 'prescription_item'),
   }
 }
@@ -3507,6 +3637,7 @@ export async function createProcedureEvent(examinationId: number, input: {
   note?: string
   eventAt: string
   prescriptionItemId?: number
+  procedureRecordId?: number
 }): Promise<ProcedureEventData> {
   const payload = await request<unknown>(`/api/staff/examinations/${examinationId}/procedure-events/`, {
     method: 'POST',
@@ -3521,6 +3652,7 @@ export async function createProcedureEvent(examinationId: number, input: {
       note: input.note || '',
       event_at: input.eventAt,
       ...(input.prescriptionItemId ? { prescription_item_id: input.prescriptionItemId } : {}),
+      ...(input.procedureRecordId ? { procedure_record_id: input.procedureRecordId } : {}),
     }),
   })
   const mapped = isRecord(payload) ? mapProcedureEvent(payload) : null
@@ -3531,7 +3663,11 @@ export async function createProcedureEvent(examinationId: number, input: {
 export async function correctProcedureEvent(eventId: number, input: Record<string, unknown>): Promise<ProcedureEventData> {
   const payload = await request<unknown>(`/api/staff/procedure-events/${eventId}/correct/`, {
     method: 'POST',
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      ...input,
+      reason: input.reason ?? input.correction_reason,
+      corrected_at: input.corrected_at ?? input.event_at,
+    }),
   })
   const mapped = isRecord(payload) ? mapProcedureEvent(payload) : null
   if (!mapped) throw new ApiError('정정된 시술 이벤트를 확인하지 못했습니다.', 500)

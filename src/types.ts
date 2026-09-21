@@ -214,8 +214,59 @@ export interface PatientReportSummary {
   latestVersion: { versionNo: number; sourceType: string; createdAt: string } | null
   latestSignoff: { signedAt: string; doctorName: string } | null
   latestReport: { reportId: number; reportName: string; status: string; createdAt: string } | null
+  latestRelease: { releasedAt: string; releaseStatus: string } | null
   createdAt: string
   updatedAt: string
+}
+
+export interface ReportAiSummary {
+  examinationId: number | null
+  examName: string | null
+  examCode: string | null
+  performedAt: string | null
+  analysisId: number | null
+  jobId: number | null
+  resultId: number | null
+  modelName: string | null
+  modelVersion: string | null
+  probability: number | null
+  prediction: string | null
+  summary: string | null
+  overlayFileAssetId: number | null
+  sourceFileAssetId: number | null
+  previewFileAssetId: number | null
+  sides: Array<{ side: string | null; anyStenosis: number | null; significantStenosis: number | null }>
+}
+
+export interface MedicalResultDetail {
+  medicalResultId: number
+  encounterId: number | null
+  status: string
+  conclusion: string
+  summary: string
+  patient: { id: number; name: string; medicalRecordNo: string; birthDate: string | null; gender: string | null }
+  encounter: { id: number | null; visitDate: string | null; encounterType: string | null; doctorName: string | null }
+  workflow: {
+    status: string
+    canEdit: boolean
+    canSignoff: boolean
+    canRelease: boolean
+    signedBy: string | null
+    signedDepartment: string | null
+    signedAt: string | null
+    signedVersionId: number | null
+    signedVersionNo: number | null
+    signatureFileAssetId: number | null
+    releasedAt: string | null
+    patientVisible: boolean
+    latestReportId: number | null
+    examName: string | null
+  }
+  aiSummaries: {
+    clinical: ReportAiSummary | null
+    xca: ReportAiSummary | null
+    ccta: ReportAiSummary | null
+  }
 }
 
 export interface ImagingStudySummary {
