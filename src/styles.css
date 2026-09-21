@@ -10391,7 +10391,11 @@ html[data-theme='dark'] .login-notice {
 .procedure-timeline-card,
 .procedure-summary-card {
   min-height: 470px;
-  overflow: hidden;
+  overflow: visible;
+}
+
+.procedure-summary-card {
+  overflow: auto;
 }
 
 .procedure-timeline-card > header,
@@ -10459,6 +10463,10 @@ html[data-theme='dark'] .login-notice {
 
 .procedure-row-wrap {
   position: relative;
+}
+
+.procedure-row-wrap:has(.procedure-timeline-row.editing) {
+  z-index: 24;
 }
 
 .procedure-timeline-row {
@@ -10734,17 +10742,22 @@ html[data-theme='dark'] .login-notice {
 
 .procedure-material-menu {
   position: absolute;
-  z-index: 30;
+  z-index: 80;
   top: calc(100% + 3px);
   left: 3px;
   width: min(460px, 58vw);
-  max-height: 330px;
+  max-height: min(330px, 46vh);
   overflow-y: auto;
   color: var(--color-text);
   border: 1px solid var(--color-border-strong);
   border-radius: 5px;
   background: var(--color-surface);
   box-shadow: 0 12px 28px color-mix(in srgb, #071426 22%, transparent);
+}
+
+.procedure-material-menu.flip-up {
+  top: auto;
+  bottom: calc(100% + 3px);
 }
 
 .procedure-material-menu section + section {

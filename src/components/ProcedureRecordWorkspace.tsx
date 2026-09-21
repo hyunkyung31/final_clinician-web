@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   Activity,
   AlertTriangle,
@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react'
 import {
+  ApiError,
   createPatientAllergy,
   createProcedureEvent,
   cancelProcedureEvent,
@@ -229,6 +230,9 @@ export function ProcedureRecordWorkspace({
   const [prescriptionError, setPrescriptionError] = useState('')
   const [procedureSaving, setProcedureSaving] = useState(false)
   const [recordStatus, setRecordStatus] = useState('DRAFT')
+  const [materialMenuFlip, setMaterialMenuFlip] = useState(false)
+  const materialPickerRef = useRef<HTMLSpanElement>(null)
+  const recordLocked = recordStatus === 'FINAL'
 
   useEffect(() => {
     setEvents([])
@@ -372,6 +376,15 @@ export function ProcedureRecordWorkspace({
     return () => { active = false }
   }, [encounterId, patient?.backendId])
 
+  useLayoutEffect(() => {
+    if (!materialPickerOpen || !materialPickerRef.current) {
+      setMaterialMenuFlip(false)
+      return
+    }
+    const rect = materialPickerRef.current.getBoundingClientRect()
+    setMaterialMenuFlip(window.innerHeight - rect.bottom < 280)
+  }, [materialPickerOpen, editingId, insertIndex])
+
   useEffect(() => {
     if (!patient?.backendId) {
       setLabs([])
@@ -402,6 +415,7 @@ export function ProcedureRecordWorkspace({
   }, [orderedMedications])
 
   const beginAdd = (index: number) => {
+    if (recordLocked) return
     setEventDraft(emptyEvent(clinicianName))
     setInsertIndex(index)
     setEditingId(null)
@@ -409,6 +423,7 @@ export function ProcedureRecordWorkspace({
   }
 
   const beginEdit = (event: ProcedureEvent) => {
+    if (recordLocked) return
     setEventDraft({ ...event, time: event.time || nowTime(), planned: false })
     setEditingId(event.id)
     setInsertIndex(null)
@@ -449,6 +464,7 @@ export function ProcedureRecordWorkspace({
   }
 
   const saveEvent = async () => {
+    if (recordLocked) return
     if (!eventDraft.time || !eventDraft.category || !eventDraft.content.trim()) return
     let saved = { ...eventDraft, content: eventDraft.content.trim(), planned: false, author: clinicianName }
     if (editingId && /^\d+$/.test(editingId) && examinationId) {
@@ -502,6 +518,7 @@ export function ProcedureRecordWorkspace({
   }
 
   const deleteEvent = async (event: ProcedureEvent) => {
+    if (recordLocked) return
     if (!window.confirm('이 시술기록을 삭제하시겠습니까?')) return
     if (/^\d+$/.test(event.id)) {
       try {
@@ -516,6 +533,10 @@ export function ProcedureRecordWorkspace({
   }
 
   const loadTemplate = (templateId: string) => {
+    if (recordLocked) {
+      setSaveNotice('확정된 시술기록은 템플릿으로 바꿀 수 없습니다.')
+      return
+    }
     const template = templateDefinitions.find((item) => item.id === templateId)
     if (!template) return
     if (events.length && !window.confirm('현재 작성 중인 기록을 템플릿으로 교체할까요?')) return
@@ -547,19 +568,37 @@ export function ProcedureRecordWorkspace({
       if (!examinationId) setSaveNotice('연결할 검사 ID가 없습니다. 검사 실행 기록을 먼저 선택해주세요.')
       return
     }
+    if (recordLocked) {
+      setSaveNotice('이미 확정된 시술기록입니다.')
+      return
+    }
     setProcedureSaving(true)
     setSaveNotice('')
     try {
-      const record = await updateProcedureRecord(examinationId, {
-        procedureName: procedureType,
-        accessSite,
-        specialNotes: memo,
-      })
+      let record
+      try {
+        record = await updateProcedureRecord(examinationId, {
+          procedureName: procedureType,
+          accessSite,
+          specialNotes: memo,
+        })
+      } catch (requestError) {
+        if (finalize && requestError instanceof ApiError && requestError.status === 409) {
+          const existing = await getProcedureRecord(examinationId)
+          if (existing.status === 'FINAL') {
+            setRecordStatus('FINAL')
+            setSaveNotice('이미 확정된 시술기록입니다.')
+            return
+          }
+        }
+        throw requestError
+      }
       const savedEvents = [...events]
       for (let index = 0; index < savedEvents.length; index += 1) {
         const item = savedEvents[index]
-        if (item.planned || /^\d+$/.test(item.id)) continue
-        const [hour = '00', minute = '00'] = item.time.split(':')
+        if (/^\d+$/.test(item.id) || !item.content.trim()) continue
+        const time = item.time || nowTime()
+        const [hour = '00', minute = '00'] = time.split(':')
         const eventAt = new Date()
         eventAt.setHours(Number(hour), Number(minute), 0, 0)
         const saved = await createProcedureEvent(examinationId, {
@@ -571,8 +610,15 @@ export function ProcedureRecordWorkspace({
           note: item.note,
           eventAt: eventAt.toISOString(),
           prescriptionItemId: item.linkedPrescriptionItemId,
+          procedureRecordId: record.id,
         })
-        savedEvents[index] = { ...item, id: String(saved.id), author: saved.createdByName || clinicianName }
+        savedEvents[index] = {
+          ...item,
+          id: String(saved.id),
+          time,
+          planned: false,
+          author: saved.createdByName || clinicianName,
+        }
       }
       setEvents(savedEvents)
       if (finalize) {
@@ -596,11 +642,11 @@ export function ProcedureRecordWorkspace({
       <ProcedureTimeEditor value={eventDraft.time} onChange={(time) => setEventDraft((current) => ({ ...current, time }))} />
       <select aria-label="기록 구분" value={eventDraft.category} onChange={(event) => setEventDraft((current) => ({ ...current, category: event.target.value as ProcedureCategory, content: '', material: '', linkedPrescriptionItemId: undefined, materialSource: undefined }))}>{categories.map((category) => <option key={category}>{category}</option>)}</select>
       <span className="procedure-combobox"><input aria-label="시술 또는 처치 내용" list="procedure-content-options" value={eventDraft.content} onChange={(event) => setEventDraft((current) => ({ ...current, content: event.target.value }))} placeholder="선택 또는 직접 입력" /><ChevronDown size={13} aria-hidden="true" /><datalist id="procedure-content-options">{contentOptions[eventDraft.category].map((option) => <option key={option} value={option} />)}</datalist></span>
-      <span className="procedure-combobox procedure-material-picker" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMaterialPickerOpen(false) }}>
+      <span className="procedure-combobox procedure-material-picker" ref={materialPickerRef} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMaterialPickerOpen(false) }}>
         <input aria-label="사용 약물 또는 기구" value={eventDraft.material} onChange={(event) => updateMaterial(event.target.value)} onFocus={() => setMaterialPickerOpen(true)} placeholder={materialPlaceholders[eventDraft.category] ?? '선택 또는 직접 입력'} />
         <button aria-label="약물 및 기구 선택 목록" aria-expanded={materialPickerOpen} onClick={() => setMaterialPickerOpen((current) => !current)} type="button"><ChevronDown size={13} aria-hidden="true" /></button>
         {materialPickerOpen && (
-          <div className="procedure-material-menu">
+          <div className={`procedure-material-menu${materialMenuFlip ? ' flip-up' : ''}`}>
             <section><header><strong>약물</strong><small>처방 약물 및 시술실 기본 약물</small></header><div>{procedureMedicationOptions.map((medication) => { const ordered = orderedMedications.some((item) => item.medication?.name === medication); return <button className={ordered ? 'ordered' : ''} key={medication} onClick={() => selectMedication(medication)} type="button"><span>{medication}</span>{ordered && <small>처방</small>}</button> })}</div></section>
             <section><header><strong>기구</strong><small>카테터·와이어·벌룬·스텐트·지혈기구</small></header><div>{quickDeviceOptions.map((device) => <button key={`${device.category}-${device.material}`} onClick={() => selectDevice(device)} title={device.material} type="button"><span>{device.label}</span><small>{device.category}</small></button>)}</div></section>
             <footer>목록에 없는 항목은 입력란에 직접 작성할 수 있습니다.</footer>
@@ -625,8 +671,8 @@ export function ProcedureRecordWorkspace({
   return (
     <section className="feature-page procedure-page">
       <header className="procedure-global-header">
-        <div className="procedure-breadcrumb"><span>시술기록</span><ChevronRight size={14} /><span>CAG / PCI</span><ChevronRight size={14} /><strong>시술기록 작성</strong></div>
-        <div><span>{new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date())}</span><b>{clinicianName}</b><button disabled={procedureSaving || !examinationId} type="button" onClick={() => void saveProcedureToServer(false)}>임시저장</button><button className="feature-primary" disabled={procedureSaving || !examinationId || recordStatus === 'FINAL'} type="button" onClick={() => void saveProcedureToServer(true)}><Save size={14} />{procedureSaving ? '저장 중…' : '최종 확정'}</button></div>
+        <div className="procedure-breadcrumb"><span>시술기록</span><ChevronRight size={14} /><span>CAG / PCI</span><ChevronRight size={14} /><strong>{recordLocked ? '시술기록' : '시술기록 작성'}</strong></div>
+        <div><span>{new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date())}</span><b>{clinicianName}</b><button disabled={procedureSaving || !examinationId || recordLocked} type="button" onClick={() => void saveProcedureToServer(false)}>임시저장</button><button className="feature-primary" disabled={procedureSaving || !examinationId || recordLocked} type="button" onClick={() => void saveProcedureToServer(true)}><Save size={14} />{procedureSaving ? '저장 중…' : recordLocked ? '확정됨' : '최종 확정'}</button></div>
       </header>
 
       <section className="feature-card procedure-patient-banner">
@@ -644,10 +690,10 @@ export function ProcedureRecordWorkspace({
             <><AlertTriangle size={14} /><span>{allergyError || (activeAllergies.length ? `Allergy: ${allergySummaryText}` : allergySummaryText === '알레르기 없음' ? '알레르기 없음' : '알레르기 미입력')}</span><button onClick={() => { setAllergyDraft(''); setAllergyEditing(true) }} type="button">{activeAllergies.length || noKnownAllergyConfirmed ? '수정' : '입력'}</button></>
           )}
         </div>
-        <label>시술명<select value={procedureType} onChange={(event) => setProcedureType(event.target.value)}><option>CAG</option><option>PCI</option><option>CAG + PCI</option></select></label>
+        <label>시술명<select disabled={recordLocked} value={procedureType} onChange={(event) => setProcedureType(event.target.value)}><option>CAG</option><option>PCI</option><option>CAG + PCI</option></select></label>
         <div><span>담당 의료진</span><strong>{clinicianName}</strong></div>
-        <div><span>시술 상태</span><strong>작성 중</strong></div>
-        <label>접근부위<select value={accessSite} onChange={(event) => setAccessSite(event.target.value)}><option>Right radial artery</option><option>Left radial artery</option><option>Right femoral artery</option><option>Left femoral artery</option></select></label>
+        <div><span>시술 상태</span><strong>{recordLocked ? '확정' : '작성 중'}</strong></div>
+        <label>접근부위<select disabled={recordLocked} value={accessSite} onChange={(event) => setAccessSite(event.target.value)}><option>Right radial artery</option><option>Left radial artery</option><option>Right femoral artery</option><option>Left femoral artery</option></select></label>
       </section>
 
       <nav className="procedure-tabs">
@@ -658,22 +704,22 @@ export function ProcedureRecordWorkspace({
         <main className="procedure-main-column">
           {activeTab === 'TIMELINE' && (
             <section className="feature-card procedure-timeline-card">
-              <header><div><h2>시술 타임라인</h2><p>시술 중 발생한 내용을 시간순으로 직접 기록합니다.</p></div><span className="procedure-draft-badge">로컬 초안</span></header>
+              <header><div><h2>시술 타임라인</h2><p>시술 중 발생한 내용을 시간순으로 직접 기록합니다.</p></div><span className="procedure-draft-badge">{recordLocked ? '확정됨' : '로컬 초안'}</span></header>
               <div className="procedure-timeline-table">
                 <div className="procedure-timeline-head"><span /><span>시간</span><span>구분</span><span>시술/처치 내용</span><span>사용 약물/기구</span><span>용량/규격</span><span>비고</span><span>작성자</span><span /></div>
                 {events.map((event, index) => (
                   <div key={event.id} className="procedure-row-wrap">
-                    <button className="procedure-insert-button" onClick={() => beginAdd(index)} title="이 위치에 기록 추가" type="button"><Plus size={14} /></button>
+                    {!recordLocked && <button className="procedure-insert-button" onClick={() => beginAdd(index)} title="이 위치에 기록 추가" type="button"><Plus size={14} /></button>}
                     {insertIndex === index && renderEventEditor()}
                     {editingId === event.id ? renderEventEditor() : (
                       <div className={`procedure-timeline-row ${event.planned ? 'planned' : ''}`}>
-                        <span className="procedure-node"><i /></span><button className={`procedure-time-display ${event.time ? '' : 'empty'}`} onClick={() => beginEdit(event)} title={event.time ? '시간 수정' : '현재 시간으로 기록'} type="button">{event.time || '미기록'}</button><b>{event.category}</b><span>{event.content || '-'}</span><span className="procedure-material-cell">{event.material || '-'}{event.linkedPrescriptionItemId && <small>처방 연동</small>}</span><span>{event.dose || '-'}</span><span>{event.note || '-'}</span><span className="procedure-row-author">{event.author}</span><span className="procedure-row-actions"><button onClick={() => beginEdit(event)} title="수정" type="button"><Pencil size={14} /></button><button className="delete" onClick={() => deleteEvent(event)} title="삭제" type="button"><Trash2 size={14} /></button></span>
+                        <span className="procedure-node"><i /></span><button className={`procedure-time-display ${event.time ? '' : 'empty'}`} onClick={() => beginEdit(event)} title={event.time ? '시간 수정' : '현재 시간으로 기록'} type="button">{event.time || '미기록'}</button><b>{event.category}</b><span>{event.content || '-'}</span><span className="procedure-material-cell">{event.material || '-'}{event.linkedPrescriptionItemId && <small>처방 연동</small>}</span><span>{event.dose || '-'}</span><span>{event.note || '-'}</span><span className="procedure-row-author">{event.author}</span><span className="procedure-row-actions">{!recordLocked && <><button onClick={() => beginEdit(event)} title="수정" type="button"><Pencil size={14} /></button><button className="delete" onClick={() => deleteEvent(event)} title="삭제" type="button"><Trash2 size={14} /></button></>}</span>
                       </div>
                     )}
                   </div>
                 ))}
                 {insertIndex === events.length && renderEventEditor()}
-                <button className="procedure-add-record" onClick={() => beginAdd(events.length)} type="button"><Plus size={16} />새로운 기록 추가 <small>현재 시간 {nowTime()}</small></button>
+                {!recordLocked && <button className="procedure-add-record" onClick={() => beginAdd(events.length)} type="button"><Plus size={16} />새로운 기록 추가 <small>현재 시간 {nowTime()}</small></button>}
               </div>
             </section>
           )}
@@ -705,7 +751,7 @@ export function ProcedureRecordWorkspace({
 
           <section className="feature-card procedure-lab-card"><header><div><FlaskConical size={16} /><h2>최근 검사 결과</h2></div><span>{recentLabs.length}건</span></header><LabTable compact labs={recentLabs} loading={labLoading} error={labError} /></section>
 
-          <section className="feature-card procedure-memo-card"><header><h2>특이사항 / 메모</h2></header><textarea value={memo} onChange={(event) => { setMemo(event.target.value); setSaveNotice('저장되지 않은 로컬 변경사항이 있습니다.') }} placeholder="특이사항을 입력하세요." /></section>
+          <section className="feature-card procedure-memo-card"><header><h2>특이사항 / 메모</h2></header><textarea disabled={recordLocked} value={memo} onChange={(event) => { setMemo(event.target.value); setSaveNotice('저장되지 않은 로컬 변경사항이 있습니다.') }} placeholder="특이사항을 입력하세요." /></section>
         </aside>
       </div>
     </section>

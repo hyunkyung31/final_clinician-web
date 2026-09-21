@@ -3531,7 +3531,8 @@ export interface ProcedureEventData {
 }
 
 function mapProcedureRecord(payload: UnknownRecord): ProcedureRecordData {
-  const record = nestedRecord(payload, 'latest_record', 'record', 'procedure_record') ?? payload
+  const nested = nestedRecord(payload, 'latest', 'latest_record', 'record', 'procedure_record')
+  const record = nested ?? (Object.prototype.hasOwnProperty.call(payload, 'latest') || Array.isArray(payload.history) ? {} : payload)
   return {
     id: readNumber(record, 'id'),
     status: readString(record, 'status') || 'DRAFT',
@@ -3545,7 +3546,9 @@ function mapProcedureRecord(payload: UnknownRecord): ProcedureRecordData {
 function mapProcedureEvent(payload: UnknownRecord): ProcedureEventData | null {
   const id = readNumber(payload, 'id')
   if (id === undefined) return null
-  const creator = nestedRecord(payload, 'created_by', 'performed_by')
+  const creator = nestedRecord(payload, 'created_by', 'performed_by', 'recorded_by')
+  const status = readString(payload, 'status').toUpperCase()
+  if (status === 'CANCELED' || status === 'CANCELLED' || status === 'CORRECTED') return null
   return {
     id,
     eventCode: readString(payload, 'event_code'),
@@ -3555,7 +3558,7 @@ function mapProcedureEvent(payload: UnknownRecord): ProcedureEventData | null {
     actualDoseOrSpec: readString(payload, 'actual_dose_or_spec'),
     note: readString(payload, 'note'),
     eventAt: readString(payload, 'event_at'),
-    createdByName: readPersonName(creator, readString(payload, 'created_by_name')) || '의료진',
+    createdByName: readPersonName(creator, readString(payload, 'created_by_name', 'recorded_by_name')) || '의료진',
     prescriptionItemId: readNumber(payload, 'prescription_item_id', 'prescription_item'),
   }
 }
@@ -3605,6 +3608,7 @@ export async function createProcedureEvent(examinationId: number, input: {
   note?: string
   eventAt: string
   prescriptionItemId?: number
+  procedureRecordId?: number
 }): Promise<ProcedureEventData> {
   const payload = await request<unknown>(`/api/staff/examinations/${examinationId}/procedure-events/`, {
     method: 'POST',
@@ -3619,6 +3623,7 @@ export async function createProcedureEvent(examinationId: number, input: {
       note: input.note || '',
       event_at: input.eventAt,
       ...(input.prescriptionItemId ? { prescription_item_id: input.prescriptionItemId } : {}),
+      ...(input.procedureRecordId ? { procedure_record_id: input.procedureRecordId } : {}),
     }),
   })
   const mapped = isRecord(payload) ? mapProcedureEvent(payload) : null
@@ -3629,7 +3634,11 @@ export async function createProcedureEvent(examinationId: number, input: {
 export async function correctProcedureEvent(eventId: number, input: Record<string, unknown>): Promise<ProcedureEventData> {
   const payload = await request<unknown>(`/api/staff/procedure-events/${eventId}/correct/`, {
     method: 'POST',
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      ...input,
+      reason: input.reason ?? input.correction_reason,
+      corrected_at: input.corrected_at ?? input.event_at,
+    }),
   })
   const mapped = isRecord(payload) ? mapProcedureEvent(payload) : null
   if (!mapped) throw new ApiError('정정된 시술 이벤트를 확인하지 못했습니다.', 500)
