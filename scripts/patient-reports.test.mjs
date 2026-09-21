@@ -188,3 +188,36 @@ for (const [functionName, endpoint] of [
     assert.equal(requests, 1)
   })
 }
+
+test('integrated report keeps selected source and mask pairs from the signed version', async () => {
+  const { getMedicalResultDetail } = await loadApiTestModule()
+  const attachment = { review_note: '협착 의심 영역 확인', frames: [
+    { id: 101, sequence_no: '7', frame_index: 12, source_file_asset_id: 201, mask_file_asset_id: 301 },
+    { id: 102, sequence_no: '7', frame_index: 13, source_file_asset_id: 202, mask_file_asset_id: null },
+  ] }
+  globalThis.fetch = async () => Response.json({ ...detailPayload,
+    workflow: { ...detailPayload.workflow, status: 'SIGNED', signed_version_id: 90 },
+    versions: [
+      { id: 91, version_no: 4, content_json: { xca_attachments: [] } },
+      { id: 90, version_no: 3, content_json: { xca_attachments: [attachment] } },
+    ],
+  })
+  const detail = await getMedicalResultDetail(5)
+  assert.equal(detail.xcaAttachments[0].note, attachment.review_note)
+  assert.deepEqual(detail.xcaAttachments[0].frames, [
+    { id: 101, sequenceNo: '7', frameIndex: 12, sourceFileAssetId: 201, maskFileAssetId: 301 },
+    { id: 102, sequenceNo: '7', frameIndex: 13, sourceFileAssetId: 202, maskFileAssetId: null },
+  ])
+})
+
+test('draft attachments use the latest version and missing signed versions do not borrow draft images', async () => {
+  const { getMedicalResultDetail } = await loadApiTestModule()
+  const payload = { ...detailPayload, versions: [
+    { id: 1, version_no: 1, content_json: { xca_attachments: [{ review_note: 'old', frames: [] }] } },
+    { id: 2, version_no: 2, content_json: { xca_attachments: [{ review_note: 'latest', frames: [] }] } },
+  ] }
+  globalThis.fetch = async () => Response.json(payload)
+  assert.equal((await getMedicalResultDetail(5)).xcaAttachments[0].note, 'latest')
+  globalThis.fetch = async () => Response.json({ ...payload, workflow: { ...payload.workflow, signed_version_id: 3 } })
+  assert.deepEqual((await getMedicalResultDetail(5)).xcaAttachments, [])
+})

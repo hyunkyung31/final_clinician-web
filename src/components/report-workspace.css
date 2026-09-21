@@ -88,6 +88,30 @@
   font-weight: 700;
 }
 
+.report-approval-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 220px);
+  gap: 20px;
+  align-items: start;
+}
+
+.report-approval-meta {
+  display: grid;
+  grid-template-columns: 1fr 1.25fr 0.65fr 0.8fr;
+  gap: 10px 20px;
+  margin: 0;
+}
+
+.report-approval-meta dt {
+  color: var(--color-text-subtle);
+  font-size: calc(11px + var(--font-size-adjust));
+}
+
+.report-approval-meta dd {
+  margin: 2px 0 0;
+  font-weight: 700;
+}
+
 .report-section textarea {
   width: 100%;
   min-height: 120px;
@@ -121,9 +145,19 @@
 
 .report-actions {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 18px;
+}
+
+.report-actions-end {
+  justify-content: flex-end;
+}
+
+.report-release-status {
+  margin: 12px 0 0;
+  text-align: right;
 }
 
 .report-actions button {
@@ -133,6 +167,29 @@
   border: 1px solid var(--color-border-strong);
   background: #fff;
   font-weight: 700;
+}
+
+.report-actions .report-primary-btn {
+  margin-top: 0;
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.report-actions .report-release-btn {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #fff;
+}
+
+.report-actions .report-release-btn:hover:not(:disabled) {
+  border-color: #0b5f59;
+  background: #0b5f59;
+}
+
+.report-actions .report-release-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .report-signature-box {
@@ -151,6 +208,21 @@
 .report-signature-box small {
   font-weight: 800;
   color: #5b6b80;
+}
+
+.report-approval-signature {
+  width: 100%;
+  min-height: 88px;
+  margin: 0;
+}
+
+.report-signature-image {
+  display: block;
+  width: 180px;
+  max-width: 100%;
+  height: 72px;
+  object-fit: contain;
+  object-position: left center;
 }
 
 .report-modal-backdrop {
@@ -177,4 +249,18 @@
 .report-modal > p {
   margin: 0 0 12px;
   color: var(--color-text-subtle);
+}
+
+@media (max-width: 900px) {
+  .report-approval-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .report-approval-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .report-approval-signature {
+    width: min(280px, 100%);
+  }
 }
