@@ -156,7 +156,7 @@ export function NotificationCenter({
   return (
     <div className="notification-center" ref={centerRef}>
       <button
-        className={`notification-trigger ${open ? 'active' : ''}`}
+        className={`utility-button notification-trigger ${open ? 'active' : ''}`}
         onClick={() => setOpen((current) => {
           if (!current) window.dispatchEvent(new CustomEvent('angiocad:close-todos'))
           return !current
@@ -166,9 +166,9 @@ export function NotificationCenter({
         aria-expanded={open}
         type="button"
       >
-        <Bell size={18} strokeWidth={1.8} />
+        <Bell size={16} strokeWidth={1.8} />
         {unreadCount > 0 && (
-          <b>{unreadCount > 99 ? '99+' : unreadCount}</b>
+          <b className="utility-badge">{unreadCount > 99 ? '99+' : unreadCount}</b>
         )}
       </button>
 
@@ -222,6 +222,7 @@ export function NotificationCenter({
             )}
             {loading && <div className="notification-empty">알림을 불러오는 중…</div>}
           </div>
+          <footer className="notification-footer">전체보기</footer>
         </section>
       )}
     </div>

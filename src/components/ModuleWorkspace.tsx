@@ -48,6 +48,7 @@ interface ModuleWorkspaceProps {
   onFontSizeChange: (size: 'small' | 'normal' | 'large' | 'xlarge') => void
   onOpenPatient: (patientId: string) => void
   onSelectPatient: (patient: PatientSummary) => void
+  imagingLaunchFocus?: 'xca' | 'ccta3d' | 'imaging' | null
 }
 
 type PatientListScope = 'mine' | 'consultation' | 'recent' | 'all'
@@ -97,6 +98,7 @@ export function ModuleWorkspace({
   onFontSizeChange,
   onOpenPatient,
   onSelectPatient,
+  imagingLaunchFocus,
 }: ModuleWorkspaceProps) {
   const [patientScope, setPatientScope] = useState<PatientListScope>('mine')
   const [patientSearch, setPatientSearch] = useState('')
@@ -231,6 +233,7 @@ export function ModuleWorkspace({
           imagingStudies={imagingStudies}
           onOpenPatient={onOpenPatient}
           onSelectPatient={onSelectPatient}
+          launchFocus={imagingLaunchFocus}
         />
       </section>
     )

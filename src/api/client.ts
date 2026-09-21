@@ -2309,6 +2309,12 @@ export async function updatePatientMemo(
   )
 }
 
+export async function deletePatientMemo(memoId: number): Promise<void> {
+  await request<unknown>(`/api/staff/patient-memos/${memoId}/`, {
+    method: 'DELETE',
+  })
+}
+
 function mapExaminationType(
   item: UnknownRecord,
 ): ExaminationTypeSummary | null {

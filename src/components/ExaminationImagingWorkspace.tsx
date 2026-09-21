@@ -79,7 +79,16 @@ import type {
   ImagingAnnotationInput,
 } from '../types'
 import { LabResultEditor } from './LabResultEditor'
-import { visibleRenderingKinds, preferredRendering, renderingLabel } from '../api/renderingSelection'
+import {
+  ANATOMY_VIEW_MODES,
+  LOCAL_ANATOMY_GLB_URL,
+  hasAnatomyGlbCapability,
+  isLocalAnatomyGlbTest,
+  visibleRenderingKinds,
+  preferredRendering,
+  renderingLabel,
+} from '../api/renderingSelection'
+import type { AnatomyViewMode } from './MedicalModelViewer'
 import './rendering-shortcuts.css'
 import { CTAIAnalysisPanel } from './CTAIAnalysisPanel'
 import { groupAngiographySequences } from '../api/angiographyGrouping'
@@ -305,12 +314,14 @@ export function ExaminationImagingWorkspace({
   imagingStudies,
   onOpenPatient,
   onSelectPatient,
+  launchFocus,
 }: {
   patient: PatientSummary | null
   patients: PatientSummary[]
   imagingStudies: ImagingStudySummary[]
   onOpenPatient: (patientId: string) => void
   onSelectPatient: (patient: PatientSummary) => void
+  launchFocus?: 'xca' | 'ccta3d' | 'imaging' | null
 }) {
   const [activeSection, setActiveSection] = useState<ExamSection>('LAB')
   const [activeTab, setActiveTab] = useState<ExamTab>('IMAGING_2D')
@@ -370,6 +381,8 @@ export function ExaminationImagingWorkspace({
   const [modelCamera, setModelCamera] = useState<Record<string, unknown> | null>(null)
   const [restoreCamera, setRestoreCamera] = useState<Record<string, unknown> | null>(null)
   const handleCameraChange = useCallback((state: Record<string, unknown>) => setModelCamera(state), [])
+  const localAnatomyTest = isLocalAnatomyGlbTest()
+  const [anatomyViewMode, setAnatomyViewMode] = useState<AnatomyViewMode>('VESSEL_CALCIFICATION')
   const [active3DPane, setActive3DPane] = useState<ThreeDPane>('ORIGINAL')
   const [tool, setTool] = useState<AnnotationTool>('POINTER')
   const [annotationColor, setAnnotationColor] = useState('#ff5a64')
@@ -415,6 +428,25 @@ export function ExaminationImagingWorkspace({
     setAnnotationRecords([])
     setSaveNotice('')
   }, [patient?.backendId])
+
+  useEffect(() => {
+    if (launchFocus === 'xca') {
+      setActiveSection('IMAGING')
+      setActiveTab('IMAGING_2D')
+      setXcaAiOpen(true)
+    } else if (launchFocus === 'ccta3d') {
+      setActiveSection('IMAGING')
+      setActiveTab('IMAGING_3D')
+      setActive3DPane('RENDERED')
+    } else if (launchFocus === 'imaging') {
+      setActiveSection('IMAGING')
+      setActiveTab('IMAGING_2D')
+    } else if (localAnatomyTest) {
+      setActiveSection('IMAGING')
+      setActiveTab('IMAGING_3D')
+      setActive3DPane('RENDERED')
+    }
+  }, [launchFocus, localAnatomyTest])
 
   useEffect(() => {
     if (!patient?.backendId) {
@@ -533,7 +565,10 @@ export function ExaminationImagingWorkspace({
   const selectedAsset = imagingAssets.find((asset) => asset.key === selectedAssetKey) ?? null
   const xcaExaminationId = selectedAsset?.kind === 'SEQUENCE' ? selectedAsset.sequence.examinationId : undefined
   const xcaSequences = sequences.filter((sequence) => xcaExaminationId !== undefined && sequence.examinationId === xcaExaminationId)
-  useEffect(() => { setXcaAiOpen(false) }, [patient?.backendId, xcaExaminationId, activeSection, activeTab])
+  useEffect(() => {
+    if (launchFocus === 'xca') return
+    setXcaAiOpen(false)
+  }, [patient?.backendId, xcaExaminationId, activeSection, activeTab, launchFocus])
   const selectedStudy = selectedAsset?.kind === 'STUDY'
     ? selectedAsset.study
     : selectedAsset?.kind === 'SEQUENCE'
@@ -575,7 +610,7 @@ export function ExaminationImagingWorkspace({
 
   useEffect(() => {
     setStudySeries([])
-    setActive3DPane('ORIGINAL')
+    if (!localAnatomyTest) setActive3DPane('ORIGINAL')
     setSelectedSeriesId(null)
     setDicomManifest(null)
     setOrderedDicomInstances([])
@@ -610,7 +645,7 @@ export function ExaminationImagingWorkspace({
     return () => {
       active = false
     }
-  }, [selectedAsset?.kind, selectedStudy?.id, viewerMode])
+  }, [localAnatomyTest, selectedAsset?.kind, selectedStudy?.id, viewerMode])
 
   useEffect(() => {
     setDicomManifest(null)
@@ -734,7 +769,16 @@ export function ExaminationImagingWorkspace({
   useEffect(() => {
     setModelUrl('')
     setModelStatus('')
-    if (viewerMode !== '3D' || !selectedRendering) return
+    if (viewerMode !== '3D') return
+    if (localAnatomyTest) {
+      setModelUrl(LOCAL_ANATOMY_GLB_URL)
+      setModelFormat('GLB')
+      setRenderingLoading(false)
+      setRenderingError('')
+      setModelWaiting(false)
+      return
+    }
+    if (!selectedRendering) return
 
     let active = true
     let objectUrl = ''
@@ -768,7 +812,7 @@ export function ExaminationImagingWorkspace({
       active = false
       if (objectUrl.startsWith('blob:')) URL.revokeObjectURL(objectUrl)
     }
-  }, [selectedRendering, viewerMode])
+  }, [selectedRendering, viewerMode, localAnatomyTest])
 
   useEffect(() => {
     setRenderingAuxImages({})
@@ -1464,23 +1508,44 @@ export function ExaminationImagingWorkspace({
                     onPointerDown={() => setActive3DPane('RENDERED')}
                   >
                     <header>
-                      <span><i className={modelUrl ? 'connected' : ''} />{renderingLabel(renderingType)} 렌더링</span>
-                      <small>{selectedRendering ? `v${selectedRendering.version} · ${modelFormat}` : '결과 선택'}</small>
+                      <span><i className={modelUrl ? 'connected' : ''} />{localAnatomyTest ? 'anatomy.glb 로컬 테스트' : `${renderingLabel(renderingType)} 렌더링`}</span>
+                      <small>{localAnatomyTest ? 'patient 209 · /test/anatomy.glb' : selectedRendering ? `v${selectedRendering.version} · ${modelFormat}` : '결과 선택'}</small>
                     </header>
                     <div className="ccta-summary-bar">
-                      <span className="ccta-summary-tag">CCTA</span>
+                      <span className="ccta-summary-tag">{localAnatomyTest ? 'LOCAL GLB' : 'CCTA'}</span>
                       <span className="ccta-summary-date">{selectedStudy?.studyDate ? formatDate(selectedStudy.studyDate) : '검사일 미등록'}</span>
                       <span className={`ccta-status-badge status-${(selectedRendering?.status ?? 'empty').toLowerCase()}`}>{renderingStatusLabel(selectedRendering?.status)}</span>
                       {Number.isSafeInteger(CT_AI_VERSION_ID) && CT_AI_VERSION_ID > 0 && <small className="ccta-summary-model">AI 모델 v{CT_AI_VERSION_ID}</small>}
                     </div>
                     <nav className="rendering-kind-buttons" aria-label="렌더링 종류 바로 보기">
-                      {renderingKinds.map((kind) => <button key={kind.value} type="button" aria-pressed={renderingType === kind.value} className={renderingType === kind.value ? 'active' : ''} disabled={renderingSaving || renderingLoading} onClick={() => selectRenderingKind(kind.value)}>{kind.label}</button>)}
+                      {(localAnatomyTest || hasAnatomyGlbCapability({ rendering: selectedRendering, fileFormat: modelFormat })
+                        ? ANATOMY_VIEW_MODES
+                        : renderingKinds
+                      ).map((kind) => {
+                        const anatomyCapable = localAnatomyTest || hasAnatomyGlbCapability({ rendering: selectedRendering, fileFormat: modelFormat })
+                        const active = anatomyCapable ? anatomyViewMode === kind.value : renderingType === kind.value
+                        return (
+                          <button
+                            key={kind.value}
+                            type="button"
+                            aria-pressed={active}
+                            className={active ? 'active' : ''}
+                            disabled={anatomyCapable ? false : (renderingSaving || renderingLoading)}
+                            onClick={() => {
+                              if (anatomyCapable) setAnatomyViewMode(kind.value as AnatomyViewMode)
+                              else selectRenderingKind(kind.value)
+                            }}
+                          >
+                            {kind.label}
+                          </button>
+                        )
+                      })}
                     </nav>
                     <div className={`three-d-result-layout ${renderingType === 'CALCIFICATION_ONLY' ? 'has-result-panel' : ''}`}>
                       <div className={`three-d-stage tool-${tool.toLowerCase()}`}>
                         {modelUrl ? (
                           <Suspense fallback={<div className="model-loading-state"><div className="model-skeleton" /><span><Loader2 size={16} className="spin-icon" />3D 모델을 불러오는 중…</span></div>}>
-                            <MedicalModelViewer sourceUrl={modelUrl} format={modelFormat} onStatus={handleModelStatus} onError={handleModelError} onCameraChange={handleCameraChange} cameraState={restoreCamera} />
+                            <MedicalModelViewer sourceUrl={modelUrl} format={modelFormat} viewMode={anatomyViewMode} dumpScene={localAnatomyTest || modelFormat.toUpperCase() === 'GLB'} onStatus={handleModelStatus} onError={handleModelError} onCameraChange={handleCameraChange} cameraState={restoreCamera} />
                           </Suspense>
                         ) : ['PENDING', 'PROCESSING'].includes(selectedRendering?.status ?? '') || modelWaiting || renderingLoading ? (
                           <div className="model-loading-state">
