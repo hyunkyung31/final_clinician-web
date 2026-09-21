@@ -6,6 +6,7 @@ import {
   type ClinicalAIAnalysis,
   type ClinicalInputPayload,
 } from '../api/client'
+import { loadClinicalAiPrefill } from '../api/clinicalAiInput'
 import type { PatientDetail, PatientSummary } from '../types'
 import { patientExaminationMismatch, type ExaminationPatientIdentity } from '../api/patientSelection'
 
@@ -121,6 +122,9 @@ function initialValues(
     if (sex === 'M') values.Sex ??= '1'
     else if (sex === 'F') values.Sex ??= '0'
   }
+  if (Number(values.Weight) > 0 && Number(values.Length) > 0 && !values.BMI) {
+    values.BMI = (Number(values.Weight) / ((Number(values.Length) / 100) ** 2)).toFixed(2)
+  }
   return values
 }
 
@@ -148,12 +152,34 @@ export function ClinicalAIAnalysisPanel({
   const [analysis, setAnalysis] = useState<ClinicalAIAnalysis | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [resolvedExaminationId, setResolvedExaminationId] = useState(examinationId)
+  const [resolvedSourceLabel, setResolvedSourceLabel] = useState(sourceLabel)
+  const [resolvedExamPatient, setResolvedExamPatient] = useState(examinationPatient)
 
   useEffect(() => {
-    setValues(initialValues(patient, patientDetail, initialInput))
     setAnalysis(null)
     setError('')
-  }, [patient?.backendId, patientDetail?.backendId, examinationId, initialInputKey])
+    setResolvedExaminationId(examinationId)
+    setResolvedSourceLabel(sourceLabel)
+    setResolvedExamPatient(examinationPatient)
+
+    if (Object.keys(initialInput).length > 0 || !patient?.backendId) {
+      setValues(initialValues(patient, patientDetail, initialInput))
+      return
+    }
+
+    let active = true
+    void loadClinicalAiPrefill(patient.backendId, examinationId).then((loaded) => {
+      if (!active) return
+      setResolvedExaminationId(loaded.examinationId)
+      setResolvedSourceLabel(loaded.sourceLabel)
+      setResolvedExamPatient(loaded.examinationPatient)
+      setValues(initialValues(patient, patientDetail, loaded.input))
+    })
+    return () => {
+      active = false
+    }
+  }, [patient?.backendId, patientDetail?.backendId, examinationId, examinationPatient?.id, initialInputKey, sourceLabel])
 
   const completedCount = useMemo(
     () => allFields.filter((field) => values[field.name] !== undefined && values[field.name] !== '').length,
@@ -170,7 +196,7 @@ export function ClinicalAIAnalysisPanel({
     })
   }
 
-  const mismatch = patientExaminationMismatch(patient, examinationPatient)
+  const mismatch = patientExaminationMismatch(patient, resolvedExamPatient ?? examinationPatient)
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -179,7 +205,7 @@ export function ClinicalAIAnalysisPanel({
       setError('선택한 환자의 검사정보를 다시 불러와 주세요.')
       return
     }
-    if (!examinationId) {
+    if (!resolvedExaminationId) {
       setError('AI 분석을 연결할 검사(Examination)가 없습니다. 먼저 검사 기록을 선택해주세요.')
       return
     }
@@ -197,7 +223,7 @@ export function ClinicalAIAnalysisPanel({
     setError('')
     setAnalysis(null)
     try {
-      let current = await createClinicalAIAnalysis(examinationId, payload)
+      let current = await createClinicalAIAnalysis(resolvedExaminationId, payload)
       setAnalysis(current)
       for (let attempt = 0; attempt < 60 && !['SUCCEEDED', 'FAILED'].includes(current.analysis.status); attempt += 1) {
         await sleep(1000)
@@ -225,7 +251,7 @@ export function ClinicalAIAnalysisPanel({
         <span className="clinical-ai-icon"><BrainCircuit size={24} /></span>
         <div>
           <small>CLINICAL RISK MODEL · RANDOM FOREST</small>
-          <h2>{sourceLabel ? `${sourceLabel} · Clinical AI 분석` : 'Clinical AI 분석'}</h2>
+          <h2>{resolvedSourceLabel ? `${resolvedSourceLabel} · Clinical AI 분석` : 'Clinical AI 분석'}</h2>
           {patient && <p><strong>{patient.name}</strong> · {patient.id} · {patient.sex === 'F' ? '여자' : '남자'}</p>}
           <p>임상 변수 54개를 검증한 뒤 배포된 모델로 관상동맥질환 위험도를 계산합니다.</p>
         </div>
@@ -233,8 +259,8 @@ export function ClinicalAIAnalysisPanel({
       </header>
 
       {mismatch && <div className="clinical-ai-warning"><TriangleAlert size={16} />선택한 환자의 검사정보를 다시 불러와 주세요.</div>}
-      {!examinationId && <div className="clinical-ai-warning"><TriangleAlert size={16} />선택된 검사 ID가 없어 실행 버튼이 비활성화됩니다.</div>}
-      {sourceLabel && <div className="clinical-ai-prefill"><CheckCircle2 size={16} /><span><strong>{sourceLabel}</strong>에 연결된 임상정보와 검사값을 자동 입력했습니다. 분석 전에 값을 확인할 수 있습니다.</span></div>}
+      {!resolvedExaminationId && <div className="clinical-ai-warning"><TriangleAlert size={16} />선택된 검사 ID가 없어 실행 버튼이 비활성화됩니다.</div>}
+      {resolvedSourceLabel && <div className="clinical-ai-prefill"><CheckCircle2 size={16} /><span><strong>{resolvedSourceLabel}</strong>에 연결된 임상정보와 검사값을 자동 입력했습니다. 분석 전에 값을 확인할 수 있습니다.</span></div>}
       {completedCount < 54 && <div className="clinical-ai-warning"><TriangleAlert size={16} />현재 저장된 임상정보를 자동으로 불러왔습니다. 누락된 항목은 확인 후 직접 입력해 주세요.</div>}
       {error && <div className="feature-error"><span>{error}</span></div>}
 
@@ -274,8 +300,8 @@ export function ClinicalAIAnalysisPanel({
       )}
 
       <footer className="clinical-ai-actions">
-        <span>Examination #{examinationId ?? '-'}</span>
-        <button className="primary" disabled={submitting || mismatch || !examinationId || completedCount !== 54} type="submit">
+        <span>Examination #{resolvedExaminationId ?? '-'}</span>
+        <button className="primary" disabled={submitting || mismatch || !resolvedExaminationId || completedCount !== 54} type="submit">
           {submitting ? <LoaderCircle className="spin" size={16} /> : <BrainCircuit size={16} />}
           {submitting ? 'AI 분석 중…' : 'Clinical AI 분석 실행'}
         </button>
