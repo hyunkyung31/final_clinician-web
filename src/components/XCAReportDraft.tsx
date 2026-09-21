@@ -6,7 +6,6 @@ import type { XCAReportSaved, XCAReportTarget } from '../api/xcaReport'
 import { storedXCAAttachments } from '../api/xcaReport'
 import { XCAReportEvidence } from './XCAReportEvidence'
 import { XCAReportFinalize } from './XCAReportFinalize'
-import { DoctorSignaturePreview } from './DoctorSignaturePreview'
 
 export function XCAReportDraft({ detail, selected, onBusyChange, disabled }: { detail: XCADetailResult; selected: XCAArchivedFrame[]; onBusyChange: (busy: boolean) => void; disabled: boolean }) {
   const [visits, setVisits] = useState<FollowUpVisit[]>([]), [encounterId, setEncounterId] = useState<number | null>(null)
@@ -45,8 +44,9 @@ export function XCAReportDraft({ detail, selected, onBusyChange, disabled }: { d
   }
   async function attach() {
     if (!target || !selected.length || selected.some(frame => frame.detailId !== detail.id)) return
-    if (import.meta.env.DEV && ['SIGNED', 'RELEASED'].includes(target.status)) {
-      setError('서명 이력이 있는 보고서 수정은 백엔드 연동 후 가능합니다. 현재 서명 버튼은 로컬 미리보기입니다.')
+    const requiresReauth = ['SIGNED', 'RELEASED'].includes(target.status)
+    if (requiresReauth && !password) {
+      setError('서명 이력이 있는 보고서를 수정하려면 의료진 비밀번호 재인증이 필요합니다.')
       return
     }
     const capturedTarget = target, frames = selected.map(frame => frame.id), capturedNote = note
@@ -71,17 +71,17 @@ export function XCAReportDraft({ detail, selected, onBusyChange, disabled }: { d
       <button type="button" disabled={busy || disabled} onClick={() => void reload()}>최신 보고서 다시 조회</button>
       <details><summary>기존 보고서 본문 확인</summary><pre>{target.text || '기존 본문 없음'}</pre></details>
       <StoredEvidence target={target} detail={detail} />
-      {['SIGNED', 'RELEASED'].includes(target.status) && <p className="api-inline-notice">{import.meta.env.DEV ? '서명 이력이 있는 보고서 수정은 백엔드 연동 후 가능합니다.' : '서명·공개된 보고서에 첨부하면 새 검토용 초안이 생깁니다. 아래 비밀번호로 재인증이 필요합니다.'}</p>}
+      {['SIGNED', 'RELEASED'].includes(target.status) && <p className="api-inline-notice">서명·공개된 보고서에 첨부하면 새 검토용 초안이 생성됩니다. 기존 보고서 수정 확인을 위해 아래 비밀번호로 재인증하세요.</p>}
     </>}
     <p>선택 프레임 {selected.length}/12개 · 다른 촬영으로 이동해도 같은 상세 분석 안에서는 선택이 유지됩니다.</p>
     <label>의료진 의견<textarea maxLength={4000} rows={4} disabled={busy} value={note} onChange={event => setNote(event.target.value)} placeholder="의심 영역에 대한 검토 의견을 입력하세요. AI 점수는 확정 진단이 아닙니다." /></label>
-    {import.meta.env.DEV ? <DoctorSignaturePreview resetKey={JSON.stringify([detail.id, encounterId, target?.baseVersionId, note, selected.map(frame => frame.id)])} disabled={busy || disabled} /> : <label>서명 이력이 있는 보고서는 의료진 비밀번호로 재인증<input type="password" autoComplete="current-password" disabled={busy} value={password} onChange={event => setPassword(event.target.value)} /></label>}
+    {target && ['SIGNED', 'RELEASED'].includes(target.status) && <label>기존 보고서 수정 재인증<input type="password" autoComplete="current-password" disabled={busy || disabled} value={password} onChange={event => setPassword(event.target.value)} /></label>}
     {error && <p className="api-inline-error" role="alert">{error}</p>}
     {busy && <p role="status">보고서 처리 중… 자동 재시도하지 않습니다.</p>}
-    <button className="primary" type="button" disabled={busy || disabled || !target || !selected.length || !note.trim() || !!saved} onClick={() => void attach()}>선택 프레임·의견을 보고서 초안에 저장</button>
+    <button className="primary" type="button" disabled={busy || disabled || !target || !selected.length || !note.trim() || !!saved || (['SIGNED', 'RELEASED'].includes(target?.status ?? '') && !password)} onClick={() => void attach()}>선택 프레임·의견을 보고서 초안에 저장</button>
     <p>의견과 선택을 먼저 확인하세요. 이 단계는 보고서 버전 기록이며 최종 PDF 생성·서명·배포는 아닙니다.</p>
     {saved && <div className="xca-report-success" role="status"><strong>보고서 초안 저장·재조회 확인</strong><p>의료 결과 #{saved.medicalResultId} · 보고서 v{saved.versionNo} (#{saved.versionId}) · 첨부 #{saved.attachmentId} · 프레임 {saved.frameIds.length}개{saved.reused && ' · 기존 동일 첨부 재사용'}</p><details open><summary>저장된 보고서 본문</summary><pre>{saved.text}</pre></details><XCAReportEvidence detail={detail} frameIds={saved.frameIds} /><p>최종 의료진 검토·서명 전 상태입니다.</p></div>}
-    {target?.baseVersionId && <XCAReportFinalize key={target.baseVersionId} target={target} disabled={operationBusy || disabled} onBusyChange={value => { setFinalBusy(value); onBusyChange(value) }} onSigned={() => setTarget({ ...target, status: 'SIGNED' })} />}
+    {saved && target?.baseVersionId && <XCAReportFinalize key={target.baseVersionId} target={target} disabled={operationBusy || disabled} onBusyChange={value => { setFinalBusy(value); onBusyChange(value) }} onSigned={() => setTarget({ ...target, status: 'SIGNED' })} />}
   </section>
 }
 
