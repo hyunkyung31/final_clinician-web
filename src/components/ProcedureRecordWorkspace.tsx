@@ -32,6 +32,7 @@ import {
   updateProcedureRecord,
 } from '../api/client'
 import type { LabObservation, PatientAllergySummary, PatientDetail, PatientDiagnosisSummary, PatientMedicalHistorySummary, PatientSummary, PrescriptionItemSummary } from '../types'
+import { labReferenceStatus, labReferenceStatusClass, labReferenceStatusLabel } from '../labReferenceStatus'
 
 type ProcedureTab = 'TIMELINE' | 'MATERIALS' | 'VITALS' | 'LAB' | 'REPORT'
 type ProcedureCategory =
@@ -172,13 +173,8 @@ function formatLabDate(value: string) {
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('ko-KR', { month: '2-digit', day: '2-digit' }).format(date)
 }
 
-function flagLabel(flag: LabObservation['flag']) {
-  if (flag === 'CRITICAL_HIGH') return '위험 높음'
-  if (flag === 'CRITICAL_LOW') return '위험 낮음'
-  if (flag === 'HIGH') return '높음'
-  if (flag === 'LOW') return '낮음'
-  if (flag === 'ABNORMAL') return '이상'
-  return '정상'
+function flagLabel(item: LabObservation) {
+  return labReferenceStatusLabel(labReferenceStatus(item))
 }
 
 function prescriptionDose(item: PrescriptionItemSummary) {
@@ -831,5 +827,5 @@ function VitalTable({ vitals, compact = false, onDelete }: { vitals: VitalRecord
 function LabTable({ labs, compact = false, loading, error }: { labs: LabObservation[]; compact?: boolean; loading: boolean; error: string }) {
   if (loading) return <div className="procedure-mini-empty">검사 결과를 불러오는 중…</div>
   if (error) return <div className="procedure-mini-empty error">{error}</div>
-  return <div className={`procedure-lab-table ${compact ? 'compact' : ''}`}><div className="procedure-lab-head"><span>항목</span><span>결과</span><span>단위</span><span>검사일</span></div>{labs.map((lab) => <div className="procedure-lab-row" key={lab.id}><strong>{lab.name}</strong><b className={`flag-${lab.flag.toLowerCase()}`}>{(lab.value ?? lab.textValue) || '-'}<small>{flagLabel(lab.flag)}</small></b><span>{lab.unit || '-'}</span><time>{formatLabDate(lab.measuredAt)}</time></div>)}{!labs.length && <div className="procedure-mini-empty">등록된 혈액검사 결과가 없습니다.</div>}</div>
+  return <div className={`procedure-lab-table ${compact ? 'compact' : ''}`}><div className="procedure-lab-head"><span>항목</span><span>결과</span><span>단위</span><span>검사일</span></div>{labs.map((lab) => <div className="procedure-lab-row" key={lab.id}><strong>{lab.name}</strong><b className={labReferenceStatusClass(labReferenceStatus(lab))}>{(lab.value ?? lab.textValue) || '-'}<small>{flagLabel(lab)}</small></b><span>{lab.unit || '-'}</span><time>{formatLabDate(lab.measuredAt)}</time></div>)}{!labs.length && <div className="procedure-mini-empty">등록된 혈액검사 결과가 없습니다.</div>}</div>
 }

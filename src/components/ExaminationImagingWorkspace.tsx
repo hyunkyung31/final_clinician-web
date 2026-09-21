@@ -84,6 +84,15 @@ import './rendering-shortcuts.css'
 import { CTAIAnalysisPanel } from './CTAIAnalysisPanel'
 import { groupAngiographySequences } from '../api/angiographyGrouping'
 import { splitImagingStudies } from '../api/imagingCategories'
+import {
+  LAB_REFERENCE_LABELS,
+  countLabReferenceStatuses,
+  formatLabReferenceDisplay,
+  isCriticalLabFlag,
+  labReferenceStatus,
+  labReferenceStatusClass,
+  labReferenceStatusLabel,
+} from '../labReferenceStatus'
 import { FollowUpTimeline } from './FollowUpTimeline'
 import { ClinicalAIAnalysisPanel } from './ClinicalAIAnalysisPanel'
 import { XCAAnalysisPanel } from './XCAAnalysisPanel'
@@ -164,24 +173,8 @@ function formatAngiographyDate(value: string) {
   return ['year', 'month', 'day'].map((type) => parts.find((part) => part.type === type)?.value).join('-')
 }
 
-function displayFlag(flag: LabObservation['flag']) {
-  if (flag === 'CRITICAL_HIGH') return '위험 높음'
-  if (flag === 'CRITICAL_LOW') return '위험 낮음'
-  if (flag === 'HIGH') return '높음'
-  if (flag === 'LOW') return '낮음'
-  if (flag === 'ABNORMAL') return '이상'
-  if (flag === 'NORMAL') return '정상'
-  return '미판정'
-}
-
 function referenceText(item: LabObservation) {
-  if (item.referenceRangeText) return item.referenceRangeText
-  if (item.referenceLow !== undefined && item.referenceHigh !== undefined) {
-    return `${item.referenceLow}–${item.referenceHigh}`
-  }
-  if (item.referenceLow !== undefined) return `≥ ${item.referenceLow}`
-  if (item.referenceHigh !== undefined) return `≤ ${item.referenceHigh}`
-  return item.referenceRangeText || '기준값 미제공'
+  return formatLabReferenceDisplay(item)
 }
 
 function numericReferenceUnit(item: LabObservation) {
@@ -195,15 +188,17 @@ function hasReference(item: LabObservation) {
 
 function LabReference({ item, comparison }: { item: LabObservation; comparison?: LabObservation }) {
   const reference = hasReference(item) ? item : comparison
-  return <span>{reference ? referenceText(reference) : '기준값 미제공'}{reference && reference !== item && <small className="lab-reference-comparison">최근검사 기준 · 비교용</small>}</span>
+  return <span>{reference ? referenceText(reference) : LAB_REFERENCE_LABELS.noReference}{reference && reference !== item && <small className="lab-reference-comparison">최근검사 기준 · 비교용</small>}</span>
 }
 
-function LabFlagBadge({ flag }: { flag: LabObservation['flag'] }) {
+function LabFlagBadge({ item }: { item: LabObservation }) {
+  const status = labReferenceStatus(item)
+  const flag = item.flag
   return (
-    <em className={`lab-flag flag-${flag.toLowerCase()}`}>
+    <em className={`lab-flag ${labReferenceStatusClass(status)}${isCriticalLabFlag(item) ? ' critical' : ''}`}>
       {(flag === 'HIGH' || flag === 'CRITICAL_HIGH') && <ArrowUp aria-hidden="true" size={11} strokeWidth={3} />}
       {(flag === 'LOW' || flag === 'CRITICAL_LOW') && <ArrowDown aria-hidden="true" size={11} strokeWidth={3} />}
-      {displayFlag(flag)}
+      {labReferenceStatusLabel(status)}
     </em>
   )
 }
@@ -268,8 +263,8 @@ function TrendChart({ observations }: { observations: LabObservation[] }) {
         {values.length > 1 && <polyline points={points} className="trend-line" />}
         {values.map((item, index) => (
           <g key={item.id}>
-            <title>{`${item.stageLabel || '검사'} · ${formatDate(item.measuredAt)} · ${item.value} ${item.unit} · ${displayFlag(item.flag)}`}</title>
-            <circle cx={x(index)} cy={y(item.value)} r="5" className={`trend-point flag-${item.flag.toLowerCase()}`} />
+            <title>{`${item.stageLabel || '검사'} · ${formatDate(item.measuredAt)} · ${item.value} ${item.unit} · ${labReferenceStatusLabel(labReferenceStatus(item))}`}</title>
+            <circle cx={x(index)} cy={y(item.value)} r="5" className={`trend-point ${labReferenceStatusClass(labReferenceStatus(item))}`} />
             <text x={x(index)} y={y(item.value) - 11} textAnchor="middle" className="trend-value">{Number(item.value.toFixed(2))}</text>
             <text x={x(index)} y={height - 26} textAnchor="middle" className="trend-date">
               {item.measuredAt ? formatDate(item.measuredAt) : `${index + 1}회`}
@@ -1197,10 +1192,7 @@ export function ExaminationImagingWorkspace({
 
   const selectedLab = labGroups.find((group) => group.key === selectedLabCode)
   const latestLabItems = labGroups.map((group) => group.observations.at(-1)!)
-  const normalCount = latestLabItems.filter((item) => item.flag === 'NORMAL').length
-  const abnormalCount = latestLabItems.filter((item) =>
-    ['HIGH', 'LOW', 'CRITICAL_HIGH', 'CRITICAL_LOW', 'ABNORMAL'].includes(item.flag),
-  ).length
+  const latestLabCounts = countLabReferenceStatuses(latestLabItems)
   const labAiCandidates = useMemo(() => {
     if (followUpRecords?.patient.id !== patient?.backendId) return []
     return (followUpRecords?.visits ?? []).flatMap((visit) =>
@@ -1586,9 +1578,9 @@ export function ExaminationImagingWorkspace({
       ) : (
         <div className="lab-review-layout">
           <section className="lab-summary-row">
-            <article><FlaskConical size={18} /><span>검사 항목</span><strong>{latestLabItems.length}</strong><small>최근 검사 기준 · 누적 {labItems.length}개 수치</small></article>
-            <article className="normal"><CheckCircle2 size={18} /><span>정상</span><strong>{normalCount}</strong><small>최근 검사 기준</small></article>
-            <article className={abnormalCount ? 'warning' : ''}><Activity size={18} /><span>비정상</span><strong>{abnormalCount}</strong><small>높음·낮음·이상{latestLabItems.length - normalCount - abnormalCount > 0 ? ` · 미판정 ${latestLabItems.length - normalCount - abnormalCount}개` : ''}</small></article>
+            <article><FlaskConical size={18} /><span>총 검사 항목</span><strong>{latestLabCounts.total}</strong><small>최근 검사 기준 · 누적 {labItems.length}개 수치</small></article>
+            <article className="in-range"><CheckCircle2 size={18} /><span>{LAB_REFERENCE_LABELS.inRange}</span><strong>{latestLabCounts.inRange}</strong><small>참고범위 기준</small></article>
+            <article className={latestLabCounts.outOfRange ? 'out-of-range' : ''}><Activity size={18} /><span>{LAB_REFERENCE_LABELS.outOfRange}</span><strong>{latestLabCounts.outOfRange}</strong><small>{[latestLabCounts.noReference ? `${LAB_REFERENCE_LABELS.noReference} ${latestLabCounts.noReference}` : '', latestLabCounts.noResult ? `${LAB_REFERENCE_LABELS.noResult} ${latestLabCounts.noResult}` : ''].filter(Boolean).join(' · ') || '참고범위 기준'}</small></article>
           </section>
 
           {labError && <div className="feature-error"><span>{labError}</span></div>}
@@ -1604,8 +1596,8 @@ export function ExaminationImagingWorkspace({
                     <button key={group.key} className={selectedLabCode === group.key ? 'active' : ''} onClick={() => setSelectedLabCode(group.key)} type="button">
                       <span className="lab-item-name"><strong>{latest.name}</strong><small>{group.code} · {group.observations.length}회 · {formatDate(latest.measuredAt)}</small></span>
                       <span className="lab-item-value"><b>{latest.value ?? (latest.textValue || '-')}</b><small>{latest.unit}</small></span>
-                      <LabFlagBadge flag={latest.flag} />
-                      <small className="lab-item-reference"><span>참고범위</span> {referenceText(latest)}{numericReferenceUnit(latest)}</small>
+                      <LabFlagBadge item={latest} />
+                      <small className="lab-item-reference"><span>{LAB_REFERENCE_LABELS.referencePrefix}</span> {referenceText(latest)}{numericReferenceUnit(latest)}</small>
                     </button>
                   )
                 })}
@@ -1624,20 +1616,20 @@ export function ExaminationImagingWorkspace({
           </div>
 
           <section className="feature-card lab-result-table-card">
-            <header><h2>전체 혈액검사 결과</h2><span>수치·참고치·판정 함께 보기</span>{selectedLabAi?.exam.result && <button type="button" onClick={() => { setLabEditorResultId(selectedLabAi.exam.result!.id); setLabEditorOpen(true) }}>선택 차수 검사값 편집</button>}</header>
+            <header><h2>전체 혈액검사 결과</h2><span>수치·참고범위 기준 함께 보기</span>{selectedLabAi?.exam.result && <button type="button" onClick={() => { setLabEditorResultId(selectedLabAi.exam.result!.id); setLabEditorOpen(true) }}>선택 차수 검사값 편집</button>}</header>
             <div className="lab-result-table">
-              <div className="lab-result-head"><span>검사일</span><span>항목</span><span>결과</span><span>단위</span><span>참고치</span><span>판정</span></div>
+              <div className="lab-result-head"><span>검사일</span><span>항목</span><span>결과</span><span>단위</span><span>참고치</span><span>{LAB_REFERENCE_LABELS.tableStatusHeader}</span></div>
               {labGroups.flatMap((group) => {
                 const comparison = [...group.observations].reverse().find(hasReference)
                 return [...group.observations].reverse().map((item) => ({ item, comparison }))
               }).map(({ item, comparison }) => (
                 <div className="lab-result-row" key={item.id}>
                   <span>{formatDate(item.measuredAt)}{item.stageLabel && <small className="lab-result-stage">{item.stageLabel}</small>}</span>
-                  <strong>{item.name}<small>{item.code}</small><details className="lab-measurement-details"><summary>검사 상세</summary><dl><div><dt>검체</dt><dd>{item.specimenType || '미제공'}</dd></div><div><dt>검사 방법</dt><dd>{item.method || '미제공'}</dd></div><div><dt>공복</dt><dd>{item.fasting === undefined ? '미제공' : item.fasting ? '예' : '아니오'}</dd></div><div><dt>결과 참고치</dt><dd>{referenceText(item)}</dd></div><div><dt>적용 정상범위</dt><dd>{item.referenceRangeId ?? '미제공'}</dd></div><div><dt>판정</dt><dd>{displayFlag(item.flag)}{item.interpretationCode && ` · ${item.interpretationCode}`}</dd></div></dl></details></strong>
+                  <strong>{item.name}<small>{item.code}</small><details className="lab-measurement-details"><summary>검사 상세</summary><dl><div><dt>검체</dt><dd>{item.specimenType || '미제공'}</dd></div><div><dt>검사 방법</dt><dd>{item.method || '미제공'}</dd></div><div><dt>공복</dt><dd>{item.fasting === undefined ? '미제공' : item.fasting ? '예' : '아니오'}</dd></div><div><dt>결과 참고치</dt><dd>{referenceText(item)}</dd></div><div><dt>적용 참고범위</dt><dd>{item.referenceRangeId ?? '미제공'}</dd></div><div><dt>{LAB_REFERENCE_LABELS.tableStatusHeader}</dt><dd>{labReferenceStatusLabel(labReferenceStatus(item))}{item.interpretationCode && ` · ${item.interpretationCode}`}</dd></div></dl></details></strong>
                   <b>{item.value ?? (item.textValue || '-')}</b>
                   <span>{item.unit || '-'}</span>
                   <LabReference item={item} comparison={comparison} />
-                  <LabFlagBadge flag={item.flag} />
+                  <LabFlagBadge item={item} />
                 </div>
               ))}
             </div>
