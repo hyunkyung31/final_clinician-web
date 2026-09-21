@@ -1329,13 +1329,9 @@ async function getFhirObservationBundle(patientId: number): Promise<UnknownRecor
 export async function getPatientAngiographySequences(
   patientId: number,
 ): Promise<AngiographySequenceSummary[]> {
-  let payload: unknown
-  try {
-    payload = await request<unknown>(`/api/patients/${patientId}/integrated/`)
-  } catch (error) {
-    if (!(error instanceof ApiError) || error.status !== 404) throw error
-    payload = await request<unknown>(`/api/patients/${patientId}/integrated-data/`)
-  }
+  const payload = await request<unknown>(
+    `/api/patients/${patientId}/integrated-data/`,
+  )
 
   if (!isRecord(payload) || !Array.isArray(payload.angiography_sequences)) return []
 
@@ -1370,13 +1366,9 @@ export async function getPatientAngiographySequences(
 export async function getPatientClinicalFeatureSnapshot(
   patientId: number,
 ): Promise<Record<string, string> | null> {
-  let payload: unknown
-  try {
-    payload = await request<unknown>(`/api/patients/${patientId}/integrated/`)
-  } catch (error) {
-    if (!(error instanceof ApiError) || error.status !== 404) throw error
-    payload = await request<unknown>(`/api/patients/${patientId}/integrated-data/`)
-  }
+  const payload = await request<unknown>(
+    `/api/patients/${patientId}/integrated-data/`,
+  )
 
   if (!isRecord(payload) || !isRecord(payload.clinical_feature_snapshot)) return null
 
