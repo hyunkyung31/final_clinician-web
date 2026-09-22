@@ -79,6 +79,24 @@ test('draft results without a version/report map optional fields to null', async
   assert.equal(result[0].latestReport, null)
 })
 
+test('patient reports support report type filters and paginated results', async () => {
+  const { getPatientReports } = await loadApiTestModule()
+  globalThis.fetch = async (url) => {
+    assert.equal(url, '/api/patients/10/medical-results/?report_type=CCTA_3D')
+    return Response.json({ results: [{
+      medical_result_id: 17,
+      report_type: 'CCTA_3D',
+      examination: { id: 77, exam_name: '관상동맥 CT 혈관조영술', exam_code: 'CCTA', performed_at: '2026-09-22T09:00:00Z' },
+      status: 'DRAFT', latest_version: null, latest_signoff: null, latest_report: null, latest_release: null,
+      created_at: '2026-09-22T09:00:00Z', updated_at: '2026-09-22T09:00:00Z',
+    }] })
+  }
+  const result = await getPatientReports(10, 'CCTA_3D')
+  assert.equal(result[0].reportType, 'CCTA_3D')
+  assert.equal(result[0].examinationId, 77)
+  assert.equal(result[0].examName, '관상동맥 CT 혈관조영술')
+})
+
 test('report download reads the file download_url from the reports download endpoint', async () => {
   const { getReportDownload } = await loadApiTestModule()
   globalThis.fetch = async (url, options) => {
