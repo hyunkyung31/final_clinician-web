@@ -47,6 +47,26 @@ function formatPercent(value?: number | null) {
   return `${Math.round(ratio * 1000) / 10}%`
 }
 
+async function getAllPatientReports(patientId: number) {
+  const responses = await Promise.allSettled([
+    getPatientReports(patientId),
+    getPatientReports(patientId, 'XCA_2D'),
+    getPatientReports(patientId, 'CCTA_3D'),
+  ])
+  const successful = responses.filter((item): item is PromiseFulfilledResult<PatientReportSummary[]> => item.status === 'fulfilled')
+  if (!successful.length) {
+    const failure = responses.find((item): item is PromiseRejectedResult => item.status === 'rejected')
+    throw failure?.reason ?? new Error('보고서 목록을 불러오지 못했습니다.')
+  }
+  const reports = new Map<number, PatientReportSummary>()
+  successful.forEach(({ value }) => value.forEach((report) => reports.set(report.medicalResultId, report)))
+  return [...reports.values()].sort((a, b) => {
+    const left = Date.parse(a.performedAt || a.visitDate || a.createdAt || '') || 0
+    const right = Date.parse(b.performedAt || b.visitDate || b.createdAt || '') || 0
+    return right - left
+  })
+}
+
 function ReportFilePreview({ fileId, label }: { fileId: number | null; label: string }) {
   const [url, setUrl] = useState('')
   useEffect(() => {
@@ -259,7 +279,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
     return () => { active = false; window.clearTimeout(timer) }
   }, [reportSearchKeyword])
 
-  const reloadList = (patientId: number) => getPatientReports(patientId)
+  const reloadList = (patientId: number) => getAllPatientReports(patientId)
     .then((items) => setPatientReports(items))
     .catch((error) => { setPatientReports([]); setReportsError(error instanceof Error ? error.message : '보고서 목록을 불러오지 못했습니다.') })
 
@@ -274,7 +294,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
     let active = true
     setReportsLoading(true)
     setReportsError('')
-    void getPatientReports(reportPatient.backendId)
+    void getAllPatientReports(reportPatient.backendId)
       .then((items) => { if (active) setPatientReports(items) })
       .catch((error) => { if (active) { setPatientReports([]); setReportsError(error instanceof Error ? error.message : '보고서 목록을 불러오지 못했습니다.') } })
       .finally(() => { if (active) setReportsLoading(false) })

@@ -1528,10 +1528,18 @@ export async function createPatientAllergy(patientId: number, input: PatientAlle
 /** GET /api/patients/{id}/medical-results/ - 환자 기준 판독보고서 목록.
  * '결과보고서' 화면이 전역 선택 환자에만 종속되지 않고 환자 검색으로
  * 다른 환자의 보고서 목록을 조회할 수 있도록 한다. */
-export async function getPatientReports(patientId: number): Promise<PatientReportSummary[]> {
-  const payload = await request<unknown>(`/api/patients/${patientId}/medical-results/`)
-  if (!Array.isArray(payload)) return []
-  return payload.filter(isRecord).map((item): PatientReportSummary => {
+export async function getPatientReports(
+  patientId: number,
+  reportType?: Extract<MedicalReportType, 'XCA_2D' | 'CCTA_3D'>,
+): Promise<PatientReportSummary[]> {
+  const query = reportType ? `?report_type=${encodeURIComponent(reportType)}` : ''
+  const payload = await request<unknown>(`/api/patients/${patientId}/medical-results/${query}`)
+  const rows = Array.isArray(payload)
+    ? payload
+    : isRecord(payload) && Array.isArray(payload.results)
+      ? payload.results
+      : []
+  return rows.filter(isRecord).map((item): PatientReportSummary => {
     const examinationRaw = isRecord(item.examination) ? item.examination : {}
     const latestVersionRaw = item.latest_version
     const latestSignoffRaw = item.latest_signoff
