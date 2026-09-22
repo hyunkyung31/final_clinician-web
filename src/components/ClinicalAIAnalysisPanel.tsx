@@ -3,8 +3,12 @@ import { BrainCircuit, CheckCircle2, LoaderCircle, TriangleAlert } from 'lucide-
 import {
   createClinicalAIAnalysis,
   getClinicalAIAnalysis,
+  getStoredClinicalShap,
+  loadLatestClinicalAnalysis,
   type ClinicalAIAnalysis,
   type ClinicalInputPayload,
+  type ClinicalShapExplanation,
+  type ClinicalShapFeature,
 } from '../api/client'
 import { loadClinicalAiPrefill } from '../api/clinicalAiInput'
 import type { PatientDetail, PatientSummary } from '../types'
@@ -97,6 +101,30 @@ const groups: ClinicalGroup[] = [
 ]
 
 const allFields = groups.flatMap((group) => group.fields)
+const fieldLabels = new Map(allFields.map((field) => [field.name, field.label]))
+
+function shapLabel(feature: string) {
+  return fieldLabels.get(feature) ?? feature
+}
+
+function ShapDirection({ title, items }: { title: string; items: ClinicalShapFeature[] }) {
+  if (!items.length) return null
+  const scale = Math.max(...items.map((item) => Math.abs(item.shap_value)))
+  return (
+    <div className="clinical-ai-shap-group">
+      <h3>{title}</h3>
+      {items.map((item) => (
+        <div className="clinical-ai-shap-row" key={`${title}-${item.feature}`}>
+          <span>{shapLabel(item.feature)}</span>
+          <span className="clinical-ai-shap-track" aria-hidden="true">
+            <span style={{ width: scale > 0 ? `${(Math.abs(item.shap_value) / scale) * 100}%` : '0%' }} />
+          </span>
+          {item.imputed ? <small>자동 보정된 입력값</small> : null}
+        </div>
+      ))}
+    </div>
+  )
+}
 
 function normalizeSex(value: string | undefined) {
   if (value === '0' || value === '1') return value
@@ -150,6 +178,7 @@ export function ClinicalAIAnalysisPanel({
   const initialInputKey = JSON.stringify(initialInput)
   const [values, setValues] = useState<Record<string, string>>(() => initialValues(patient, patientDetail, initialInput))
   const [analysis, setAnalysis] = useState<ClinicalAIAnalysis | null>(null)
+  const [savedExplanation, setSavedExplanation] = useState<ClinicalShapExplanation | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [resolvedExaminationId, setResolvedExaminationId] = useState(examinationId)
@@ -158,6 +187,7 @@ export function ClinicalAIAnalysisPanel({
 
   useEffect(() => {
     setAnalysis(null)
+    setSavedExplanation(null)
     setError('')
     setResolvedExaminationId(examinationId)
     setResolvedSourceLabel(sourceLabel)
@@ -180,6 +210,15 @@ export function ClinicalAIAnalysisPanel({
       active = false
     }
   }, [patient?.backendId, patientDetail?.backendId, examinationId, examinationPatient?.id, initialInputKey, sourceLabel])
+
+  useEffect(() => {
+    if (!patient?.backendId || !resolvedExaminationId) return
+    let active = true
+    void loadLatestClinicalAnalysis(patient.backendId, resolvedExaminationId).then((loaded) => {
+      if (active && loaded) setAnalysis((current) => current ?? loaded)
+    }).catch(() => {})
+    return () => { active = false }
+  }, [patient?.backendId, resolvedExaminationId])
 
   const completedCount = useMemo(
     () => allFields.filter((field) => values[field.name] !== undefined && values[field.name] !== '').length,
@@ -244,6 +283,24 @@ export function ClinicalAIAnalysisPanel({
 
   const result = analysis?.results?.find((item) => item.result_type === 'RISK_PREDICTION')
   const probability = result?.result_json.probability
+  const inlineExplanation = result?.result_json.explanation
+  const explanation = inlineExplanation?.type === 'SHAP' && Array.isArray(inlineExplanation.top_features) && inlineExplanation.top_features.length > 0
+    ? inlineExplanation
+    : savedExplanation
+  const shapFeatures = explanation?.type === 'SHAP' && Array.isArray(explanation.top_features) && explanation.top_features.length > 0
+    ? explanation.top_features.slice(0, 5)
+    : []
+
+  useEffect(() => {
+    if (!result?.id || (inlineExplanation?.type === 'SHAP' && Array.isArray(inlineExplanation.top_features) && inlineExplanation.top_features.length > 0)) {
+      return
+    }
+    let active = true
+    void getStoredClinicalShap(result.id).then((saved) => {
+      if (active) setSavedExplanation(saved)
+    }).catch(() => { if (active) setSavedExplanation(null) })
+    return () => { active = false }
+  }, [result?.id, inlineExplanation])
 
   return (
     <form className="clinical-ai-panel" onSubmit={submit}>
@@ -295,6 +352,14 @@ export function ClinicalAIAnalysisPanel({
         <section className={`clinical-ai-result ${result?.result_json.prediction === 1 ? 'high' : 'normal'}`}>
           <header><CheckCircle2 size={20} /><div><strong>{analysis.analysis.status === 'SUCCEEDED' ? '분석 완료' : '분석 진행 중'}</strong><small>Analysis #{analysis.analysis.id}</small></div></header>
           {result && <div className="clinical-ai-result-grid"><article><span>위험 확률</span><strong>{(Number(probability) * 100).toFixed(1)}%</strong></article><article><span>판정 기준</span><strong>{(result.result_json.threshold * 100).toFixed(1)}%</strong></article><article><span>최종 판정</span><strong>{result.result_json.prediction === 1 ? 'Significant' : 'Normal'}</strong></article></div>}
+          {shapFeatures.length > 0 && (
+            <section className="clinical-ai-shap">
+              <h3>AI 모델 주요 기여 변수</h3>
+              <ShapDirection title="위험 점수를 높이는 방향" items={shapFeatures.filter((item) => item.direction === 'increase')} />
+              <ShapDirection title="위험 점수를 낮추는 방향" items={shapFeatures.filter((item) => item.direction === 'decrease')} />
+              <p>각 항목은 현재 입력에 대해 AI 모델의 예측 결과에 영향을 준 방향과 상대적 크기를 나타냅니다. 원인 관계나 개별 임상적 중요도를 의미하지 않습니다.</p>
+            </section>
+          )}
           {result?.result_json.warnings?.length ? <ul>{result.result_json.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
         </section>
       )}

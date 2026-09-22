@@ -3931,6 +3931,20 @@ export function getCTAIAnalysis(id: number): Promise<CTAIAnalysis> {
   return request<CTAIAnalysis>(`/api/ai-analyses/${id}/`)
 }
 
+export interface ClinicalShapFeature {
+  feature: string
+  value: number | string
+  shap_value: number
+  direction: 'increase' | 'decrease'
+  imputed?: boolean
+}
+
+export interface ClinicalShapExplanation {
+  type: 'SHAP'
+  method?: string
+  top_features: ClinicalShapFeature[]
+}
+
 export interface ClinicalAIResult {
   id: number
   ai_analysis_job: number
@@ -3942,6 +3956,7 @@ export interface ClinicalAIResult {
     threshold: number
     prediction: 0 | 1
     warnings: string[]
+    explanation?: ClinicalShapExplanation
   }
   generated_at: string
   status: 'VALID' | 'INVALID' | 'REVIEW_REQUIRED'
@@ -4001,4 +4016,24 @@ export async function getClinicalAIAnalysis(
   return request<ClinicalAIAnalysis>(
     `/api/ai-analyses/${analysisId}/`,
   )
+}
+
+export async function loadLatestClinicalAnalysis(
+  patientId: number,
+  examinationId: number,
+): Promise<ClinicalAIAnalysis | null> {
+  const listed = await request<Array<{ id: number; examination: number; analysis_type: string; status: string }>>(
+    `/api/ai-analyses/?patient_id=${patientId}&type=CLINICAL&status=SUCCEEDED`,
+  )
+  const match = (Array.isArray(listed) ? listed : []).find((item) => item.examination === examinationId)
+  return match ? getClinicalAIAnalysis(match.id) : null
+}
+
+export async function getStoredClinicalShap(resultId: number): Promise<ClinicalShapExplanation | null> {
+  const rows = await request<Array<{ explanation_type: string; explanation_json?: ClinicalShapExplanation | null }>>(
+    `/api/ai-results/${resultId}/explanations/?type=SHAP`,
+  )
+  const saved = (Array.isArray(rows) ? rows : []).find((item) => item.explanation_type === 'SHAP')?.explanation_json
+  if (saved?.type === 'SHAP' && Array.isArray(saved.top_features) && saved.top_features.length > 0) return saved
+  return null
 }

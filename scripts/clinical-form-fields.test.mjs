@@ -14,6 +14,15 @@ const expected = [
   'EF-TTE', 'Region RWMA', 'VHD',
 ]
 
+test('Clinical AI explanation is optional model metadata', () => {
+  assert.match(panel, /AI 모델 주요 기여 변수/)
+  assert.match(panel, /위험 점수를 높이는 방향/)
+  assert.match(panel, /위험 점수를 낮추는 방향/)
+  assert.match(panel, /원인 관계나 개별 임상적 중요도를 의미하지 않습니다/)
+  assert.match(panel, /explanation\?\.type === 'SHAP'/)
+  assert.doesNotMatch(panel, /shap_value\.toFixed/)
+})
+
 test('Clinical AI form declares all 54 model input fields', () => {
   assert.equal(expected.length, 54)
   for (const column of expected) {
