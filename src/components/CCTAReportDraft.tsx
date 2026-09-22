@@ -37,7 +37,8 @@ function CCTAReportImage({ fileId, label }: { fileId: number | null; label: stri
   </figure>
 }
 
-export function CCTAReportDraft({ examinationId, analysisResultId, disabled, onBusyChange }: {
+export function CCTAReportDraft({ patientId, examinationId, analysisResultId, disabled, onBusyChange }: {
+  patientId: number
   examinationId: number
   analysisResultId: number
   disabled: boolean
@@ -65,8 +66,8 @@ export function CCTAReportDraft({ examinationId, analysisResultId, disabled, onB
   }
 
   function applyDetail(next: MedicalResultDetail) {
-    if (next.reportType !== 'CCTA_3D' || next.examinationId !== examinationId) {
-      throw new Error('생성된 보고서의 검사 또는 보고서 종류가 다릅니다.')
+    if (next.reportType !== 'CCTA_3D' || next.examinationId !== examinationId || next.patient.id !== patientId) {
+      throw new Error('생성된 보고서의 환자, 검사 또는 보고서 종류가 다릅니다.')
     }
     setDetail(next)
     setConclusion(next.conclusion)
@@ -74,7 +75,7 @@ export function CCTAReportDraft({ examinationId, analysisResultId, disabled, onB
 
   function prepare() {
     void act(async () => {
-      const next = await createExaminationMedicalResult(examinationId, 'CCTA_3D', analysisResultId)
+      const next = await createExaminationMedicalResult(examinationId, 'CCTA_3D', analysisResultId, patientId)
       applyDetail(next)
       setSaved(Boolean(next.conclusion.trim()))
       setConfirmed(false); setSignatureShown(false); setDownloadUrl('')

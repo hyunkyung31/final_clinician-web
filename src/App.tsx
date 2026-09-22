@@ -87,7 +87,6 @@ import type {
   TimelineItem,
   WorkStatus,
 } from "./types";
-import { isImagingStudyOwnedByPatient } from "./api/imagingOwnership";
 
 type ThemeMode = "light" | "dark";
 type FontSizeMode = "small" | "normal" | "large" | "xlarge";
@@ -816,9 +815,8 @@ function App() {
       .then((studies) => {
         if (!active) return;
 
-        const ownedStudies = studies.filter((study) => isImagingStudyOwnedByPatient(study, selectedPatient.backendId));
-        setImagingStudies(ownedStudies);
-        setSelectedStudyId(ownedStudies[0]?.id ?? null);
+        setImagingStudies(studies);
+        setSelectedStudyId(studies[0]?.id ?? null);
       })
       .catch((error) => {
         if (!active) return;

@@ -476,22 +476,9 @@ function mapImagingStudy(study: UnknownRecord): ImagingStudySummary | null {
   const id = readNumber(study, 'id', 'study_id')
   if (id === undefined) return null
 
-  const examination = nestedRecord(study, 'examination')
-  const order = examination ? nestedRecord(examination, 'order') : null
-  const encounter = (examination ? nestedRecord(examination, 'encounter') : null)
-    ?? (order ? nestedRecord(order, 'encounter') : null)
-  const patient = nestedRecord(study, 'patient')
-    ?? (examination ? nestedRecord(examination, 'patient') : null)
-    ?? (encounter ? nestedRecord(encounter, 'patient') : null)
-
   return {
     id,
-    examinationId: readNumber(study, 'examination_id')
-      ?? (examination ? readNumber(examination, 'id', 'examination_id') : readNumber(study, 'examination')),
-    patientId: readNumber(study, 'patient_id', 'examination_patient_id')
-      ?? (patient ? readNumber(patient, 'id', 'patient_id') : undefined)
-      ?? (examination ? readNumber(examination, 'patient_id') : undefined)
-      ?? (encounter ? readNumber(encounter, 'patient_id') : undefined),
+    examinationId: readNumber(study, 'examination_id', 'examination'),
     studyInstanceUid: readString(
       study,
       'study_instance_uid',
@@ -1751,15 +1738,17 @@ export async function createExaminationMedicalResult(
   examinationId: number,
   reportType: Exclude<MedicalReportType, 'INTEGRATED'>,
   analysisResultId: number,
+  patientId: number,
   rendering3DId?: number,
 ): Promise<MedicalResultDetail> {
-  if (![examinationId, analysisResultId].every((value) => Number.isSafeInteger(value) && value > 0)) {
-    throw new ApiError('완료된 검사와 AI 분석 결과를 선택해주세요.', 400)
+  if (![examinationId, analysisResultId, patientId].every((value) => Number.isSafeInteger(value) && value > 0)) {
+    throw new ApiError('현재 환자와 완료된 검사 및 AI 분석 결과를 선택해주세요.', 400)
   }
   const created = await request<unknown>(`/api/examinations/${examinationId}/medical-results/`, {
     method: 'POST',
     refreshOnUnauthorized: false,
     body: JSON.stringify({
+      patient_id: patientId,
       report_type: reportType,
       analysis_result_id: analysisResultId,
       ...(rendering3DId ? { rendering_3d_id: rendering3DId } : {}),
