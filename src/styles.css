@@ -9171,6 +9171,8 @@ html[data-theme='light'] {
   --workstation-header: #ffffff;
   --workstation-hover: #f2f6fb;
   --workstation-input: #ffffff;
+  --workstation-panel-soft: #f2f6ff;
+  --color-text-muted: #71829a;
 }
 
 html[data-theme='dark'] {
@@ -9189,6 +9191,8 @@ html[data-theme='dark'] {
   --workstation-header: #132235;
   --workstation-hover: #17283b;
   --workstation-input: #0d1927;
+  --workstation-panel-soft: #14283d;
+  --color-text-muted: #93a5bb;
   --shadow-card: none;
 }
 
@@ -13526,5 +13530,75 @@ html[data-theme='dark'] :is(
   .imaging-list-icon
 ) {
   color: var(--color-primary-dark);
+  background: var(--color-primary-soft);
+}
+
+html[data-theme='dark'] :is(
+  .imaging-exam-list .imaging-asset-button strong,
+  .angio-side-group > summary strong
+) {
+  color: var(--color-text);
+}
+
+html[data-theme='dark'] :is(
+  .imaging-exam-list .imaging-asset-button small,
+  .imaging-exam-list .imaging-asset-button > b,
+  .angio-side-group > summary span
+) {
+  color: var(--color-text-subtle);
+}
+
+html[data-theme='dark'] .api-inline-notice {
+  color: #a9c8ee;
+  border: 1px solid #294767;
+  background: #142a42;
+}
+
+html[data-theme='dark'] .exam-strip-actions button {
+  color: var(--color-primary-dark);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 7px;
+  background: var(--color-primary-soft);
+}
+
+html[data-theme='dark'] .exam-data-tabs {
+  border-color: var(--color-border);
+}
+
+html[data-theme='dark'] .exam-data-tabs button {
+  color: var(--color-text-subtle);
+}
+
+html[data-theme='dark'] .exam-data-tabs button.active {
+  color: var(--color-primary-dark);
+}
+
+html[data-theme='dark'] .xca-scope {
+  color: var(--color-text);
+  border-color: #34577d;
+  background: var(--workstation-panel-soft);
+}
+
+html[data-theme='dark'] .xca-series-list button[aria-pressed='true'],
+html[data-theme='dark'] .xca-suspected-links button[aria-pressed='true'] {
+  color: var(--color-text);
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+html[data-theme='dark'] :is(
+  .xca-series-list button,
+  .xca-suspected-links button,
+  .xca-modal > header > button,
+  .xca-frame-tools button
+) {
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+  background: var(--workstation-panel);
+}
+
+html[data-theme='dark'] .xca-modal > header > button:hover {
+  color: var(--color-primary-dark);
+  border-color: var(--color-primary);
   background: var(--color-primary-soft);
 }
