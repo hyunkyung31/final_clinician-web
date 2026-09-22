@@ -162,6 +162,14 @@ body {
 .clinical-ai-result-grid span { color: var(--color-text-subtle); font-size: 11px; }
 .clinical-ai-result-grid strong { font-size: 18px; }
 .clinical-ai-result ul { margin: 12px 0 0; padding-left: 18px; color: #8a5a11; font-size: 12px; }
+.clinical-ai-shap { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(0, 0, 0, 0.08); }
+.clinical-ai-shap > h3, .clinical-ai-shap-group h3 { margin: 0 0 8px; font-size: 13px; font-weight: 700; }
+.clinical-ai-shap-group + .clinical-ai-shap-group { margin-top: 10px; }
+.clinical-ai-shap-row { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 8px; align-items: center; margin: 4px 0; font-size: 12px; }
+.clinical-ai-shap-row small { grid-column: 1 / -1; color: var(--color-text-subtle); font-size: 11px; }
+.clinical-ai-shap-track { display: block; height: 8px; border-radius: 99px; background: rgba(0, 0, 0, 0.06); overflow: hidden; }
+.clinical-ai-shap-track > span { display: block; height: 100%; border-radius: inherit; background: var(--color-primary, #3f78e8); }
+.clinical-ai-shap > p { margin: 10px 0 0; color: var(--color-text-subtle); font-size: 11px; line-height: 1.45; }
 .clinical-ai-actions {
   position: sticky;
   bottom: -18px;
