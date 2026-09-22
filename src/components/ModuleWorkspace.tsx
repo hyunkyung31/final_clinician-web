@@ -141,7 +141,6 @@ export function ModuleWorkspace({
 
     let active = true
     setPatientSearchLoading(true)
-    setPatientSearchResults([])
     setListError('')
     const timer = window.setTimeout(() => {
       setPatientSearchLoading(true)

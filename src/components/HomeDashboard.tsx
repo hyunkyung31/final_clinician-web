@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   AlertTriangle,
   Bell,
@@ -60,6 +60,7 @@ interface HomeDashboardProps {
   doctorId?: number
   roles: string[]
   clinicianName?: string
+  loadEnabled?: boolean
   onNavigate: (destination: HomeDestination) => void
   onOpenPatient: (patientId: number) => void
 }
@@ -183,6 +184,7 @@ export function HomeDashboard({
   patients,
   doctorId,
   roles,
+  loadEnabled = true,
   onNavigate,
   onOpenPatient,
 }: HomeDashboardProps) {
@@ -206,7 +208,9 @@ export function HomeDashboard({
   const [errorCount, setErrorCount] = useState(0)
   const roleKey = roles.map((role) => role.toUpperCase()).sort().join(',')
 
+  const dashboardLoadId = useRef(0)
   const loadDashboard = useCallback(async () => {
+    const loadId = ++dashboardLoadId.current
     setLoading(true)
     const range = dayRange()
     const normalizedRoles = roleKey.split(',').filter(Boolean)
@@ -230,6 +234,8 @@ export function HomeDashboard({
       getStaffAnnouncements(),
     ])
 
+    if (dashboardLoadId.current !== loadId) return
+
     const value = <T,>(index: number, fallback: T): T =>
       results[index].status === 'fulfilled'
         ? (results[index] as PromiseFulfilledResult<T>).value
@@ -250,8 +256,10 @@ export function HomeDashboard({
   }, [doctorId, roleKey])
 
   useEffect(() => {
+    if (!loadEnabled) return
     void loadDashboard()
-  }, [loadDashboard])
+    return () => { dashboardLoadId.current += 1 }
+  }, [loadDashboard, loadEnabled])
 
   useEffect(() => {
     const reloadTodos = () => void getStaffTodos().then(setTodos).catch(() => undefined)

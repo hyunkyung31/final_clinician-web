@@ -89,7 +89,7 @@ import {
   preferredRendering,
   renderingLabel,
 } from '../api/renderingSelection'
-import type { AnatomyViewMode } from './MedicalModelViewer'
+import type { AnatomyViewMode } from '../api/renderingSelection'
 import './rendering-shortcuts.css'
 import { CTAIAnalysisPanel } from './CTAIAnalysisPanel'
 import { groupAngiographySequences } from '../api/angiographyGrouping'

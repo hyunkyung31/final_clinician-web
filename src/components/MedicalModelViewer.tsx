@@ -4,8 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { VTKLoader } from 'three/examples/jsm/loaders/VTKLoader.js'
-
-export type AnatomyViewMode = 'VESSEL' | 'CALCIFICATION' | 'VESSEL_CALCIFICATION'
+import type { AnatomyViewMode } from '../api/renderingSelection'
 export type AnatomyRole = 'heart' | 'aorta' | 'coronary' | 'calcification' | 'centerline' | 'other'
 
 interface MedicalModelViewerProps {
