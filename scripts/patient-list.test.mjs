@@ -21,9 +21,26 @@ test('patient list request does not force scope=all (would leak non-demo source 
   assert.ok(patientsRequest, 'expected a request to /api/patients/')
   const params = new URL(patientsRequest, 'http://localhost').searchParams
   assert.equal(params.get('scope'), null)
-  assert.equal(params.get('patient_scope'), 'ALL_ACCESSIBLE')
+  assert.equal(params.get('patient_scope'), null)
+  assert.equal(params.get('assigned_to_me'), null)
   assert.equal(params.get('size'), '50')
   assert.equal(params.get('page'), '1')
+})
+
+test('assigned patients use assigned_to_me and do not send the ignored patient_scope param', async () => {
+  const { getPatientsPage } = await loadApiTestModule()
+  const requestedUrls = []
+  globalThis.fetch = async (url) => {
+    requestedUrls.push(String(url))
+    return Response.json(makePatientListResponse(10, []))
+  }
+  await getPatientsPage('', false, { patientScope: 'ASSIGNED_TO_ME', page: 1, size: 50 })
+  assert.equal(requestedUrls.some((url) => url.startsWith('/api/schema/')), false)
+  const patientsRequest = requestedUrls.find((url) => url.startsWith('/api/patients/'))
+  const params = new URL(patientsRequest, 'http://localhost').searchParams
+  assert.equal(params.get('assigned_to_me'), 'true')
+  assert.equal(params.get('patient_scope'), null)
+  assert.equal(params.get('scope'), null)
 })
 
 test('patient list page/count/hasNext are read from the backend pagination contract', async () => {

@@ -661,23 +661,40 @@ export async function getPatientsPage(
   const page = filters.page ?? 1
   const size = filters.size ?? 50
   const scope = filters.patientScope ?? (assignedToMe ? 'ASSIGNED_TO_ME' : 'ALL_ACCESSIBLE')
-  // 환자 목록은 OpenAPI 스키마를 먼저 받지 않는다. 이 서버는 patient_scope를 지원하고,
-  // 스키마 전문은 목록보다 커서 로그인 직후 첫 화면을 막는다.
-  // 주의: backend GET /api/patients/ 의 `scope` 쿼리파라미터는 "synthetic(기본값) | source | all"
-  // 로, 시연용 통합 DEMO-100명 코호트인지 원본 소스 데이터셋(ZAS/COCA/AngioCAD 원본, 훨씬 많음)까지
-  // 포함할지를 결정한다. `scope=all`을 강제로 넣으면 원본 소스 환자까지 섞여 나와 정작
-  // 화면에서 보여야 할 통합 시연 환자 100명이 뒤로 밀려 "100명이 다 안 보인다"는 문제를 만든다.
-  // (patient_scope 의 mine/consultation/recent/all과는 무관한, 완전히 다른 축의 필터이므로
-  // 값을 지정하지 않고 backend 기본값(synthetic)을 그대로 사용한다.)
+  // 이 서버의 환자 목록은 patient_scope를 보지 않는다. 내 담당은 assigned_to_me=true 이다.
+  // 스키마 전문을 먼저 받지 않는다. 그 조회가 로그인 직후 첫 화면을 막았다.
+  // 주의: `scope` 쿼리파라미터는 "synthetic(기본값) | source | all" 이라
+  // 시연용 DEMO 환자와 원본 소스 환자를 가른다. `scope=all`을 넣으면 원본 환자가 섞인다.
   const params = new URLSearchParams({ size: String(size), page: String(page) })
   if (search.trim()) params.set('search', search.trim())
-  params.set('patient_scope', scope)
+  if (scope === 'ASSIGNED_TO_ME') params.set('assigned_to_me', 'true')
   if (filters.examDateFrom) params.set('exam_date_from', filters.examDateFrom)
   if (filters.examDateTo) params.set('exam_date_to', filters.examDateTo)
   if (filters.examinationTypeId) params.set('examination_type_id', String(filters.examinationTypeId))
   if (filters.examinationStatus) params.set('examination_status', filters.examinationStatus)
   if (filters.aiStatus) params.set('ai_status', filters.aiStatus)
   if (filters.doctorId) params.set('doctor_id', String(filters.doctorId))
+  if (scope === 'CONSULTATION' || scope === 'RECENT') {
+    const ids = scope === 'RECENT'
+      ? (await getDashboardRecentPatients()).map((item) => item.patientId)
+      : (await getConsultations()).filter((item) => !['COMPLETED', 'CANCELED', 'CANCELLED'].includes(item.status)).map((item) => item.patientId)
+    const allowedIds = new Set(ids)
+    const matched: StaffPatient[] = []
+    params.set('page', '1')
+    params.set('size', '100')
+    if (allowedIds.size) {
+      let scanPage = 1
+      while (true) {
+        params.set('page', String(scanPage))
+        const batch = await request<StaffPatientListResponse>(`/api/patients/?${params.toString()}`)
+        matched.push(...batch.results.filter((item) => allowedIds.has(item.id)))
+        if (!batch.next || matched.length === allowedIds.size) break
+        scanPage += 1
+      }
+    }
+    if (scope === 'RECENT') matched.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id))
+    return { results: matched.slice((page - 1) * size, page * size).map(mapPatient), count: matched.length, page, hasNext: page * size < matched.length }
+  }
   const payload = await request<StaffPatientListResponse>(`/api/patients/?${params.toString()}`)
   return { results: payload.results.map(mapPatient), count: payload.count, page, hasNext: Boolean(payload.next) }
 }
