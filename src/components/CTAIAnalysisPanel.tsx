@@ -3,6 +3,7 @@ import { BrainCircuit, X } from 'lucide-react'
 import { createCTAIAnalysis, getCTAIAnalysis, loadLatestCTAIAnalysis, CT_AI_READY, CT_AI_VERSION_ID, type CTAIAnalysis } from '../api/client'
 import type { ImagingStudySummary } from '../types'
 import { CCTAReportDraft } from './CCTAReportDraft'
+import { isImagingStudyOwnedByPatient } from '../api/imagingOwnership'
 
 // backend CCTA_DOCKER_TIMEOUT(기본 600초) + DICOM 준비/업로드 여유시간을 감안한 폴링 상한.
 // 이전에는 120초로 너무 짧아, 실제 AI 추론(docker run)이 40%(추론 시작 직전 체크포인트) 구간에서
@@ -43,9 +44,11 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
   const [reportBusy, setReportBusy] = useState(false)
   const active = useRef(true)
   const ready = CT_AI_READY && Number.isSafeInteger(CT_AI_VERSION_ID) && CT_AI_VERSION_ID > 0
+  const ownsStudy = isImagingStudyOwnedByPatient(study, patientId)
   useEffect(() => { active.current = true; return () => { active.current = false } }, [])
   useEffect(() => {
-    if (!patientId || !study.examinationId) return
+    setAnalysis(null)
+    if (!ownsStudy || !patientId || !study.examinationId) return
     let live = true
     setBusy(true); setError('')
     void loadLatestCTAIAnalysis(patientId, study.examinationId)
@@ -53,7 +56,7 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
       .catch((caught) => { if (live) setError(caught instanceof Error ? caught.message : '기존 CCTA 분석 조회 실패') })
       .finally(() => { if (live) setBusy(false) })
     return () => { live = false }
-  }, [patientId, study.examinationId])
+  }, [ownsStudy, patientId, study.examinationId])
   useEffect(() => {
     if (!analysis || !['QUEUED', 'RUNNING'].includes(analysis.analysis.status)) return
     const started = Date.now()
@@ -69,7 +72,7 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
     return () => { live = false; window.clearInterval(timer) }
   }, [analysis?.analysis.id, analysis?.analysis.status])
   async function run() {
-    if (!study.examinationId || !seriesId || busy) return
+    if (!ownsStudy || !study.examinationId || !seriesId || busy) return
     setBusy(true); setError(''); setNotice('')
     try { const next = await createCTAIAnalysis(study.examinationId, study.id, seriesId); if (active.current) setAnalysis(next) }
     catch (caught) { if (active.current) setError(caught instanceof Error ? caught.message : '분석 요청 실패') }
@@ -88,6 +91,7 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
     <header><h2><BrainCircuit size={20} />CT 석회화 AI 분석</h2><button type="button" onClick={onClose} aria-label="닫기" disabled={busy || reportBusy}><X size={20} /></button></header>
     <p>선택한 CT 원본을 분석해 석회화 분할 결과를 생성합니다.</p>
     <div className="ct-ai-source"><strong>{study.description}</strong><span>검사 #{study.examinationId ?? '미연결'} · Series #{seriesId ?? '미선택'}</span></div>
+    {!ownsStudy && <p className="api-inline-error" role="alert">현재 선택 환자 소유의 검사가 아니므로 분석과 보고서 생성을 진행할 수 없습니다.</p>}
     {!ready && <p className="ct-ai-connection">AI 분석 서버가 아직 연결되지 않았습니다. 서버 연결 후 이 버튼으로 선택한 CT를 바로 분석할 수 있습니다.</p>}
     {ready && !study.examinationId && <p>원본 영상에 검사 정보가 연결되어야 분석할 수 있습니다.</p>}
     {status && !['QUEUED', 'RUNNING'].includes(status) && <p role="status">분석 상태: {({ SUCCEEDED: '분석 완료', FAILED: '분석 실패' } as Record<string, string>)[status] ?? status}</p>}
@@ -109,12 +113,12 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
     {status === 'RUNNING' && <p className="ct-ai-connection">전체 분석은 검사 용량에 따라 수 분(최대 10분 이상)까지 걸릴 수 있습니다. 이 창을 열어둔 채 자동으로 상태를 확인합니다.</p>}
     {analysis?.jobs.map((job) => job.error_message && <p className="api-inline-error" key={job.id}>{job.error_message}</p>)}
     {analysis?.results?.map((result) => <div className="ct-ai-source" key={result.id}><strong>{result.summary_text || 'CT 분석 결과'}</strong><span>{result.result_type} · {result.status}</span></div>)}
-    {status === 'SUCCEEDED' && reportResult && study.examinationId && <CCTAReportDraft examinationId={study.examinationId} analysisResultId={reportResult.id} disabled={busy} onBusyChange={setReportBusy} />}
+    {ownsStudy && status === 'SUCCEEDED' && reportResult && study.examinationId && <CCTAReportDraft examinationId={study.examinationId} analysisResultId={reportResult.id} disabled={busy} onBusyChange={setReportBusy} />}
     {notice && <p role="status">{notice}</p>}{error && <p className="api-inline-error" role="alert">{error}</p>}
     <footer>{analysis ? <>
       <button type="button" onClick={refresh} disabled={busy}>상태 확인</button>
       {status === 'SUCCEEDED' && <button type="button" onClick={() => { onRefresh(); onClose() }}>렌더링 결과 확인</button>}
       {status === 'FAILED' && <button type="button" disabled={busy} onClick={() => { setAnalysis(null); setError(''); setNotice('') }}>다시 시도</button>}
-    </> : <button type="button" onClick={run} disabled={!ready || !study.examinationId || !seriesId || busy}>{busy ? '분석 요청 중…' : 'AI 분석 시작'}</button>}</footer>
+    </> : <button type="button" onClick={run} disabled={!ownsStudy || !ready || !study.examinationId || !seriesId || busy}>{busy ? '분석 요청 중…' : 'AI 분석 시작'}</button>}</footer>
   </section></div>
 }

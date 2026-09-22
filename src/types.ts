@@ -293,6 +293,7 @@ export interface MedicalResultDetail {
 export interface ImagingStudySummary {
   id: number
   examinationId?: number
+  patientId?: number
   studyInstanceUid: string
   orthancStudyId?: string
   modality: string
