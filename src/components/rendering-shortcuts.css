@@ -268,3 +268,54 @@ html[data-theme='dark'] .clinical-image-viewer .rendering-action-bar button {
   .imaging-review-layout.large-three-d-layout { grid-template-columns: 1fr; }
   .large-three-d-layout .imaging-exam-list { max-height: 220px; }
 }
+
+html[data-theme='dark'] .ct-ai-modal {
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+  background: var(--workstation-panel);
+}
+
+html[data-theme='dark'] .ct-ai-modal > header {
+  border-color: var(--color-border);
+}
+
+html[data-theme='dark'] .ct-ai-modal > header > button {
+  color: var(--color-text-subtle);
+  border: 1px solid var(--color-border-strong);
+  background: var(--workstation-hover);
+}
+
+html[data-theme='dark'] .ct-ai-source {
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+  background: var(--workstation-panel-muted);
+}
+
+html[data-theme='dark'] .ct-ai-source span,
+html[data-theme='dark'] .ct-ai-progress-description {
+  color: var(--color-text-subtle);
+}
+
+html[data-theme='dark'] .ct-ai-connection {
+  color: #a9c8ee;
+  border: 1px solid #294767;
+  background: #142a42;
+}
+
+html[data-theme='dark'] .ct-ai-progress-label {
+  color: var(--color-text);
+}
+
+html[data-theme='dark'] .ct-ai-progress-track {
+  background: var(--workstation-panel-muted);
+}
+
+html[data-theme='dark'] .ct-ai-modal > footer {
+  border-color: var(--color-border);
+}
+
+html[data-theme='dark'] .ct-ai-modal > footer > button:not(.feature-primary) {
+  color: var(--color-text-subtle);
+  border-color: var(--color-border-strong);
+  background: var(--workstation-panel);
+}
