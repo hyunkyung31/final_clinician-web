@@ -1,14 +1,11 @@
 import type { ReactNode } from 'react'
-import { LogOut, Menu } from 'lucide-react'
+import { LogOut } from 'lucide-react'
 
 interface AppPageHeaderProps {
   title: string
   subtitle?: string
   userName: string
   userDepartment?: string
-  chatOpen: boolean
-  chatUnreadCount: number
-  onToggleChat: () => void
   onLogout: () => void
   children?: ReactNode
 }
@@ -18,9 +15,6 @@ export function AppPageHeader({
   subtitle,
   userName,
   userDepartment,
-  chatOpen,
-  chatUnreadCount,
-  onToggleChat,
   onLogout,
   children,
 }: AppPageHeaderProps) {
@@ -37,19 +31,6 @@ export function AppPageHeader({
           <strong>{name}</strong>
           {userDepartment ? <small>{userDepartment}</small> : null}
         </span>
-        <button
-          className={`utility-button ${chatOpen ? 'active' : ''}`}
-          onClick={onToggleChat}
-          type="button"
-          title={chatOpen ? '채팅 접기' : '채팅 열기'}
-          aria-label={chatOpen ? '채팅 접기' : '채팅 열기'}
-          aria-pressed={chatOpen}
-        >
-          <Menu size={16} strokeWidth={1.8} />
-          {chatUnreadCount > 0 && (
-            <b className="utility-badge">{chatUnreadCount > 99 ? '99+' : chatUnreadCount}</b>
-          )}
-        </button>
         <button
           className="utility-button"
           onClick={onLogout}

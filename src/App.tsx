@@ -1074,9 +1074,6 @@ function App() {
           subtitle={headerCopy.subtitle}
           userName={clinicianName}
           userDepartment={clinicianDepartment}
-          chatOpen={chatDockOpen}
-          chatUnreadCount={chatUnreadCount}
-          onToggleChat={() => setChatDockOpen((current) => !current)}
           onLogout={() => void handleLogout()}
         >
           <NotificationCenter onOpenNotification={handleOpenNotification} />

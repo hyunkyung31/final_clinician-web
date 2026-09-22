@@ -47,12 +47,14 @@ test('unauthorized role fallback prefers Home instead of Workstation', () => {
   assert.equal(fallbackSectionForRole('결과보고서', ['홈', '설정']), '홈')
 })
 
-test('common utility header groups notification, user, and chat toggle', () => {
+test('common utility header groups notification, user, and logout', () => {
   assert.match(header, /className="app-page-header"/)
   assert.match(header, /page-header-actions utility-actions/)
   assert.match(header, /utility-button/)
   assert.match(header, /utility-user/)
   assert.match(header, /userDepartment/)
+  assert.equal(header.includes('onToggleChat'), false)
+  assert.equal(header.includes('채팅 열기'), false)
   assert.match(app, /userDepartment=\{clinicianDepartment\}/)
   assert.match(shellCss, /min-width: 132px/)
   assert.match(app, /<AppPageHeader/)
