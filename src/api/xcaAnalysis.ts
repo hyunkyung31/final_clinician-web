@@ -1,5 +1,5 @@
 /** GPU-PC demo only. Never automatically replay a POST. */
-const BRIDGE = 'http://127.0.0.1:8003'
+const BRIDGE = 'https://xca.34-50-57-207.sslip.io'
 export interface XCABridgeHealth { bridgeReady: boolean; modelReady: boolean; busy: boolean }
 export interface XCAScore { aiScore: number; prediction: 0 | 1 }
 export interface XCASideResult {
