@@ -670,7 +670,13 @@ function App() {
     if (mode !== 'api') return;
     const query = visiblePatientQueryRef.current;
     const defaultMine = query === DEFAULT_MINE_QUERY;
-    if (defaultMine) return;
+    if (defaultMine) {
+      // 다른 탭·검색에서 기본 "내 담당"으로 돌아왔을 때, 그 이전 조회가 아직
+      // 응답하지 않은 상태라면 그 조회의 .finally()는 active=false라 로딩 상태를
+      // 되돌리지 못한다. 여기서 명시적으로 꺼서 로딩 표시가 영구히 남지 않게 한다.
+      setPatientSearchLoading(false);
+      return;
+    }
     let active = true;
     setPatientSearchLoading(true);
     setPatientListError('');
