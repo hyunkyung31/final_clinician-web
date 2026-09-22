@@ -12893,7 +12893,8 @@ html[data-theme='dark'] .login-notice {
   gap: 16px;
   overflow: hidden;
   border-bottom: 1px solid var(--color-border);
-  background: #ffffff;
+  color: var(--color-text);
+  background: var(--workstation-header, var(--color-surface));
 }
 
 .page-header-main {
@@ -12943,7 +12944,7 @@ html[data-theme='dark'] .login-notice {
   border: 1px solid var(--color-border-strong);
   border-radius: 8px;
   color: var(--color-text-subtle);
-  background: #ffffff;
+  background: var(--color-surface);
   box-shadow: none;
 }
 
@@ -12970,7 +12971,7 @@ html[data-theme='dark'] .login-notice {
   border: 1px solid var(--color-border-strong);
   border-radius: 8px;
   color: var(--color-text);
-  background: #ffffff;
+  background: var(--color-surface);
 }
 
 .utility-user strong {
@@ -13118,7 +13119,7 @@ html[data-theme='dark'] .login-notice {
   height: var(--page-header-height);
   padding: 0 10px;
   border-bottom: 1px solid var(--color-border);
-  background: #ffffff;
+  background: var(--workstation-header, var(--color-surface));
 }
 
 .chat-dock-title {
@@ -13157,7 +13158,7 @@ html[data-theme='dark'] .login-notice {
   border: 1px solid var(--color-border-strong);
   border-radius: 8px;
   color: var(--color-text-subtle);
-  background: #ffffff;
+  background: var(--color-surface);
 }
 
 .chat-dock-header-actions > button:hover {
@@ -13464,4 +13465,66 @@ html[data-theme='dark'] .login-notice {
     border-right: 0;
     border-bottom: 1px solid var(--color-border);
   }
+}
+
+/* Dark overrides for components declared after the main theme section. */
+html[data-theme='dark'] :is(
+  .exam-patient-strip,
+  .imaging-exam-list,
+  .clinical-image-viewer,
+  .angio-examination-group > header
+) {
+  color: var(--color-text);
+  border-color: var(--color-border);
+  background: var(--workstation-panel);
+}
+
+html[data-theme='dark'] :is(
+  .imaging-exam-list > header h2,
+  .angio-examination-group > header strong
+) { color: var(--color-text); }
+
+html[data-theme='dark'] :is(
+  .imaging-exam-list > header span,
+  .angio-examination-group > header small,
+  .exam-imaging-subtabs > span
+) { color: var(--color-text-subtle); }
+
+html[data-theme='dark'] .imaging-exam-list .imaging-asset-button {
+  color: var(--color-text-subtle);
+  border-color: var(--color-border);
+  background: var(--workstation-panel);
+}
+
+html[data-theme='dark'] .imaging-exam-list .imaging-asset-button:hover {
+  background: var(--workstation-hover);
+}
+
+html[data-theme='dark'] .imaging-exam-list .imaging-asset-button.active {
+  color: var(--color-text);
+  background: var(--color-primary-soft);
+}
+
+html[data-theme='dark'] :is(
+  .angio-side-group > summary,
+  .angio-side-group.side-right > summary,
+  .angio-side-group.side-unknown > summary
+) {
+  color: var(--color-primary-dark);
+  border-color: var(--color-border);
+  background: var(--color-primary-soft);
+}
+
+html[data-theme='dark'] .angio-side-notice {
+  color: #e4bd70;
+  background: #30291c;
+}
+
+html[data-theme='dark'] :is(
+  .exam-data-tabs button b,
+  .exam-imaging-subtabs button b,
+  .imaging-list-icon
+) {
+  color: var(--color-primary-dark);
+  background: var(--color-primary-soft);
 }
