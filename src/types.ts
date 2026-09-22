@@ -210,8 +210,15 @@ export interface PatientAllergySummary {
 
 /** GET /api/patients/{id}/medical-results/ (reports.StaffPatientMedicalResultListView) 응답 항목.
  * "결과보고서" 화면에서 환자를 검색/선택했을 때 보여줄 보고서 상태 목록이다. */
+export type MedicalReportType = 'XCA_2D' | 'CCTA_3D' | 'INTEGRATED'
+
 export interface PatientReportSummary {
   medicalResultId: number
+  reportType: MedicalReportType
+  examinationId: number | null
+  examName: string | null
+  examCode: string | null
+  performedAt: string | null
   encounterId: number | null
   visitDate: string | null
   encounterType: string | null
@@ -251,6 +258,8 @@ export interface ReportXcaAttachment {
 
 export interface MedicalResultDetail {
   medicalResultId: number
+  reportType: MedicalReportType
+  examinationId: number | null
   encounterId: number | null
   status: string
   conclusion: string

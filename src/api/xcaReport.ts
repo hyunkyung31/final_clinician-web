@@ -61,10 +61,18 @@ export async function readXCAReportTarget(base: string, token: string | null, me
   if (content.xca_attachments !== undefined && !Array.isArray(content.xca_attachments)) throw new Error('기존 XCA 첨부 형식이 올바르지 않습니다.')
   return { id: medicalId, patientId, encounterId, status: String(medical.status), baseVersionId: latest ? id(latest.id) : null, versionNo: latest ? id(latest.version_no) : 0, content, text: latest ? String(latest.content_text) : '' }
 }
-export async function prepareXCAReportTarget(base: string, token: string | null, patientId: number, encounterId: number): Promise<XCAReportTarget> {
-  id(patientId); id(encounterId)
-  const medical = obj(await call(base, `/api/encounters/${encounterId}/medical-results/`, token, { patient_id: patientId }))
-  if (medical.patient !== patientId || medical.encounter !== encounterId) throw new Error('생성된 초안의 환자·진료가 다릅니다.')
+export async function prepareXCAReportTarget(base: string, token: string | null, patientId: number, examinationId: number, analysisResultId: number): Promise<XCAReportTarget> {
+  id(patientId); id(examinationId); id(analysisResultId)
+  const response = obj(await call(base, `/api/examinations/${examinationId}/medical-results/`, token, {
+    report_type: 'XCA_2D', analysis_result_id: analysisResultId,
+  }))
+  const medical = response.medical_result && typeof response.medical_result === 'object' && !Array.isArray(response.medical_result)
+    ? obj(response.medical_result)
+    : response
+  const encounterId = id(medical.encounter)
+  if (medical.patient !== patientId || medical.examination !== examinationId || medical.report_type !== 'XCA_2D') {
+    throw new Error('생성된 2D XCA 초안의 환자·검사가 다릅니다.')
+  }
   return readXCAReportTarget(base, token, id(medical.id), patientId, encounterId)
 }
 export function validateXCAReportSelection(detail: XCADetailResult, target: XCAReportTarget, frameIds: number[], note: string): string {

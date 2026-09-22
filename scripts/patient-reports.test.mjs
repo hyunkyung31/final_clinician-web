@@ -40,6 +40,11 @@ test('patient reports are read from the medical-results endpoint and mapped to c
     return Response.json([
       {
         medical_result_id: 5,
+        report_type: 'XCA_2D',
+        examination_id: 77,
+        exam_name: '2D 관상동맥 혈관조영술',
+        exam_code: 'XCA',
+        performed_at: '2026-01-01T09:00:00Z',
         encounter_id: 3,
         visit_date: '2026-01-01T00:00:00Z',
         encounter_type: 'INITIAL',
@@ -60,6 +65,8 @@ test('patient reports are read from the medical-results endpoint and mapped to c
   assert.equal(result[0].latestReport?.reportId, 9)
   assert.equal(result[0].latestSignoff?.doctorName, '김도윤')
   assert.equal(result[0].latestRelease?.releaseStatus, 'RELEASED')
+  assert.equal(result[0].reportType, 'XCA_2D')
+  assert.equal(result[0].examinationId, 77)
 })
 
 test('draft results without a version/report map optional fields to null', async () => {
@@ -105,7 +112,8 @@ test('report download surfaces a null downloadUrl when storage is not configured
 })
 
 const detailPayload = {
-  medical_result: { id: 5, encounter: 3, conclusion: '추적 관찰', status: 'REVIEWING' },
+  medical_result: { id: 5, encounter: 3, examination: 77, report_type: 'CCTA_3D', conclusion: '추적 관찰', status: 'REVIEWING' },
+  examination: { id: 77, exam_name: '관상동맥 CT 혈관조영술', exam_code: 'CCTA', performed_at: '2026-01-01T09:00:00Z' },
   patient: { id: 10, name: '김환자', medical_record_no: 'P-10', birth_date: '1960-01-01', gender: 'M' },
   encounter: { id: 3, visit_date: '2026-01-01T00:00:00Z', encounter_type: 'INITIAL', doctor_name: '김도윤' },
   workflow: {
@@ -144,6 +152,23 @@ test('medical result detail maps AI summaries and workflow flags without raw JSO
   assert.equal(detail.workflow.canSignoff, true)
   assert.equal(detail.workflow.canRelease, false)
   assert.equal(detail.workflow.signatureFileAssetId, null)
+  assert.equal(detail.reportType, 'CCTA_3D')
+  assert.equal(detail.examinationId, 77)
+})
+
+test('CCTA report creation posts the examination result contract and rereads the draft', async () => {
+  const { createExaminationMedicalResult } = await loadApiTestModule()
+  const calls = []
+  globalThis.fetch = async (url, init) => {
+    calls.push([url, init])
+    if (calls.length === 1) return Response.json({ medical_result: { id: 5 } })
+    return Response.json(detailPayload)
+  }
+  const detail = await createExaminationMedicalResult(77, 'CCTA_3D', 468, 123)
+  assert.equal(detail.reportType, 'CCTA_3D')
+  assert.equal(calls[0][0], '/api/examinations/77/medical-results/')
+  assert.deepEqual(JSON.parse(calls[0][1].body), { report_type: 'CCTA_3D', analysis_result_id: 468, rendering_3d_id: 123 })
+  assert.equal(calls[1][0], '/api/medical-results/5/')
 })
 
 test('signoff and release post to the dedicated medical-result endpoints', async () => {
