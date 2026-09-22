@@ -12800,6 +12800,18 @@ html[data-theme='dark'] .login-notice {
 .xca-report-selected { display:flex; flex-wrap:wrap; gap:8px; margin-top:15px; }
 .xca-report-selected strong { flex-basis:100%; }
 .xca-report-success { background:#edf8f5; padding:15px; border:1px solid #abdccc; border-radius:8px; margin:15px 0; }
+.ccta-report-summary { display:flex; flex-direction:column; gap:4px; margin:12px 0; padding:12px; border:1px solid var(--color-border); border-radius:8px; background:var(--color-surface-subtle); }
+.ccta-report-summary span { color:var(--color-text-subtle); font-size:12px; }
+.ccta-report-images { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:12px 0; }
+.ccta-report-image { margin:0; padding:10px; border:1px solid var(--color-border); border-radius:8px; background:var(--color-surface); }
+.ccta-report-image figcaption { margin-bottom:8px; font-size:12px; font-weight:700; }
+.ccta-report-image img { display:block; width:100%; height:150px; object-fit:contain; border-radius:6px; background:#07111d; }
+.ccta-report-image p { color:var(--color-text-subtle); font-size:11px; }
+.ccta-report-finalize { margin-top:14px; padding-top:14px; border-top:1px solid var(--color-border); }
+html[data-theme='dark'] .ccta-report-draft :is(textarea,input[type='password']) { color:var(--color-text); border-color:var(--color-border-strong); background:var(--workstation-input); }
+html[data-theme='dark'] .ccta-report-summary,html[data-theme='dark'] .ccta-report-image { color:var(--color-text); border-color:var(--color-border); background:var(--workstation-panel); }
+html[data-theme='dark'] .xca-report-success { color:#9be2ca; border-color:#28634f; background:#102c27; }
+@media (max-width:700px) { .ccta-report-images { grid-template-columns:1fr; } }
 .xca-report-evidence { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
 .xca-report-evidence header,.xca-report-evidence > p { grid-column:1/-1; }
 .xca-report-evidence figure { margin:0; }

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { BrainCircuit, X } from 'lucide-react'
-import { createCTAIAnalysis, createExaminationMedicalResult, getCTAIAnalysis, loadLatestCTAIAnalysis, CT_AI_READY, CT_AI_VERSION_ID, type CTAIAnalysis } from '../api/client'
+import { createCTAIAnalysis, getCTAIAnalysis, loadLatestCTAIAnalysis, CT_AI_READY, CT_AI_VERSION_ID, type CTAIAnalysis } from '../api/client'
 import type { ImagingStudySummary } from '../types'
+import { CCTAReportDraft } from './CCTAReportDraft'
 
 // backend CCTA_DOCKER_TIMEOUT(기본 600초) + DICOM 준비/업로드 여유시간을 감안한 폴링 상한.
 // 이전에는 120초로 너무 짧아, 실제 AI 추론(docker run)이 40%(추론 시작 직전 체크포인트) 구간에서
@@ -39,7 +40,7 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [reportId, setReportId] = useState<number | null>(null)
+  const [reportBusy, setReportBusy] = useState(false)
   const active = useRef(true)
   const ready = CT_AI_READY && Number.isSafeInteger(CT_AI_VERSION_ID) && CT_AI_VERSION_ID > 0
   useEffect(() => { active.current = true; return () => { active.current = false } }, [])
@@ -81,23 +82,10 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
     catch (caught) { if (active.current) setError(caught instanceof Error ? caught.message : '상태 조회 실패') }
     finally { if (active.current) setBusy(false) }
   }
-  async function createReport() {
-    const result = analysis?.results?.find((item) => item.status !== 'INVALID')
-    if (!study.examinationId || !result || busy) return
-    setBusy(true); setError(''); setNotice('')
-    try {
-      const draft = await createExaminationMedicalResult(study.examinationId, 'CCTA_3D', result.id)
-      if (active.current) {
-        setReportId(draft.medicalResultId)
-        setNotice(`3D CCTA 결과보고서 초안 #${draft.medicalResultId}이 준비되었습니다.`)
-      }
-    } catch (caught) {
-      if (active.current) setError(caught instanceof Error ? caught.message : '3D CCTA 보고서 생성 실패')
-    } finally { if (active.current) setBusy(false) }
-  }
   const status = analysis?.analysis.status
+  const reportResult = analysis?.results?.find((item) => item.status !== 'INVALID')
   return <div className="feature-modal-backdrop"><section className="feature-modal ct-ai-modal" role="dialog" aria-modal="true" aria-label="CT 석회화 AI 분석">
-    <header><h2><BrainCircuit size={20} />CT 석회화 AI 분석</h2><button type="button" onClick={onClose} aria-label="닫기" disabled={busy}><X size={20} /></button></header>
+    <header><h2><BrainCircuit size={20} />CT 석회화 AI 분석</h2><button type="button" onClick={onClose} aria-label="닫기" disabled={busy || reportBusy}><X size={20} /></button></header>
     <p>선택한 CT 원본을 분석해 석회화 분할 결과를 생성합니다.</p>
     <div className="ct-ai-source"><strong>{study.description}</strong><span>검사 #{study.examinationId ?? '미연결'} · Series #{seriesId ?? '미선택'}</span></div>
     {!ready && <p className="ct-ai-connection">AI 분석 서버가 아직 연결되지 않았습니다. 서버 연결 후 이 버튼으로 선택한 CT를 바로 분석할 수 있습니다.</p>}
@@ -121,10 +109,10 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
     {status === 'RUNNING' && <p className="ct-ai-connection">전체 분석은 검사 용량에 따라 수 분(최대 10분 이상)까지 걸릴 수 있습니다. 이 창을 열어둔 채 자동으로 상태를 확인합니다.</p>}
     {analysis?.jobs.map((job) => job.error_message && <p className="api-inline-error" key={job.id}>{job.error_message}</p>)}
     {analysis?.results?.map((result) => <div className="ct-ai-source" key={result.id}><strong>{result.summary_text || 'CT 분석 결과'}</strong><span>{result.result_type} · {result.status}</span></div>)}
+    {status === 'SUCCEEDED' && reportResult && study.examinationId && <CCTAReportDraft examinationId={study.examinationId} analysisResultId={reportResult.id} disabled={busy} onBusyChange={setReportBusy} />}
     {notice && <p role="status">{notice}</p>}{error && <p className="api-inline-error" role="alert">{error}</p>}
     <footer>{analysis ? <>
       <button type="button" onClick={refresh} disabled={busy}>상태 확인</button>
-      {status === 'SUCCEEDED' && analysis.results?.some((item) => item.status !== 'INVALID') && <button className="primary" type="button" onClick={() => void createReport()} disabled={busy || Boolean(reportId)}>{reportId ? `보고서 초안 #${reportId} 생성 완료` : '3D CCTA 결과보고서 생성'}</button>}
       {status === 'SUCCEEDED' && <button type="button" onClick={() => { onRefresh(); onClose() }}>렌더링 결과 확인</button>}
       {status === 'FAILED' && <button type="button" disabled={busy} onClick={() => { setAnalysis(null); setError(''); setNotice('') }}>다시 시도</button>}
     </> : <button type="button" onClick={run} disabled={!ready || !study.examinationId || !seriesId || busy}>{busy ? '분석 요청 중…' : 'AI 분석 시작'}</button>}</footer>
