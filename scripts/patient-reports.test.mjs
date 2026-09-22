@@ -182,10 +182,10 @@ test('CCTA report creation posts the examination result contract and rereads the
     if (calls.length === 1) return Response.json({ medical_result: { id: 5 } })
     return Response.json(detailPayload)
   }
-  const detail = await createExaminationMedicalResult(77, 'CCTA_3D', 468, 123)
+  const detail = await createExaminationMedicalResult(77, 'CCTA_3D', 468, 10, 123)
   assert.equal(detail.reportType, 'CCTA_3D')
   assert.equal(calls[0][0], '/api/examinations/77/medical-results/')
-  assert.deepEqual(JSON.parse(calls[0][1].body), { report_type: 'CCTA_3D', analysis_result_id: 468, rendering_3d_id: 123 })
+  assert.deepEqual(JSON.parse(calls[0][1].body), { patient_id: 10, report_type: 'CCTA_3D', analysis_result_id: 468, rendering_3d_id: 123 })
   assert.equal(calls[1][0], '/api/medical-results/5/')
 })
 
