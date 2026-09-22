@@ -12895,7 +12895,9 @@ html[data-theme='dark'] .login-notice {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  overflow: hidden;
+  position: relative;
+  z-index: 40;
+  overflow: visible;
   border-bottom: 1px solid var(--color-border);
   color: var(--color-text);
   background: var(--workstation-header, var(--color-surface));
@@ -13027,7 +13029,8 @@ html[data-theme='dark'] .login-notice {
 .notification-popover {
   top: calc(100% + 8px);
   right: 0;
-  width: 340px;
+  z-index: 50;
+  width: min(340px, calc(100vw - 96px));
   max-height: min(560px, calc(100vh - 80px));
 }
 
