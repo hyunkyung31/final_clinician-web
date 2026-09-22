@@ -1,9 +1,10 @@
 import { useState } from 'react'
+import { MedicalModelViewer } from './MedicalModelViewer'
 import {
-  MedicalModelViewer,
+  ANATOMY_VIEW_MODES,
+  LOCAL_ANATOMY_GLB_URL,
   type AnatomyViewMode,
-} from './MedicalModelViewer'
-import { ANATOMY_VIEW_MODES, LOCAL_ANATOMY_GLB_URL } from '../api/renderingSelection'
+} from '../api/renderingSelection'
 import './rendering-shortcuts.css'
 
 export function AnatomyGlbLocalTest() {

@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -32,13 +33,10 @@ import { WorkstationHub } from "./components/WorkstationHub";
 import {
   ApiError,
   getDashboardAIStatus,
-  getDashboardRecentPatients,
   getDashboardSummary,
   getImagingStudies,
-  getConsultations,
   getPatientDetail,
   getPatientMemos,
-  getPatients,
   getPatientsPage,
   getPatientTimeline,
   getStaffDoctors,
@@ -94,6 +92,49 @@ type ThemeMode = "light" | "dark";
 type FontSizeMode = "small" | "normal" | "large" | "xlarge";
 type PatientScope = "mine" | "consultation" | "recent" | "all";
 const scopeApi = { mine: "ASSIGNED_TO_ME", consultation: "CONSULTATION", recent: "RECENT", all: "ALL_ACCESSIBLE" } as const;
+
+function patientQueryKey(input: {
+  patientScope: string
+  page: number
+  search: string
+  examDateFrom: string
+  examDateTo: string
+  examinationStatus: string
+  aiStatus: string
+}) {
+  return JSON.stringify(input)
+}
+
+const DEFAULT_MINE_QUERY = patientQueryKey({
+  patientScope: "mine",
+  page: 1,
+  search: "",
+  examDateFrom: "",
+  examDateTo: "",
+  examinationStatus: "",
+  aiStatus: "",
+})
+
+const RECENT_FIRST_PAGE_QUERY = patientQueryKey({
+  patientScope: "recent",
+  page: 1,
+  search: "",
+  examDateFrom: "",
+  examDateTo: "",
+  examinationStatus: "",
+  aiStatus: "",
+})
+
+function mergePatients(current: PatientSummary[], incoming: PatientSummary[]) {
+  return Array.from(
+    new Map([...current, ...incoming].map((patient) => [patient.backendId, patient])).values(),
+  )
+}
+
+function mergeRecentPatients(server: PatientSummary[], pinned: PatientSummary[]) {
+  const serverIds = new Set(server.map((patient) => patient.backendId))
+  return [...pinned.filter((patient) => !serverIds.has(patient.backendId)), ...server]
+}
 
 const THEME_STORAGE_KEY = "angiocad.theme";
 const FONT_SIZE_STORAGE_KEY = "angiocad.font-size";
@@ -369,7 +410,6 @@ function App() {
   const [patientPage, setPatientPage] = useState(1);
   const [patientCount, setPatientCount] = useState(0);
   const [patientsHasNext, setPatientsHasNext] = useState(false);
-  const [recentRevision, setRecentRevision] = useState(0);
   const [patientListError, setPatientListError] = useState("");
   const [patientScope, setPatientScope] = useState<PatientScope>("mine");
   const [patientSearchResults, setPatientSearchResults] = useState<PatientSummary[] | null>(null);
@@ -410,7 +450,7 @@ function App() {
 
   const [aiStatus, setAIStatus] = useState<DashboardAIStatus | null>(null);
 
-  const [apiLoading, setApiLoading] = useState(false);
+  const [apiLoading, setApiLoading] = useState(() => hasSession());
 
   const [timelineLoading, setTimelineLoading] = useState(false);
 
@@ -522,75 +562,56 @@ function App() {
     setStudiesError("");
   };
 
+  const workspaceLoadGeneration = useRef(0);
+  const pinnedRecentRef = useRef<PatientSummary[]>([]);
+  const visiblePatientQueryRef = useRef(DEFAULT_MINE_QUERY);
+  visiblePatientQueryRef.current = patientQueryKey({
+    patientScope,
+    page: patientPage,
+    search: search.trim(),
+    examDateFrom,
+    examDateTo,
+    examinationStatus: examinationStatusFilter,
+    aiStatus: aiStatusFilter,
+  });
+
+  const expireApiSession = () => {
+    setMode("auth");
+    pinnedRecentRef.current = [];
+    setPatientList([]);
+    setMyPatientList([]);
+    setConsultationPatientList([]);
+    setRecentPatientList([]);
+    setSelectedId("");
+    setDashboardSummary(null);
+    setAIStatus(null);
+    resetPatientData();
+    setLoginError("로그인 세션이 만료되었습니다. 다시 로그인해주세요.");
+  };
+
   const loadApiWorkspace = async () => {
+    const generation = ++workspaceLoadGeneration.current;
+    const stillCurrent = () => workspaceLoadGeneration.current === generation;
     setApiLoading(true);
     setApiError("");
 
     try {
-      const [patientsResult, myPatientsResult, summaryResult, aiStatusResult, consultationsResult, recentPatientsResult] =
-        await Promise.allSettled([
-        getPatients(),
-        getPatients('', true),
-        getDashboardSummary(),
-        getDashboardAIStatus(),
-        getConsultations(),
-        getDashboardRecentPatients(),
-      ]);
+      const mine = await getPatientsPage("", false, { patientScope: "ASSIGNED_TO_ME" });
+      if (!stillCurrent()) return;
 
-      if (patientsResult.status === "rejected") {
-        throw patientsResult.reason;
+      setMyPatientList(mine.results);
+      setPatientList((current) => mergePatients(current, mine.results));
+      setSelectedId((current) => current || mine.results[0]?.id || "");
+      if (visiblePatientQueryRef.current === DEFAULT_MINE_QUERY) {
+        setPatientSearchResults(mine.results);
+        setPatientCount(mine.count);
+        setPatientsHasNext(mine.hasNext);
+        setPatientSearchLoading(false);
       }
-
-      const basePatients = patientsResult.value;
-      const nextMyPatients = myPatientsResult.status === "fulfilled" ? myPatientsResult.value : [];
-      const consultations = consultationsResult.status === "fulfilled" ? consultationsResult.value : [];
-      const recentPatients = recentPatientsResult.status === "fulfilled" ? recentPatientsResult.value : [];
-      const knownPatients = Array.from(
-        new Map([...basePatients, ...nextMyPatients].map((patient) => [patient.backendId, patient])).values(),
-      );
-      const [consultationPage, recentPage] = await Promise.allSettled([
-        getPatientsPage('', false, { patientScope: 'CONSULTATION' }),
-        getPatientsPage('', false, { patientScope: 'RECENT' }),
-      ]);
-      const nextConsultationPatients = consultationPage.status === 'fulfilled' ? consultationPage.value.results : [];
-      const nextRecentPatients = recentPage.status === 'fulfilled' ? recentPage.value.results : [];
-      const nextPatients = Array.from(new Map([...knownPatients, ...nextConsultationPatients, ...nextRecentPatients].map((patient) => [patient.backendId, patient])).values());
-      const nextSummary =
-        summaryResult.status === "fulfilled" ? summaryResult.value : null;
-      const nextAIStatus =
-        aiStatusResult.status === "fulfilled" ? aiStatusResult.value : null;
-
-      setPatientList(nextPatients);
-      setMyPatientList(nextMyPatients);
-      setConsultationPatientList(nextConsultationPatients);
-      setRecentPatientList(nextRecentPatients);
-      setDashboardSummary(nextSummary);
-      setAIStatus(nextAIStatus);
-
-      setSelectedId((current) => {
-        const currentPatientExists = nextPatients.some(
-          (patient) => patient.id === current,
-        );
-
-        if (currentPatientExists) {
-          return current;
-        }
-
-        return nextMyPatients[0]?.id ?? nextPatients[0]?.id ?? "";
-      });
     } catch (error) {
+      if (!stillCurrent()) return;
       if (error instanceof ApiError && error.status === 401) {
-        setMode("auth");
-        setPatientList([]);
-        setMyPatientList([]);
-        setConsultationPatientList([]);
-        setRecentPatientList([]);
-        setSelectedId("");
-        setDashboardSummary(null);
-        setAIStatus(null);
-        resetPatientData();
-
-        setLoginError("로그인 세션이 만료되었습니다. 다시 로그인해주세요.");
+        expireApiSession();
       } else {
         setApiError(
           error instanceof Error
@@ -598,38 +619,80 @@ function App() {
             : "API 데이터를 불러오지 못했습니다.",
         );
       }
-    } finally {
       setApiLoading(false);
+      return;
     }
+
+    if (!stillCurrent()) return;
+    setApiLoading(false);
+
+    const [allResult, consultationResult, recentResult, summaryResult, aiStatusResult] =
+      await Promise.allSettled([
+        getPatientsPage("", false, { patientScope: "ALL_ACCESSIBLE" }),
+        getPatientsPage("", false, { patientScope: "CONSULTATION" }),
+        getPatientsPage("", false, { patientScope: "RECENT" }),
+        getDashboardSummary(),
+        getDashboardAIStatus(),
+      ]);
+    if (!stillCurrent()) return;
+
+    const unauthorized = [allResult, consultationResult, recentResult, summaryResult, aiStatusResult]
+      .find((result) => result.status === "rejected" && result.reason instanceof ApiError && result.reason.status === 401);
+    if (unauthorized) {
+      expireApiSession();
+      return;
+    }
+
+    if (allResult.status === "fulfilled") {
+      setPatientList((current) => mergePatients(current, allResult.value.results));
+      setSelectedId((current) => current || allResult.value.results[0]?.id || "");
+    }
+    if (consultationResult.status === "fulfilled") {
+      setConsultationPatientList(consultationResult.value.results);
+    }
+    if (recentResult.status === "fulfilled") {
+      setRecentPatientList(mergeRecentPatients(recentResult.value.results, pinnedRecentRef.current));
+    }
+    if (summaryResult.status === "fulfilled") setDashboardSummary(summaryResult.value);
+    if (aiStatusResult.status === "fulfilled") setAIStatus(aiStatusResult.value);
   };
 
   useEffect(() => {
     if (mode === "api") {
       void loadApiWorkspace();
     }
+    return () => {
+      workspaceLoadGeneration.current += 1;
+    };
   }, [mode]);
 
   useEffect(() => {
     if (mode !== 'api') return;
+    const query = visiblePatientQueryRef.current;
+    const defaultMine = query === DEFAULT_MINE_QUERY;
+    if (defaultMine) return;
     let active = true;
     setPatientSearchLoading(true);
-    setPatientSearchResults([]);
     setPatientListError('');
     const timer = window.setTimeout(() => {
       void getPatientsPage(search.trim(), false, {
         patientScope: scopeApi[patientScope], page: patientPage,
         examDateFrom, examDateTo, examinationStatus: examinationStatusFilter, aiStatus: aiStatusFilter,
       }).then((data) => {
-        if (!active) return;
+        if (!active || visiblePatientQueryRef.current !== query) return;
         setPatientSearchResults(data.results);
         setPatientCount(data.count);
         setPatientsHasNext(data.hasNext);
-        setPatientList((items) => Array.from(new Map([...items, ...data.results].map((patient) => [patient.id, patient])).values()));
-      }).catch((error) => { if (active) { setPatientSearchResults([]); setPatientCount(0); setPatientsHasNext(false); setPatientListError(error instanceof Error ? error.message : '환자 목록 조회 실패'); } })
-        .finally(() => { if (active) setPatientSearchLoading(false); });
+        setPatientList((items) => mergePatients(items, data.results));
+        if (patientScope === "mine" && patientPage === 1 && !search.trim()) setMyPatientList(data.results);
+        if (patientScope === "recent" && patientPage === 1 && !search.trim()) {
+          setRecentPatientList(mergeRecentPatients(data.results, pinnedRecentRef.current));
+        }
+      }).catch((error) => { if (active && visiblePatientQueryRef.current === query) { setPatientSearchResults([]); setPatientCount(0); setPatientsHasNext(false); setPatientListError(error instanceof Error ? error.message : '환자 목록 조회 실패'); } })
+        .finally(() => { if (active && visiblePatientQueryRef.current === query) setPatientSearchLoading(false); });
     }, 250);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [mode, patientScope, patientPage, search, examDateFrom, examDateTo, examinationStatusFilter, aiStatusFilter, recentRevision]);
+  }, [mode, patientScope, patientPage, search, examDateFrom, examDateTo, examinationStatusFilter, aiStatusFilter]);
 
   useEffect(() => { setPatientPage(1); }, [patientScope, search, examDateFrom, examDateTo, examinationStatusFilter, aiStatusFilter]);
 
@@ -787,8 +850,14 @@ function App() {
       .then((detail) => {
         if (active) {
           setPatientDetail(detail);
-          setRecentRevision((value) => value + 1);
+          pinnedRecentRef.current = [
+            selectedPatient,
+            ...pinnedRecentRef.current.filter((item) => item.backendId !== selectedPatient.backendId),
+          ].slice(0, 20);
           setRecentPatientList((items) => [selectedPatient, ...items.filter((item) => item.backendId !== selectedPatient.backendId)]);
+          if (visiblePatientQueryRef.current === RECENT_FIRST_PAGE_QUERY) {
+            setPatientSearchResults((items) => [selectedPatient, ...(items ?? []).filter((item) => item.backendId !== selectedPatient.backendId)]);
+          }
         }
       })
       .catch((error) => {
@@ -863,6 +932,7 @@ function App() {
       const landing = landingSectionAfterLogin();
       window.sessionStorage.setItem(SECTION_STORAGE_KEY, landing);
       setActiveSection(landing);
+      setApiLoading(true);
       setMode("api");
     } catch (error) {
       setLoginError(
@@ -882,6 +952,8 @@ function App() {
     await logoutStaff().catch(() => undefined);
 
     setMode("auth");
+    setApiLoading(false);
+    pinnedRecentRef.current = [];
     setPatientList([]);
     setSelectedId("");
     setDashboardSummary(null);
@@ -1088,6 +1160,7 @@ function App() {
           doctorId={staffDoctor?.id}
           roles={staffIdentity?.roles ?? []}
           clinicianName={clinicianDisplayName}
+          loadEnabled={!apiLoading}
           onNavigate={(destination) => {
             if (destination === "채팅") {
               setChatDockOpen(true);

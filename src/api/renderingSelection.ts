@@ -1,5 +1,6 @@
 import type { Rendering3DSummary } from '../types'
-import type { AnatomyViewMode } from '../components/MedicalModelViewer'
+
+export type AnatomyViewMode = 'VESSEL' | 'CALCIFICATION' | 'VESSEL_CALCIFICATION'
 
 export const RENDERING_KINDS = [
   { value: 'VESSEL_ONLY', label: '혈관' },
