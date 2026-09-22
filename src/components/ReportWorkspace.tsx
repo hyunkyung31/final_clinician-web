@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import { FileText, LoaderCircle, Search } from 'lucide-react'
-import type { MedicalResultDetail, PatientReportSummary, PatientSummary, ReportAiSummary, ReportXcaAttachment, StaffDoctor, StaffIdentity } from '../types'
+import type { MedicalReportType, MedicalResultDetail, PatientReportSummary, PatientSummary, ReportAiSummary, ReportXcaAttachment, StaffDoctor, StaffIdentity } from '../types'
 import {
   createPatientMedicalResult,
   getFileContentObjectUrl,
@@ -26,6 +26,12 @@ export const reportStatusLabels: Record<string, string> = {
   REVIEWING: '검토 중',
   SIGNED: '최종 승인',
   RELEASED: '환자 공개',
+}
+
+const reportTypeLabels: Record<MedicalReportType, string> = {
+  XCA_2D: '2D XCA',
+  CCTA_3D: '3D CCTA',
+  INTEGRATED: '통합',
 }
 
 function formatDate(value?: string | null) {
@@ -217,6 +223,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
   const [reportSearchLoading, setReportSearchLoading] = useState(false)
   const [reportSearchError, setReportSearchError] = useState('')
   const [patientReports, setPatientReports] = useState<PatientReportSummary[]>([])
+  const [reportTypeFilter, setReportTypeFilter] = useState<'ALL' | MedicalReportType>('ALL')
   const [reportsLoading, setReportsLoading] = useState(false)
   const [reportsError, setReportsError] = useState('')
   const [selectedResultId, setSelectedResultId] = useState<number | null>(null)
@@ -342,6 +349,9 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
 
   const workflow = detail?.workflow
   const canSave = Boolean(workflow?.canEdit && workflow.status !== 'SIGNED' && workflow.status !== 'RELEASED')
+  const visibleReports = reportTypeFilter === 'ALL'
+    ? patientReports
+    : patientReports.filter((item) => item.reportType === reportTypeFilter)
 
   return (
     <section className="feature-page module-page report-workspace">
@@ -349,7 +359,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
         <div>
           <small>CLINICAL REPORT</small>
           <h1>결과보고서</h1>
-          <p>Clinical AI, 2D XCA, 3D CCTA 결과를 하나의 보고서로 모은 뒤 최종 승인과 환자 공개를 분리합니다.</p>
+          <p>2D XCA와 3D CCTA 결과보고서를 검사별로 조회하고 승인·공개합니다.</p>
         </div>
         <span className="feature-live"><i /> LIVE API</span>
       </header>
@@ -388,22 +398,27 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
               })}
               type="button"
             >
-              {busyAction === 'create' ? '초안 생성 중…' : '새 결과보고서 초안'}
+              {busyAction === 'create' ? '초안 생성 중…' : '통합 결과보고서 초안'}
             </button>
           )}
         </section>
         <section className="feature-card module-table-card">
           <header><h2>보고서 목록</h2><span>총 {patientReports.length}건</span></header>
+          <div className="report-type-tabs" role="tablist" aria-label="보고서 종류">
+            {([['ALL', '전체'], ['XCA_2D', '2D XCA'], ['CCTA_3D', '3D CCTA'], ['INTEGRATED', '통합']] as const).map(([value, label]) => (
+              <button aria-selected={reportTypeFilter === value} className={reportTypeFilter === value ? 'active' : ''} key={value} onClick={() => { setReportTypeFilter(value); setSelectedResultId(null) }} role="tab" type="button">{label}</button>
+            ))}
+          </div>
           {reportsError && <p className="api-inline-error">{reportsError}</p>}
           {!reportPatient && <div className="feature-empty"><FileText size={28} /><strong>환자를 먼저 검색해 선택해주세요.</strong></div>}
           {reportPatient && (
             <div className="module-table module-report-table">
-              <div className="module-table-head"><span>검사일</span><span>진료 유형</span><span>상태</span><span>작성/서명 의료진</span><span /></div>
-              {patientReports.map((item) => (
+              <div className="module-table-head"><span>검사일</span><span>보고서 종류</span><span>상태</span><span>작성/서명 의료진</span><span /></div>
+              {visibleReports.map((item) => (
                 <div className={`module-table-row ${selectedResultId === item.medicalResultId ? 'is-selected' : ''}`} key={item.medicalResultId}>
                   <button className="report-row-select" onClick={() => setSelectedResultId(item.medicalResultId)} type="button">
-                    <span>{item.visitDate ? new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium' }).format(new Date(item.visitDate)) : '-'}</span>
-                    <span>{item.encounterType ?? '-'}</span>
+                    <span>{(item.performedAt || item.visitDate) ? new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium' }).format(new Date(item.performedAt || item.visitDate!)) : '-'}</span>
+                    <span><strong>{reportTypeLabels[item.reportType]}</strong>{item.examName ? ` · ${item.examName}` : ''}</span>
                     <b className={`status-pill status-report-${item.status.toLowerCase()}`}>{reportStatusLabels[item.status] ?? item.status}</b>
                     <span>{item.latestSignoff?.doctorName ?? item.doctorName ?? '-'}</span>
                   </button>
@@ -419,6 +434,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
               ))}
               {reportsLoading && <p className="report-empty-inline">목록을 불러오는 중…</p>}
               {!reportsLoading && patientReports.length === 0 && <div className="feature-empty"><FileText size={28} /><strong>등록된 보고서가 없습니다.</strong></div>}
+              {!reportsLoading && patientReports.length > 0 && visibleReports.length === 0 && <div className="feature-empty"><FileText size={28} /><strong>선택한 종류의 보고서가 없습니다.</strong></div>}
             </div>
           )}
         </section>
@@ -431,7 +447,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
             <>
               <header className="report-detail-header">
                 <div>
-                  <small>통합 결과보고서 #{detail.medicalResultId}</small>
+                  <small>{reportTypeLabels[detail.reportType]} 결과보고서 #{detail.medicalResultId}</small>
                   <h2>{detail.patient.name} · {detail.patient.medicalRecordNo}</h2>
                 </div>
                 <b className={`status-pill status-report-${detail.workflow.status.toLowerCase()}`}>
@@ -450,12 +466,12 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
                 </dl>
               </article>
 
-              <AiBlock kind="clinical" summary={detail.aiSummaries.clinical} title="2. Clinical AI 분석 결과" />
-              <AiBlock kind="xca" summary={detail.aiSummaries.xca} attachments={detail.xcaAttachments} title="3. 2D XCA 분석 결과" />
-              <AiBlock kind="ccta" summary={detail.aiSummaries.ccta} title="4. 3D CCTA 석회화 결과" />
+              {detail.reportType === 'INTEGRATED' && <AiBlock kind="clinical" summary={detail.aiSummaries.clinical} title="2. Clinical AI 분석 결과" />}
+              {(detail.reportType === 'XCA_2D' || detail.reportType === 'INTEGRATED') && <AiBlock kind="xca" summary={detail.aiSummaries.xca} attachments={detail.xcaAttachments} title={detail.reportType === 'XCA_2D' ? '2. 2D XCA 분석 결과' : '3. 2D XCA 분석 결과'} />}
+              {(detail.reportType === 'CCTA_3D' || detail.reportType === 'INTEGRATED') && <AiBlock kind="ccta" summary={detail.aiSummaries.ccta} title={detail.reportType === 'CCTA_3D' ? '2. 3D CCTA 석회화 결과' : '4. 3D CCTA 석회화 결과'} />}
 
               <article className="report-section">
-                <h3>5. 의료진 최종 소견</h3>
+                <h3>{detail.reportType === 'INTEGRATED' ? '5' : '3'}. 의료진 최종 소견</h3>
                 <textarea
                   disabled={!canSave || Boolean(busyAction)}
                   onChange={(event) => setConclusion(event.target.value)}
@@ -466,7 +482,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
               </article>
 
               <article className="report-section">
-                <h3>6. 최종 확인 및 승인</h3>
+                <h3>{detail.reportType === 'INTEGRATED' ? '6' : '4'}. 최종 확인 및 승인</h3>
                 {detail.workflow.status === 'SIGNED' || detail.workflow.status === 'RELEASED' ? (
                   <>
                     <p><strong>최종 승인 완료</strong></p>

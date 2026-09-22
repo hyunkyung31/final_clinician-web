@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { getPatientFollowUpRecords, prepareXCAReport, reloadXCAReport, saveXCAReportDraft, reauthenticateStaff } from '../api/client'
-import type { FollowUpVisit } from '../types'
+import { prepareXCAReport, reloadXCAReport, saveXCAReportDraft, reauthenticateStaff } from '../api/client'
 import type { XCAArchivedFrame, XCADetailResult } from '../api/xcaDetails'
 import type { XCAReportSaved, XCAReportTarget } from '../api/xcaReport'
 import { storedXCAAttachments } from '../api/xcaReport'
@@ -8,22 +7,12 @@ import { XCAReportEvidence } from './XCAReportEvidence'
 import { XCAReportFinalize } from './XCAReportFinalize'
 
 export function XCAReportDraft({ detail, selected, onBusyChange, disabled }: { detail: XCADetailResult; selected: XCAArchivedFrame[]; onBusyChange: (busy: boolean) => void; disabled: boolean }) {
-  const [visits, setVisits] = useState<FollowUpVisit[]>([]), [encounterId, setEncounterId] = useState<number | null>(null)
-  const [loading, setLoading] = useState(true), [operationBusy, setBusy] = useState(false), [finalBusy, setFinalBusy] = useState(false), [error, setError] = useState('')
+  const [operationBusy, setBusy] = useState(false), [finalBusy, setFinalBusy] = useState(false), [error, setError] = useState('')
   const busy = operationBusy || finalBusy
   const [target, setTarget] = useState<XCAReportTarget | null>(null), [saved, setSaved] = useState<XCAReportSaved | null>(null)
   const [note, setNote] = useState(''), [password, setPassword] = useState('')
   const lock = useRef(false), mounted = useRef(false)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; onBusyChange(false) } }, [onBusyChange])
-  useEffect(() => {
-    let alive = true
-    getPatientFollowUpRecords(detail.summary.patientId).then(records => {
-      if (records.patient.id !== detail.summary.patientId) throw new Error('다른 환자의 진료 기록입니다.')
-      if (alive) setVisits(records.visits.filter(visit => Number.isSafeInteger(visit.encounterId) && visit.encounterId > 0 && visit.status !== 'CANCELED'))
-    }).catch(failure => { if (alive) setError(failure instanceof Error ? failure.message : '진료 기록 조회 실패') })
-      .finally(() => { if (alive) setLoading(false) })
-    return () => { alive = false }
-  }, [detail.summary.patientId])
   async function act(action: () => Promise<void>) {
     if (lock.current || finalBusy || disabled) return
     lock.current = true; setBusy(true); onBusyChange(true); setError('')
@@ -32,9 +21,8 @@ export function XCAReportDraft({ detail, selected, onBusyChange, disabled }: { d
     finally { lock.current = false; if (mounted.current) { setBusy(false); setPassword(''); onBusyChange(false) } }
   }
   async function prepare() {
-    if (!encounterId || !visits.some(visit => visit.encounterId === encounterId)) return
     await act(async () => {
-      const value = await prepareXCAReport(detail.summary.patientId, encounterId)
+      const value = await prepareXCAReport(detail.summary.patientId, detail.summary.examinationId, detail.summary.resultId)
       if (mounted.current) { setTarget(value); setSaved(null) }
     })
   }
@@ -61,12 +49,8 @@ export function XCAReportDraft({ detail, selected, onBusyChange, disabled }: { d
   return <section className="xca-report-draft">
     <h3>선택 프레임을 보고서 초안에 첨부</h3>
     <p>전체 좌·우 분석, 시리즈별 탐색용 점수, 선택한 보존 프레임·마스크 참조와 의료진 의견을 새 보고서 버전에 기록합니다. 자동 서명·공개하지 않습니다.</p>
-    {loading && <p role="status">환자 진료 목록 조회 중…</p>}
-    {!loading && !visits.length && <p>연결할 진료 기록이 없습니다. 정상 진료 등록 절차로 진료를 등록한 뒤 다시 열어주세요.</p>}
-    <label>첨부할 진료 선택<select value={encounterId ?? ''} disabled={loading || busy || disabled} onChange={event => { setEncounterId(event.target.value ? Number(event.target.value) : null); setTarget(null); setSaved(null); setPassword('') }}>
-      <option value="">진료를 직접 선택하세요</option>{visits.map(visit => <option key={visit.encounterId} value={visit.encounterId}>{visit.stageLabel} · {visit.visitDate ? new Date(visit.visitDate).toLocaleDateString('ko-KR') : '날짜 미상'} · 진료 #{visit.encounterId}{visit.examinations.some(exam => exam.examinationId === detail.summary.examinationId) && ' · 이 Angio 검사 연결'}</option>)}
-    </select></label>
-    <button type="button" disabled={busy || disabled || !encounterId || !!target} onClick={() => void prepare()}>보고서 대상 준비 · 초안 생성/기존 사용</button>
+    <p>검사 #{detail.summary.examinationId} · AI 결과 #{detail.summary.resultId}를 2D XCA 보고서에 연결합니다.</p>
+    <button type="button" disabled={busy || disabled || !!target} onClick={() => void prepare()}>2D XCA 보고서 초안 생성/기존 초안 열기</button>
     {target && <><p>의료 결과 #{target.id} · 현재 {target.status} · {target.baseVersionId ? `보고서 v${target.versionNo} (#${target.baseVersionId})` : '첫 보고서 버전 생성 예정'}</p>
       <button type="button" disabled={busy || disabled} onClick={() => void reload()}>최신 보고서 다시 조회</button>
       <details><summary>기존 보고서 본문 확인</summary><pre>{target.text || '기존 본문 없음'}</pre></details>

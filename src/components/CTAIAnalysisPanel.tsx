@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { BrainCircuit, X } from 'lucide-react'
-import { createCTAIAnalysis, getCTAIAnalysis, CT_AI_READY, CT_AI_VERSION_ID, type CTAIAnalysis } from '../api/client'
+import { createCTAIAnalysis, createExaminationMedicalResult, getCTAIAnalysis, loadLatestCTAIAnalysis, CT_AI_READY, CT_AI_VERSION_ID, type CTAIAnalysis } from '../api/client'
 import type { ImagingStudySummary } from '../types'
 
 // backend CCTA_DOCKER_TIMEOUT(기본 600초) + DICOM 준비/업로드 여유시간을 감안한 폴링 상한.
@@ -34,14 +34,25 @@ function ctaStageFor(progress: number) {
   return stage
 }
 
-export function CTAIAnalysisPanel({ study, seriesId, onClose, onRefresh }: { study: ImagingStudySummary; seriesId: number | null; onClose: () => void; onRefresh: () => void }) {
+export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefresh }: { patientId: number | null; study: ImagingStudySummary; seriesId: number | null; onClose: () => void; onRefresh: () => void }) {
   const [analysis, setAnalysis] = useState<CTAIAnalysis | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [reportId, setReportId] = useState<number | null>(null)
   const active = useRef(true)
   const ready = CT_AI_READY && Number.isSafeInteger(CT_AI_VERSION_ID) && CT_AI_VERSION_ID > 0
   useEffect(() => { active.current = true; return () => { active.current = false } }, [])
+  useEffect(() => {
+    if (!patientId || !study.examinationId) return
+    let live = true
+    setBusy(true); setError('')
+    void loadLatestCTAIAnalysis(patientId, study.examinationId)
+      .then((latest) => { if (live && latest) setAnalysis(latest) })
+      .catch((caught) => { if (live) setError(caught instanceof Error ? caught.message : '기존 CCTA 분석 조회 실패') })
+      .finally(() => { if (live) setBusy(false) })
+    return () => { live = false }
+  }, [patientId, study.examinationId])
   useEffect(() => {
     if (!analysis || !['QUEUED', 'RUNNING'].includes(analysis.analysis.status)) return
     const started = Date.now()
@@ -69,6 +80,20 @@ export function CTAIAnalysisPanel({ study, seriesId, onClose, onRefresh }: { stu
     try { const next = await getCTAIAnalysis(analysis.analysis.id); if (active.current) { setAnalysis(next); setError('') } }
     catch (caught) { if (active.current) setError(caught instanceof Error ? caught.message : '상태 조회 실패') }
     finally { if (active.current) setBusy(false) }
+  }
+  async function createReport() {
+    const result = analysis?.results?.find((item) => item.status !== 'INVALID')
+    if (!study.examinationId || !result || busy) return
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const draft = await createExaminationMedicalResult(study.examinationId, 'CCTA_3D', result.id)
+      if (active.current) {
+        setReportId(draft.medicalResultId)
+        setNotice(`3D CCTA 결과보고서 초안 #${draft.medicalResultId}이 준비되었습니다.`)
+      }
+    } catch (caught) {
+      if (active.current) setError(caught instanceof Error ? caught.message : '3D CCTA 보고서 생성 실패')
+    } finally { if (active.current) setBusy(false) }
   }
   const status = analysis?.analysis.status
   return <div className="feature-modal-backdrop"><section className="feature-modal ct-ai-modal" role="dialog" aria-modal="true" aria-label="CT 석회화 AI 분석">
@@ -99,6 +124,7 @@ export function CTAIAnalysisPanel({ study, seriesId, onClose, onRefresh }: { stu
     {notice && <p role="status">{notice}</p>}{error && <p className="api-inline-error" role="alert">{error}</p>}
     <footer>{analysis ? <>
       <button type="button" onClick={refresh} disabled={busy}>상태 확인</button>
+      {status === 'SUCCEEDED' && analysis.results?.some((item) => item.status !== 'INVALID') && <button className="primary" type="button" onClick={() => void createReport()} disabled={busy || Boolean(reportId)}>{reportId ? `보고서 초안 #${reportId} 생성 완료` : '3D CCTA 결과보고서 생성'}</button>}
       {status === 'SUCCEEDED' && <button type="button" onClick={() => { onRefresh(); onClose() }}>렌더링 결과 확인</button>}
       {status === 'FAILED' && <button type="button" disabled={busy} onClick={() => { setAnalysis(null); setError(''); setNotice('') }}>다시 시도</button>}
     </> : <button type="button" onClick={run} disabled={!ready || !study.examinationId || !seriesId || busy}>{busy ? '분석 요청 중…' : 'AI 분석 시작'}</button>}</footer>

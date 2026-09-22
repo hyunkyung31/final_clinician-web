@@ -39,6 +39,7 @@ import type {
   PatientMedicalHistorySummary,
   PatientMemo,
   PatientReportSummary,
+  MedicalReportType,
   PatientSummary,
   MedicalResultDetail,
   ReportAiSummary,
@@ -90,8 +91,8 @@ export function getSavedXCAFrames(detail: XCADetailResult, sequenceId: number) {
 export function getSavedXCAFrame(detail: XCADetailResult, frameId: number) {
   return readXCAFrame(API_BASE_URL, sessionStorage.getItem(ACCESS_TOKEN_KEY), detail, frameId)
 }
-export function prepareXCAReport(patientId: number, encounterId: number) {
-  return prepareXCAReportTarget(API_BASE_URL, sessionStorage.getItem(ACCESS_TOKEN_KEY), patientId, encounterId)
+export function prepareXCAReport(patientId: number, examinationId: number, analysisResultId: number) {
+  return prepareXCAReportTarget(API_BASE_URL, sessionStorage.getItem(ACCESS_TOKEN_KEY), patientId, examinationId, analysisResultId)
 }
 export function reloadXCAReport(target: XCAReportTarget) {
   return readXCAReportTarget(API_BASE_URL, sessionStorage.getItem(ACCESS_TOKEN_KEY), target.id, target.patientId, target.encounterId)
@@ -1540,12 +1541,20 @@ export async function getPatientReports(patientId: number): Promise<PatientRepor
   const payload = await request<unknown>(`/api/patients/${patientId}/medical-results/`)
   if (!Array.isArray(payload)) return []
   return payload.filter(isRecord).map((item): PatientReportSummary => {
+    const examinationRaw = isRecord(item.examination) ? item.examination : {}
     const latestVersionRaw = item.latest_version
     const latestSignoffRaw = item.latest_signoff
     const latestReportRaw = item.latest_report
     const latestReleaseRaw = item.latest_release
     return {
       medicalResultId: readNumber(item, 'medical_result_id') ?? 0,
+      reportType: (['XCA_2D', 'CCTA_3D', 'INTEGRATED'].includes(readString(item, 'report_type'))
+        ? readString(item, 'report_type')
+        : 'INTEGRATED') as MedicalReportType,
+      examinationId: readNumber(item, 'examination_id', 'examination') ?? readNumber(examinationRaw, 'id') ?? null,
+      examName: readString(item, 'exam_name') || readString(examinationRaw, 'exam_name', 'name') || null,
+      examCode: readString(item, 'exam_code') || readString(examinationRaw, 'exam_code', 'code') || null,
+      performedAt: readString(item, 'performed_at') || readString(examinationRaw, 'performed_at') || null,
       encounterId: readNumber(item, 'encounter_id') ?? null,
       visitDate: readString(item, 'visit_date') || null,
       encounterType: readString(item, 'encounter_type') || null,
@@ -1656,6 +1665,7 @@ function mapMedicalResultDetail(payload: unknown): MedicalResultDetail {
   const medical = isRecord(payload.medical_result) ? payload.medical_result : payload
   const patient = isRecord(payload.patient) ? payload.patient : {}
   const encounter = isRecord(payload.encounter) ? payload.encounter : {}
+  const examination = isRecord(payload.examination) ? payload.examination : {}
   const workflow = isRecord(payload.workflow) ? payload.workflow : {}
   const summaries = isRecord(payload.ai_summaries) ? payload.ai_summaries : {}
   const versions = (Array.isArray(payload.versions) ? payload.versions : []).filter(isRecord)
@@ -1668,6 +1678,10 @@ function mapMedicalResultDetail(payload: unknown): MedicalResultDetail {
   const attachments = Array.isArray(content.xca_attachments) ? content.xca_attachments : []
   return {
     medicalResultId: readNumber(medical, 'id', 'medical_result_id') ?? 0,
+    reportType: (['XCA_2D', 'CCTA_3D', 'INTEGRATED'].includes(readString(medical, 'report_type'))
+      ? readString(medical, 'report_type')
+      : 'INTEGRATED') as MedicalReportType,
+    examinationId: readNumber(medical, 'examination', 'examination_id') ?? readNumber(examination, 'id') ?? null,
     encounterId: readNumber(medical, 'encounter', 'encounter_id') ?? readNumber(encounter, 'id') ?? null,
     status: readString(medical, 'status') || readString(workflow, 'status'),
     conclusion: readString(medical, 'conclusion'),
@@ -1699,7 +1713,7 @@ function mapMedicalResultDetail(payload: unknown): MedicalResultDetail {
       releasedAt: readString(workflow, 'released_at') || null,
       patientVisible: workflow.patient_visible === true,
       latestReportId: readNumber(workflow, 'latest_report_id') ?? null,
-      examName: readString(workflow, 'exam_name') || null,
+      examName: readString(examination, 'exam_name', 'name') || readString(workflow, 'exam_name') || null,
     },
     xcaAttachments: attachments.filter(isRecord).map(attachment => ({
       note: readString(attachment, 'review_note'),
@@ -1719,6 +1733,31 @@ function mapMedicalResultDetail(payload: unknown): MedicalResultDetail {
       ccta: mapReportAiSummary(summaries.ccta),
     },
   }
+}
+
+export async function createExaminationMedicalResult(
+  examinationId: number,
+  reportType: Exclude<MedicalReportType, 'INTEGRATED'>,
+  analysisResultId: number,
+  rendering3DId?: number,
+): Promise<MedicalResultDetail> {
+  if (![examinationId, analysisResultId].every((value) => Number.isSafeInteger(value) && value > 0)) {
+    throw new ApiError('완료된 검사와 AI 분석 결과를 선택해주세요.', 400)
+  }
+  const created = await request<unknown>(`/api/examinations/${examinationId}/medical-results/`, {
+    method: 'POST',
+    refreshOnUnauthorized: false,
+    body: JSON.stringify({
+      report_type: reportType,
+      analysis_result_id: analysisResultId,
+      ...(rendering3DId ? { rendering_3d_id: rendering3DId } : {}),
+    }),
+  })
+  const root = isRecord(created) ? created : {}
+  const medical = isRecord(root.medical_result) ? root.medical_result : root
+  const resultId = readNumber(medical, 'id', 'medical_result_id')
+  if (!resultId) throw new ApiError('생성된 검사별 보고서 초안을 확인하지 못했습니다.', 500)
+  return getMedicalResultDetail(resultId)
 }
 
 export async function getMedicalResultDetail(resultId: number): Promise<MedicalResultDetail> {
@@ -3929,6 +3968,16 @@ export function createCTAIAnalysis(examinationId: number, studyId: number, serie
 
 export function getCTAIAnalysis(id: number): Promise<CTAIAnalysis> {
   return request<CTAIAnalysis>(`/api/ai-analyses/${id}/`)
+}
+
+export async function loadLatestCTAIAnalysis(patientId: number, examinationId: number): Promise<CTAIAnalysis | null> {
+  const listed = await request<Array<{ id: number; examination: number; analysis_type: string; status: string }>>(
+    `/api/ai-analyses/?patient_id=${patientId}&type=CCTA&status=SUCCEEDED`,
+  )
+  const matches = (Array.isArray(listed) ? listed : [])
+    .filter((item) => item.examination === examinationId && item.analysis_type === 'CCTA' && item.status === 'SUCCEEDED')
+    .sort((a, b) => b.id - a.id)
+  return matches[0] ? getCTAIAnalysis(matches[0].id) : null
 }
 
 export interface ClinicalShapFeature {
