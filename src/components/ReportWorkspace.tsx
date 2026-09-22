@@ -256,8 +256,13 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
   const currentDoctorSignature = getDoctorSignature(staffIdentity?.username)
 
   useEffect(() => {
-    if (!reportPatient && selectedPatient) setReportPatient(selectedPatient)
-  }, [selectedPatient, reportPatient])
+    if (!selectedPatient) return
+    setReportPatient(selectedPatient)
+    setSelectedResultId(null)
+    setDetail(null)
+    setConclusion('')
+    setReportsError('')
+  }, [selectedPatient?.backendId])
 
   useEffect(() => {
     const keyword = reportSearchKeyword.trim()
