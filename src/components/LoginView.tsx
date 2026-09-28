@@ -1,10 +1,13 @@
 import { useState, type FormEvent } from 'react'
+import logoMark from '../assets/dugn-mark.png'
 
 interface LoginViewProps {
   loading: boolean
   error: string
   onLogin: (username: string, password: string) => Promise<void>
 }
+
+const ECG_LINE = 'M0 30 H86 L100 30 L112 18 L124 30 H188 L202 30 L214 8 L230 50 L246 16 L260 30 H360 L376 22 L394 30 H430 L444 30 L456 12 L472 46 L488 18 L502 30 H640'
 
 export function LoginView({
   loading,
@@ -21,191 +24,33 @@ export function LoginView({
 
   return (
     <main className="login-page">
-      <section className="login-visual">
-        <div className="login-brand">
-          <span className="login-brand-icon">
-            <svg viewBox="0 0 32 32" aria-hidden="true">
-              <path d="M5 17h5l2.2-5 3.5 10 3.1-7 2 2H27" />
-            </svg>
-          </span>
+      <div className="login-atmosphere" aria-hidden="true">
+        <svg className="login-vessels" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice">
+          <path className="login-vessel" d="M-80 640 C 160 520, 280 760, 520 640 S 860 470, 1100 610" />
+          <path className="login-vessel login-vessel-late" d="M860 -40 C 1040 80, 1180 -20, 1540 150" />
+        </svg>
+      </div>
+      <div className="login-field" aria-hidden="true" />
 
-          <div>
-            <strong>AngioCAD</strong>
-            <small>CLINICAL AI WORKSPACE</small>
-          </div>
+      <div className="login-stage">
+        <div className="login-logo-wrap">
+          <img
+            className="login-logo"
+            src={logoMark}
+            alt="DUGN"
+            width={846}
+            height={236}
+            fetchPriority="high"
+          />
         </div>
+        <svg className="login-ecg" viewBox="0 0 640 56" aria-hidden="true">
+          <path className="login-ecg-glow" pathLength="1" d={ECG_LINE} />
+          <path className="login-ecg-line" pathLength="1" d={ECG_LINE} />
+          <path className="login-ecg-head" pathLength="1" d={ECG_LINE} />
+        </svg>
 
-        <div className="login-copy">
-          <p>ANGIOCAD CLINICAL WORKSPACE</p>
-
-          <h1>
-            영상부터 판독까지,
-            <br />
-            하나의 흐름으로
-          </h1>
-
-          <span>
-            환자 정보와 CAG·AI 분석 결과를 한 화면에서 검토하고
-            <br />
-            더 빠르고 정확하게 판독을 완료하세요.
-          </span>
-        </div>
-
-        <div className="angiocad-motion" aria-hidden="true">
-          <svg viewBox="0 0 360 360" role="presentation">
-            <defs>
-              <linearGradient
-                id="motionGradient"
-                x1="40"
-                y1="50"
-                x2="320"
-                y2="310"
-                gradientUnits="userSpaceOnUse"
-              >
-                <stop offset="0%" stopColor="#82c7ff" />
-                <stop offset="48%" stopColor="#4f8cff" />
-                <stop offset="100%" stopColor="#55e0c1" />
-              </linearGradient>
-
-              <radialGradient id="coreGradient">
-                <stop offset="0%" stopColor="#ffffff" />
-                <stop offset="35%" stopColor="#8fd1ff" />
-                <stop offset="100%" stopColor="#3d7df0" />
-              </radialGradient>
-
-              <filter id="motionGlow" x="-80%" y="-80%" width="260%" height="260%">
-                <feGaussianBlur stdDeviation="5" result="blur" />
-                <feMerge>
-                  <feMergeNode in="blur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-            </defs>
-
-            <circle
-              className="motion-orbit motion-orbit-outer"
-              cx="180"
-              cy="180"
-              r="145"
-            />
-
-            <circle
-              className="motion-orbit motion-orbit-inner"
-              cx="180"
-              cy="180"
-              r="105"
-            />
-
-            <circle
-              className="motion-scan-ring motion-scan-ring-first"
-              cx="180"
-              cy="180"
-              r="72"
-            />
-
-            <circle
-              className="motion-scan-ring motion-scan-ring-second"
-              cx="180"
-              cy="180"
-              r="72"
-            />
-
-            <g className="motion-vessels">
-              <path
-                className="motion-vessel motion-vessel-main"
-                pathLength="1"
-                d="M180 276
-                   C178 244 179 219 182 192
-                   C185 165 183 137 174 105
-                   C169 87 161 70 151 54"
-              />
-
-              <path
-                className="motion-vessel motion-vessel-left"
-                pathLength="1"
-                d="M181 195
-                   C157 177 136 158 118 133
-                   C102 111 92 88 86 67"
-              />
-
-              <path
-                className="motion-vessel motion-vessel-right"
-                pathLength="1"
-                d="M182 190
-                   C205 168 229 151 256 139
-                   C276 130 294 126 312 126"
-              />
-
-              <path
-                className="motion-vessel motion-vessel-lower"
-                pathLength="1"
-                d="M180 220
-                   C202 224 224 238 244 260
-                   C256 273 267 288 276 305"
-              />
-            </g>
-
-            <path
-              className="motion-heartbeat-track"
-              d="M44 181
-                 H113
-                 L130 181
-                 L143 160
-                 L159 214
-                 L176 131
-                 L196 197
-                 L210 181
-                 H316"
-            />
-
-            <path
-              className="motion-heartbeat-line"
-              pathLength="1"
-              d="M44 181
-                 H113
-                 L130 181
-                 L143 160
-                 L159 214
-                 L176 131
-                 L196 197
-                 L210 181
-                 H316"
-            />
-
-            <circle
-              className="motion-core-glow"
-              cx="180"
-              cy="181"
-              r="18"
-            />
-
-            <circle
-              className="motion-core"
-              cx="180"
-              cy="181"
-              r="7"
-            />
-          </svg>
-
-          <div className="motion-caption">
-            <strong>ANGIOCAD</strong>
-            <span>Coronary AI analysis</span>
-          </div>
-        </div>
-
-        <div className="login-system">
-          <i />
-          API 서버 연결 준비됨
-        </div>
-      </section>
-
-      <section className="login-form-panel">
         <form className="login-form" onSubmit={handleSubmit}>
-          <header className="login-form-header">
-            <small>의료진 전용</small>
-            <h2>로그인</h2>
-            <p>CDSS 의료진 계정으로 로그인해주세요.</p>
-          </header>
+          <h1>의료진 로그인</h1>
 
           <label>
             <span>아이디</span>
@@ -213,7 +58,6 @@ export function LoginView({
               autoComplete="username"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
-              placeholder="아이디를 입력하세요"
               disabled={loading}
               required
             />
@@ -226,32 +70,22 @@ export function LoginView({
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="비밀번호를 입력하세요"
               disabled={loading}
               required
             />
           </label>
 
           {error && (
-            <div className="login-error" role="alert">
+            <p className="login-error" role="alert">
               {error}
-            </div>
+            </p>
           )}
 
-          <button
-            className="login-submit"
-            disabled={loading}
-            type="submit"
-          >
+          <button className="login-submit" disabled={loading} type="submit">
             {loading ? '로그인 중…' : '로그인'}
           </button>
-
-          <p className="login-notice">
-            환자 개인정보 보호를 위해 공용 PC에서는 사용 후 반드시
-            로그아웃하세요.
-          </p>
         </form>
-      </section>
+      </div>
     </main>
   )
 }
