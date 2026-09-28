@@ -64,7 +64,7 @@ export async function readXCAReportTarget(base: string, token: string | null, me
 export async function prepareXCAReportTarget(base: string, token: string | null, patientId: number, examinationId: number, analysisResultId: number): Promise<XCAReportTarget> {
   id(patientId); id(examinationId); id(analysisResultId)
   const response = obj(await call(base, `/api/examinations/${examinationId}/medical-results/`, token, {
-    report_type: 'XCA_2D', analysis_result_id: analysisResultId,
+    patient_id: patientId, report_type: 'XCA_2D', analysis_result_id: analysisResultId,
   }))
   const medical = response.medical_result && typeof response.medical_result === 'object' && !Array.isArray(response.medical_result)
     ? obj(response.medical_result)
