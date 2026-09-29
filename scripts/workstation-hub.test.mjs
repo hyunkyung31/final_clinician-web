@@ -90,16 +90,26 @@ test('CCTA copy stays calcification-only and empty states are clinical', () => {
   assert.equal(matchRecommendedOrderTypes([{ name: '관상동맥 조영술', code: 'CAG', category: 'IMAGING' }]).length, 1)
 })
 
-test('desktop hub keeps a fixed 3-column action layout', () => {
-  assert.match(css, /grid-template-columns:\s*220px\s+minmax\(0,\s*1fr\)\s+300px/)
-  assert.equal(css.includes('min-width: 1100px'), false)
+test('workstation hub adapts to available container width without horizontal clipping', () => {
+  assert.match(css, /container-type:\s*inline-size/)
+  assert.match(css, /minmax\(180px,\s*220px\)/)
+  assert.match(css, /minmax\(420px,\s*1fr\)/)
+  assert.match(css, /minmax\(260px,\s*300px\)/)
+  assert.match(css, /@container\s*\(max-width:\s*1080px\)/)
+  assert.match(css, /grid-column:\s*1\s*\/\s*-1/)
   assert.match(css, /overflow-x:\s*hidden/)
-  assert.equal(css.includes('grid-column: 1 / -1'), false)
+  assert.equal(css.includes('min-width: 1100px'), false)
+
   assert.match(hub, /ws-action-tabs/)
   assert.match(hub, /onOpenXcaDetail/)
   assert.match(hub, /onOpenCcta3d/)
   assert.match(hub, /완료된 CCTA 분석 결과가 없습니다/)
-  const summaryBlock = hub.slice(hub.indexOf("view === 'summary'"), hub.indexOf("view === 'imaging'"))
+
+  const summaryBlock = hub.slice(
+    hub.indexOf("view === 'summary'"),
+    hub.indexOf("view === 'imaging'"),
+  )
+
   assert.equal(summaryBlock.includes('StudyDicomViewer'), false)
   assert.equal(summaryBlock.includes('onOpenReports()}>상세'), false)
 })
