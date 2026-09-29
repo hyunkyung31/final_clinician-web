@@ -2453,6 +2453,7 @@ export async function createExaminationOrder(
   encounterId: number,
   examinationTypeId: number,
   clinicalNote: string,
+  priority: 'NORMAL' | 'URGENT' = 'NORMAL',
 ): Promise<ExaminationOrderSummary> {
   const payload = await request<unknown>(
     `/api/encounters/${encounterId}/examination-orders/`,
@@ -2460,7 +2461,7 @@ export async function createExaminationOrder(
       method: 'POST',
       body: JSON.stringify({
         examination_type_id: examinationTypeId,
-        priority: 'NORMAL',
+        priority,
         ...(clinicalNote.trim()
           ? { clinical_note: clinicalNote.trim() }
           : {}),
