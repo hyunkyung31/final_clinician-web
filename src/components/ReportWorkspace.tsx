@@ -2,7 +2,6 @@ import { useEffect, useId, useState } from 'react'
 import { FileText, LoaderCircle, Search } from 'lucide-react'
 import type { MedicalReportType, MedicalResultDetail, PatientReportSummary, PatientSummary, ReportAiSummary, ReportXcaAttachment, StaffDoctor, StaffIdentity } from '../types'
 import {
-  createPatientMedicalResult,
   getFileContentObjectUrl,
   getMedicalResultDetail,
   getPatientReports,
@@ -49,7 +48,6 @@ function formatPercent(value?: number | null) {
 
 async function getAllPatientReports(patientId: number) {
   const responses = await Promise.allSettled([
-    getPatientReports(patientId),
     getPatientReports(patientId, 'XCA_2D'),
     getPatientReports(patientId, 'CCTA_3D'),
   ])
@@ -251,8 +249,6 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
   const [detailLoading, setDetailLoading] = useState(false)
   const [conclusion, setConclusion] = useState('')
   const [busyAction, setBusyAction] = useState('')
-  const [integratedXcaId, setIntegratedXcaId] = useState('')
-  const [integratedCctaId, setIntegratedCctaId] = useState('')
   const [reportDownloadingId, setReportDownloadingId] = useState<number | null>(null)
   const [confirmSignoff, setConfirmSignoff] = useState(false)
   const currentDoctorSignature = getDoctorSignature(staffIdentity?.username)
@@ -263,8 +259,6 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
     setSelectedResultId(null)
     setDetail(null)
     setConclusion('')
-    setIntegratedXcaId('')
-    setIntegratedCctaId('')
     setReportsError('')
   }, [selectedPatient?.backendId])
 
@@ -379,10 +373,8 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
   const workflow = detail?.workflow
   const canSave = Boolean(workflow?.canEdit && workflow.status !== 'SIGNED' && workflow.status !== 'RELEASED')
   const visibleReports = reportTypeFilter === 'ALL'
-    ? patientReports
+    ? patientReports.filter((item) => item.reportType !== 'INTEGRATED')
     : patientReports.filter((item) => item.reportType === reportTypeFilter)
-  const signedXcaReports = patientReports.filter((item) => item.reportType === 'XCA_2D' && ['SIGNED', 'RELEASED'].includes(item.status))
-  const signedCctaReports = patientReports.filter((item) => item.reportType === 'CCTA_3D' && ['SIGNED', 'RELEASED'].includes(item.status))
 
   return (
     <section className="feature-page module-page report-workspace">
@@ -418,41 +410,11 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
           <small>선택된 환자</small>
           <h2>{reportPatient?.name ?? '선택된 환자 없음'}</h2>
           <p>{reportPatient?.id ?? '환자를 검색해 선택해주세요.'}</p>
-          {reportPatient?.backendId && (
-            <div className="integrated-report-source-picker">
-              <strong>2D·3D 승인 보고서 통합</strong>
-              <label>2D XCA 보고서
-                <select value={integratedXcaId} onChange={(event) => setIntegratedXcaId(event.target.value)}>
-                  <option value="">선택하세요</option>
-                  {signedXcaReports.map((item) => <option key={item.medicalResultId} value={item.medicalResultId}>#{item.medicalResultId} · {item.latestSignoff?.doctorName ?? item.doctorName ?? '의료진'} · {formatDate(item.performedAt || item.visitDate)}</option>)}
-                </select>
-              </label>
-              <label>3D CCTA 보고서
-                <select value={integratedCctaId} onChange={(event) => setIntegratedCctaId(event.target.value)}>
-                  <option value="">선택하세요</option>
-                  {signedCctaReports.map((item) => <option key={item.medicalResultId} value={item.medicalResultId}>#{item.medicalResultId} · {item.latestSignoff?.doctorName ?? item.doctorName ?? '의료진'} · {formatDate(item.performedAt || item.visitDate)}</option>)}
-                </select>
-              </label>
-              <button
-                className="report-primary-btn"
-                disabled={busyAction === 'create' || !integratedXcaId || !integratedCctaId}
-                onClick={() => void runAction('create', async () => {
-                  const created = await createPatientMedicalResult(reportPatient.backendId as number, Number(integratedXcaId), Number(integratedCctaId))
-                  setSelectedResultId(created.medicalResultId)
-                  return created
-                })}
-                type="button"
-              >
-                {busyAction === 'create' ? '초안 생성 중…' : '선택한 2D·3D 통합 초안 생성'}
-              </button>
-              {(!signedXcaReports.length || !signedCctaReports.length) && <small>승인 완료된 2D XCA와 3D CCTA 보고서가 각각 필요합니다.</small>}
-            </div>
-          )}
         </section>
         <section className="feature-card module-table-card">
           <header><h2>보고서 목록</h2><span>총 {patientReports.length}건</span></header>
           <div className="report-type-tabs" role="tablist" aria-label="보고서 종류">
-            {([['ALL', '전체'], ['XCA_2D', '2D XCA'], ['CCTA_3D', '3D CCTA'], ['INTEGRATED', '통합']] as const).map(([value, label]) => (
+            {([['ALL', '전체'], ['XCA_2D', '2D XCA'], ['CCTA_3D', '3D CCTA']] as const).map(([value, label]) => (
               <button aria-selected={reportTypeFilter === value} className={reportTypeFilter === value ? 'active' : ''} key={value} onClick={() => { setReportTypeFilter(value); setSelectedResultId(null) }} role="tab" type="button">{label}</button>
             ))}
           </div>

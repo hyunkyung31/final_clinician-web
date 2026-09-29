@@ -57,7 +57,7 @@ test('button request sends only backend patient/examination IDs and current bear
   const calls = []
   globalThis.fetch = async (url, init) => { calls.push([url, init]); return Response.json(fixture()) }
   await analyzeXCAExamination(1614, 1198)
-  assert.equal(calls.length, 1); assert.equal(calls[0][0], 'https://xca.34-50-57-207.sslip.io/xca/analyze')
+  assert.equal(calls.length, 1); assert.equal(calls[0][0], 'https://xca.34-22-111-104.sslip.io/xca/analyze')
   assert.deepEqual(JSON.parse(calls[0][1].body), { patient_id: 1614, examination_id: 1198 })
   assert.equal(calls[0][1].headers.Authorization, 'Bearer local-test-token')
   assert.equal(calls[0][1].credentials, 'omit'); assert.equal(calls[0][1].redirect, 'error')
