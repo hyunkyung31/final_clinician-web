@@ -37,12 +37,13 @@ function CCTAReportImage({ fileId, label }: { fileId: number | null; label: stri
   </figure>
 }
 
-export function CCTAReportDraft({ patientId, examinationId, analysisResultId, disabled, onBusyChange }: {
+export function CCTAReportDraft({ patientId, examinationId, analysisResultId, disabled, onBusyChange, onReportChange }: {
   patientId: number
   examinationId: number
   analysisResultId: number
   disabled: boolean
   onBusyChange: (busy: boolean) => void
+  onReportChange?: () => void
 }) {
   const [detail, setDetail] = useState<MedicalResultDetail | null>(null)
   const [conclusion, setConclusion] = useState('')
@@ -71,6 +72,7 @@ export function CCTAReportDraft({ patientId, examinationId, analysisResultId, di
     }
     setDetail(next)
     setConclusion(next.conclusion)
+    onReportChange?.()
   }
 
   function prepare() {

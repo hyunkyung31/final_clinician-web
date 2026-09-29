@@ -35,6 +35,21 @@ test('CT status and results are retrieved with staff authentication', async () =
   assert.deepEqual(await getCTAIAnalysis(100), analysis)
 })
 
+test('patient report lookup returns the latest successful CCTA analysis per examination', async () => {
+  const { getPatientCCTAAnalyses } = await loadApiTestModule()
+  globalThis.fetch = async (url) => {
+    assert.equal(url, '/api/ai-analyses/?patient_id=52&type=CCTA&status=SUCCEEDED')
+    return Response.json([
+      { id: 101, examination: 485, analysis_type: 'CCTA', status: 'SUCCEEDED', completed_at: '2026-09-29T10:00:00Z' },
+      { id: 103, examination: 485, analysis_type: 'CCTA', status: 'SUCCEEDED', completed_at: '2026-09-29T12:00:00Z' },
+      { id: 102, examination: 486, analysis_type: 'CCTA', status: 'SUCCEEDED', completed_at: '2026-09-29T11:00:00Z' },
+      { id: 104, examination: 487, analysis_type: 'CCTA', status: 'FAILED', completed_at: '2026-09-29T13:00:00Z' },
+    ])
+  }
+  const rows = await getPatientCCTAAnalyses(52)
+  assert.deepEqual(rows.map((item) => item.id), [103, 102])
+})
+
 test('an invalid source cannot send an analysis request', async () => {
   const { createCTAIAnalysis } = await loadApiTestModule({ VITE_CT_AI_PIPELINE_READY: 'true', VITE_CT_AI_MODEL_VERSION_ID: '7' })
   let calls = 0

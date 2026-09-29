@@ -4224,8 +4224,17 @@ export async function getPatientFollowUpRecords(patientId: number): Promise<Pati
 
 export type ClinicalInputPayload = Record<string, number | string>
 
+export interface CCTAAnalysisListItem {
+  id: number
+  examination: number
+  analysis_type: 'CCTA'
+  status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
+  requested_at?: string | null
+  completed_at?: string | null
+}
+
 export interface CTAIAnalysis {
-  analysis: { id: number; status: string }
+  analysis: CCTAAnalysisListItem
   jobs: Array<{ id: number; status: string; error_message?: string | null; progress_percent?: number | string | null }>
   results?: Array<{ id: number; result_type: string; summary_text: string; status: string; generated_at: string }>
 }
@@ -4250,13 +4259,30 @@ export function getCTAIAnalysis(id: number): Promise<CTAIAnalysis> {
   return request<CTAIAnalysis>(`/api/ai-analyses/${id}/`)
 }
 
-export async function loadLatestCTAIAnalysis(patientId: number, examinationId: number): Promise<CTAIAnalysis | null> {
-  const listed = await request<Array<{ id: number; examination: number; analysis_type: string; status: string }>>(
+/** 결과보고서 화면에서 환자별 완료 CCTA 분석을 조회한다.
+ * 동일 검사에 재분석이 여러 번 있으면 가장 최근 성공 결과만 노출한다. */
+export async function getPatientCCTAAnalyses(patientId: number): Promise<CCTAAnalysisListItem[]> {
+  const listed = await request<CCTAAnalysisListItem[]>(
     `/api/ai-analyses/?patient_id=${patientId}&type=CCTA&status=SUCCEEDED`,
   )
-  const matches = (Array.isArray(listed) ? listed : [])
-    .filter((item) => item.examination === examinationId && item.analysis_type === 'CCTA' && item.status === 'SUCCEEDED')
-    .sort((a, b) => b.id - a.id)
+  const seenExaminations = new Set<number>()
+  return (Array.isArray(listed) ? listed : [])
+    .filter((item) => item.analysis_type === 'CCTA' && item.status === 'SUCCEEDED')
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.completed_at || left.requested_at || '') || left.id
+      const rightTime = Date.parse(right.completed_at || right.requested_at || '') || right.id
+      return rightTime - leftTime
+    })
+    .filter((item) => {
+      if (seenExaminations.has(item.examination)) return false
+      seenExaminations.add(item.examination)
+      return true
+    })
+}
+
+export async function loadLatestCTAIAnalysis(patientId: number, examinationId: number): Promise<CTAIAnalysis | null> {
+  const matches = (await getPatientCCTAAnalyses(patientId))
+    .filter((item) => item.examination === examinationId)
   return matches[0] ? getCTAIAnalysis(matches[0].id) : null
 }
 
