@@ -35,7 +35,7 @@ export function parseXCAFrame(value: unknown, detail: XCADetailResult): XCAArchi
   const v = object(value), series = detail.series.find(s => s.sequenceId === v.sequence_id)
   const index = integer(v.frame_index, 0), width = integer(v.width), height = integer(v.height), localization = object(v.localization), transform = object(localization.transform)
   if (!series || v.detail_id !== detail.id || String(v.sequence_no) !== series.number || index >= series.frameCount || width * height > 4194304 || localization.validation !== 'weak_localization' || transform.coordinate_space !== 'source_png_pixels' || JSON.stringify(transform.source_hw) !== JSON.stringify([height, width])) throw new Error('보존 프레임 환자·시리즈·좌표 오류')
-  return { id: integer(v.id), detailId: detail.id, sequenceId: series.sequenceId, number: series.number, index, width, height, sourceUrl: assetUrl(v.source), maskUrl: v.mask === null ? null : assetUrl(v.mask), previewUrl: v.preview === null ? null : assetUrl(v.preview) }
+  return { id: integer(v.id), detailId: detail.id, sequenceId: series.sequenceId, number: series.number, index, width, height, sourceUrl: assetUrl(v.source), maskUrl: v.mask == null ? null : assetUrl(v.mask), previewUrl: v.preview == null ? null : assetUrl(v.preview) }
 }
 export async function xcaRead(base: string, path: string, token: string | null): Promise<unknown> {
   if (!token) throw new Error('의료진 로그인이 필요합니다.')

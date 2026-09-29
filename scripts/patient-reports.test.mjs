@@ -189,26 +189,6 @@ test('CCTA report creation posts the examination result contract and rereads the
   assert.equal(calls[1][0], '/api/medical-results/5/')
 })
 
-test('integrated report creation sends only the selected signed 2D and 3D reports', async () => {
-  const { createPatientMedicalResult } = await loadApiTestModule()
-  const calls = []
-  globalThis.fetch = async (url, init) => {
-    calls.push([url, init])
-    if (calls.length === 1) return Response.json({ id: 25 })
-    return Response.json({ ...detailPayload, medical_result: { ...detailPayload.medical_result, id: 25, report_type: 'INTEGRATED' } })
-  }
-  const detail = await createPatientMedicalResult(10, 21, 24)
-  assert.equal(detail.reportType, 'INTEGRATED')
-  assert.equal(calls[0][0], '/api/patients/10/medical-results/')
-  assert.deepEqual(JSON.parse(calls[0][1].body), {
-    patient_id: 10,
-    report_type: 'INTEGRATED',
-    xca_medical_result_id: 21,
-    ccta_medical_result_id: 24,
-  })
-  assert.equal(calls[1][0], '/api/medical-results/25/')
-})
-
 test('signoff and release post to the dedicated medical-result endpoints', async () => {
   const { signoffMedicalResult, releaseMedicalResult } = await loadApiTestModule()
   const urls = []

@@ -1789,25 +1789,6 @@ export async function releaseMedicalResult(resultId: number): Promise<MedicalRes
   }))
 }
 
-export async function createPatientMedicalResult(
-  patientId: number,
-  xcaMedicalResultId: number,
-  cctaMedicalResultId: number,
-): Promise<MedicalResultDetail> {
-  if (![patientId, xcaMedicalResultId, cctaMedicalResultId].every((value) => Number.isSafeInteger(value) && value > 0)) {
-    throw new ApiError('통합할 환자 및 2D·3D 보고서 정보가 올바르지 않습니다.', 400)
-  }
-  const created = await request<unknown>(`/api/patients/${patientId}/medical-results/`, {
-    method: 'POST',
-    body: JSON.stringify({ patient_id: patientId, report_type: 'INTEGRATED',
-      xca_medical_result_id: xcaMedicalResultId, ccta_medical_result_id: cctaMedicalResultId }),
-  })
-  const medical = isRecord(created) ? created : {}
-  const resultId = readNumber(medical, 'id')
-  if (!resultId) throw new ApiError('결과보고서 초안을 만들지 못했습니다.', 500)
-  return getMedicalResultDetail(resultId)
-}
-
 export async function getAngiographyFrames(
   sequenceId: number,
 ): Promise<AngiographyFrame[]> {
