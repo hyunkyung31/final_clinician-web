@@ -19,7 +19,7 @@ import type {
   ExaminationTypeSummary,
   PatientSummary,
 } from '../types'
-import { clinicianErrorMessage, orderCategoryTab } from '../workstationHub'
+import { clinicianErrorMessage } from '../workstationHub'
 import { PrescriptionPanel } from './PrescriptionPanel'
 
 interface OrderWorkspaceProps {
@@ -28,9 +28,6 @@ interface OrderWorkspaceProps {
   encounterId: number | null
   onSelectPatient: (patient: PatientSummary) => void
 }
-
-type WorkspaceTab = 'orders' | 'prescriptions'
-type OrderCategory = 'all' | 'exam' | 'procedure' | 'other'
 
 const orderStatusLabel: Record<ExaminationOrderSummary['status'], string> = {
   ORDERED: '오더됨',
@@ -61,7 +58,6 @@ function OrderPanel({
   const [types, setTypes] = useState<ExaminationTypeSummary[]>([])
   const [orders, setOrders] = useState<ExaminationOrderSummary[]>([])
   const [query, setQuery] = useState('')
-  const [category, setCategory] = useState<OrderCategory>('all')
   const [selectedTypeIds, setSelectedTypeIds] = useState<number[]>([])
   const [priority, setPriority] = useState<'NORMAL' | 'URGENT'>('NORMAL')
   const [clinicalNote, setClinicalNote] = useState('')
@@ -122,12 +118,10 @@ function OrderPanel({
   const visibleTypes = useMemo(() => {
     const keyword = query.trim().toLowerCase()
     return types.filter((item) => {
-      const itemCategory = orderCategoryTab(item.category, item.name, item.code)
-      if (category !== 'all' && itemCategory !== category) return false
       if (!keyword) return true
       return `${item.code} ${item.name}`.toLowerCase().includes(keyword)
     }).slice(0, 40)
-  }, [category, query, types])
+  }, [query, types])
 
   const toggleType = (typeId: number) => {
     if (activeTypeIds.has(typeId)) return
@@ -226,16 +220,6 @@ function OrderPanel({
 
         {!encounterId && <p className="exam-order-warning">현재 진료가 연결되지 않아 새 오더를 입력할 수 없습니다.</p>}
         <label className="exam-order-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="검사명 또는 검사 코드 검색" /></label>
-        <div className="exam-order-category-tabs">
-          {([
-            ['all', '전체'],
-            ['exam', '검사'],
-            ['procedure', '시술'],
-            ['other', '기타'],
-          ] as const).map(([value, label]) => (
-            <button className={category === value ? 'active' : ''} key={value} onClick={() => setCategory(value)} type="button">{label}</button>
-          ))}
-        </div>
 
         <div className="exam-order-type-list">
           {visibleTypes.map((type) => {
@@ -288,7 +272,6 @@ export function OrderWorkspace({
   onSelectPatient,
 }: OrderWorkspaceProps) {
   const [query, setQuery] = useState('')
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>('orders')
   const visiblePatients = useMemo(() => {
     const keyword = query.trim().toLowerCase()
     if (!keyword) return patients.slice(0, 20)
@@ -323,16 +306,22 @@ export function OrderWorkspace({
               <div><span>연결 진료</span><strong>{encounterId ? `Encounter #${encounterId}` : '진료 연결 확인 필요'}</strong><small>{encounterId ? '현재 진료에 새 오더와 처방이 저장됩니다.' : '새 기록을 만들려면 진료 연결이 필요합니다.'}</small></div>
             </header>
 
-            <nav className="order-workspace-tabs" aria-label="오더·처방 구분">
-              <button className={activeTab === 'orders' ? 'active' : ''} onClick={() => setActiveTab('orders')} type="button"><ClipboardList size={16} />검사·시술 오더</button>
-              <button className={activeTab === 'prescriptions' ? 'active' : ''} onClick={() => setActiveTab('prescriptions')} type="button"><Pill size={16} />약물 처방</button>
-            </nav>
-
-            {activeTab === 'orders' ? (
-              <OrderPanel patientId={selectedPatient.backendId} encounterId={encounterId} />
-            ) : (
-              <PrescriptionPanel patientId={selectedPatient.backendId} encounterId={encounterId} />
-            )}
+            <div className="order-prescription-split">
+              <section className="order-prescription-column order-column">
+                <header className="order-prescription-column-heading">
+                  <span><ClipboardList size={17} /></span>
+                  <div><h2>검사·시술 오더</h2><p>검사 항목과 중복 여부를 확인한 뒤 오더합니다.</p></div>
+                </header>
+                <OrderPanel patientId={selectedPatient.backendId} encounterId={encounterId} />
+              </section>
+              <section className="order-prescription-column prescription-column">
+                <header className="order-prescription-column-heading">
+                  <span><Pill size={17} /></span>
+                  <div><h2>약물 처방</h2><p>처방 이력과 DUR 확인 결과를 함께 관리합니다.</p></div>
+                </header>
+                <PrescriptionPanel patientId={selectedPatient.backendId} encounterId={encounterId} />
+              </section>
+            </div>
           </>
         ) : (
           <div className="prescription-order-empty"><Stethoscope size={30} /><strong>오더·처방을 확인할 환자를 선택해주세요.</strong><span>왼쪽 환자 목록에서 환자를 선택하면 전체 이력을 불러옵니다.</span></div>
