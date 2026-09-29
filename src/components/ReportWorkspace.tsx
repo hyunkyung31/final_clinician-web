@@ -371,6 +371,12 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
 
   const workflow = detail?.workflow
   const canSave = Boolean(workflow?.canEdit && workflow.status !== 'SIGNED' && workflow.status !== 'RELEASED')
+  const canEditConclusion = Boolean(
+    workflow
+    && workflow.status !== 'SIGNED'
+    && workflow.status !== 'RELEASED'
+    && (workflow.canEdit || workflow.canSignoff),
+  )
   const visibleReports = reportTypeFilter === 'ALL'
     ? patientReports.filter((item) => item.reportType !== 'INTEGRATED')
     : patientReports.filter((item) => item.reportType === reportTypeFilter)
@@ -481,7 +487,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
               <article className="report-section">
                 <h3>{detail.reportType === 'INTEGRATED' ? '5' : '3'}. 의료진 최종 소견</h3>
                 <textarea
-                  disabled={!canSave || Boolean(busyAction)}
+                  disabled={!canEditConclusion || Boolean(busyAction)}
                   onChange={(event) => setConclusion(event.target.value)}
                   placeholder="최종 소견을 작성하세요."
                   rows={6}
