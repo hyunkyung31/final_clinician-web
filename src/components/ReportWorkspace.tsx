@@ -13,6 +13,7 @@ import {
 } from '../api/client'
 import { getDoctorSignature } from '../doctorSignatures'
 import './report-workspace.css'
+import { CLINICAL_MODEL_DISCLOSURE } from '../clinicalModelDisclosure'
 
 interface ReportWorkspaceProps {
   selectedPatient: PatientSummary | null
@@ -45,7 +46,26 @@ function formatPercent(value?: number | null) {
   const ratio = value > 1 ? value / 100 : value
   return `${Math.round(ratio * 1000) / 10}%`
 }
+function clinicalSignalLabel(
+  prediction: string | number | null | undefined,
+): string {
+  const normalized = String(prediction ?? '')
+    .trim()
+    .toUpperCase()
 
+  if (!normalized) {
+    return '-'
+  }
+
+  const high =
+    normalized.includes('HIGH') ||
+    normalized.includes('SIGNIFICANT') ||
+    normalized === '1'
+
+  return high
+    ? CLINICAL_MODEL_DISCLOSURE.highSignal
+    : CLINICAL_MODEL_DISCLOSURE.lowSignal
+}
 async function getAllPatientReports(patientId: number) {
   const responses = await Promise.allSettled([
     getPatientReports(patientId, 'XCA_2D'),
@@ -186,13 +206,30 @@ function AiBlock({ title, summary, kind, attachments = [] }: { title: string; su
         <div><dt>검사일</dt><dd>{formatDate(summary.performedAt)}</dd></div>
         {kind === 'clinical' && (
           <>
-            <div><dt>위험도</dt><dd>{summary.prediction ?? '-'}</dd></div>
-            <div><dt>확률</dt><dd>{formatPercent(summary.probability)}</dd></div>
-            <div><dt>모델</dt><dd>{[summary.modelName, summary.modelVersion].filter(Boolean).join(' ') || '-'}</dd></div>
+            <div>
+              <dt>{CLINICAL_MODEL_DISCLOSURE.signalLabel}</dt>
+              <dd>{clinicalSignalLabel(summary.prediction)}</dd>
+            </div>
+
+            <div>
+              <dt>{CLINICAL_MODEL_DISCLOSURE.scoreLabel}</dt>
+              <dd>{formatPercent(summary.probability)}</dd>
+            </div>
+
+            <div>
+              <dt>검증 상태</dt>
+              <dd>{CLINICAL_MODEL_DISCLOSURE.validationLabel}</dd>
+            </div>
+
+            <div>
+              <dt>모델</dt>
+              <dd>
+                {[summary.modelName, summary.modelVersion]
+                  .filter(Boolean)
+                  .join(' · ') || '-'}
+              </dd>
+            </div>
           </>
-        )}
-        {kind !== 'clinical' && (
-          <div><dt>요약</dt><dd>{summary.summary ?? '-'}</dd></div>
         )}
       </dl>
       {kind === 'xca' && summary.sides.length > 0 && (

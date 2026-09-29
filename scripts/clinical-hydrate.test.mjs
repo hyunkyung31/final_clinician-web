@@ -22,7 +22,7 @@ function hydrateClinicalInput(snapshot, labMeasurements, clinicalInput) {
 test('clinical_feature_snapshot is mapped from integrated-data without inventing zeros', async () => {
   const { getPatientClinicalFeatureSnapshot } = await loadApiTestModule()
   globalThis.fetch = async (url) => {
-    assert.equal(url, '/api/patients/1530/integrated/')
+    assert.equal(url, '/api/patients/1530/integrated-data/')
     return Response.json({
       clinical_feature_snapshot: {
         Age: 61,
