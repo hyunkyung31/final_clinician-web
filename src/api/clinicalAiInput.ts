@@ -10,11 +10,20 @@ function isLabExamination(exam: FollowUpExamination) {
     || exam.examinationType.code.toUpperCase().includes('LAB')
 }
 
-function labModelName(code: string) {
-  if (code === 'NA') return 'Na'
-  if (code === 'LYMPH') return 'Lymph'
-  if (code === 'NEUT') return 'Neut'
-  return code
+export function clinicalFeatureNameForMeasurement(code: string) {
+  const normalized = code.trim().toUpperCase()
+  if (!LAB_CODES.has(normalized)) return null
+  if (normalized === 'NA') return 'Na'
+  if (normalized === 'LYMPH') return 'Lymph'
+  if (normalized === 'NEUT') return 'Neut'
+  return normalized
+}
+
+export function clinicalValueFromMeasurement(code: string, value: number | undefined) {
+  if (value === undefined) return undefined
+  const normalized = code.trim().toUpperCase()
+  if (!LAB_CODES.has(normalized)) return undefined
+  return DECIMAL_LAB_CODES.has(normalized) ? value : Math.round(value)
 }
 
 export function buildClinicalAiInput(
@@ -22,11 +31,15 @@ export function buildClinicalAiInput(
   exam?: FollowUpExamination | null,
 ) {
   const payload: Record<string, number | string> = { ...(snapshot ?? {}) }
+
   ;(exam?.result?.measurements ?? []).forEach((item) => {
-    const code = item.code.trim().toUpperCase()
-    if (!LAB_CODES.has(code) || item.valueNumeric === undefined) return
-    payload[labModelName(code)] = DECIMAL_LAB_CODES.has(code) ? item.valueNumeric : Math.round(item.valueNumeric)
+    const modelName = clinicalFeatureNameForMeasurement(item.code)
+    const modelValue = clinicalValueFromMeasurement(item.code, item.valueNumeric)
+
+    if (!modelName || modelValue === undefined) return
+    payload[modelName] = modelValue
   })
+
   if (exam?.clinicalInput) return { ...payload, ...exam.clinicalInput }
   return payload
 }
@@ -56,6 +69,7 @@ export async function loadClinicalAiPrefill(patientId: number, preferredExaminat
 
   return {
     input: buildClinicalAiInput(snapshot, selected?.exam),
+    measurements: selected?.exam.result?.measurements ?? [],
     sourceLabel: selected?.stageLabel ?? (snapshot ? '환자 등록 원본 임상기록' : ''),
     examinationId: selected?.exam.examinationId ?? preferredExaminationId,
     examinationPatient: records?.patient.id === patientId ? records.patient : null,

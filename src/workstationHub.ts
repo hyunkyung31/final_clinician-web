@@ -1,5 +1,5 @@
 import type { DashboardAIStatus, ImagingStudySummary, MedicalResultDetail, ReportAiSummary, TimelineItem } from './types'
-
+import { CLINICAL_MODEL_DISCLOSURE } from './clinicalModelDisclosure'
 export type HubView = 'summary' | 'imaging' | 'ai' | 'report'
 export type ReportLifecycle = 'NONE' | 'DRAFT' | 'REVIEWING' | 'SIGNED' | 'RELEASED'
 
@@ -140,15 +140,38 @@ export function activityLabel(item: TimelineItem): string {
   return item.title
 }
 
-export function clinicalAssistCopy(summary: ReportAiSummary | null): { headline: string; bullets: string[] } {
-  if (!summary) return { headline: '', bullets: [] }
-  const prediction = String(summary.prediction || '').trim()
-  const high = prediction.toUpperCase().includes('HIGH') || prediction.toUpperCase().includes('SIGNIFICANT') || prediction === '1'
-  const riskLabel = high ? 'High' : prediction || '확인됨'
+export function clinicalAssistCopy(
+  summary: ReportAiSummary | null,
+): { headline: string; bullets: string[] } {
+  if (!summary) {
+    return {
+      headline: '',
+      bullets: [],
+    }
+  }
+
+  const prediction = String(summary.prediction || '')
+    .trim()
+    .toUpperCase()
+
+  const high =
+    prediction.includes('HIGH') ||
+    prediction.includes('SIGNIFICANT') ||
+    prediction === '1'
+
+  const signalLabel = high
+    ? CLINICAL_MODEL_DISCLOSURE.highSignal
+    : CLINICAL_MODEL_DISCLOSURE.lowSignal
+
   return {
-    headline: `CAD 위험도 ${riskLabel}`,
+    headline: `Clinical AI · ${signalLabel}`,
     bullets: [
-      summary.probability != null ? `예측 확률 ${formatProbability(summary.probability)}` : '',
+      summary.probability != null
+        ? `${CLINICAL_MODEL_DISCLOSURE.scoreLabel} ${formatProbability(
+            summary.probability,
+          )}`
+        : '',
+      CLINICAL_MODEL_DISCLOSURE.validationLabel,
     ].filter(Boolean),
   }
 }

@@ -3,6 +3,21 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { compileTestModule } from './load-api-test-module.mjs'
 
+const disclosureModuleUrl = compileTestModule(
+  readFileSync(
+    new URL('../src/clinicalModelDisclosure.ts', import.meta.url),
+    'utf8',
+  ),
+)
+
+const workstationSource = readFileSync(
+  new URL('../src/workstationHub.ts', import.meta.url),
+  'utf8',
+).replace(
+  "'./clinicalModelDisclosure'",
+  JSON.stringify(disclosureModuleUrl),
+)
+
 const {
   HUB_COPY,
   reportApprovalSteps,
@@ -15,7 +30,7 @@ const {
   cctaAssistBullets,
   clinicianErrorMessage,
   matchRecommendedOrderTypes,
-} = await import(compileTestModule(readFileSync(new URL('../src/workstationHub.ts', import.meta.url), 'utf8')))
+} = await import(compileTestModule(workstationSource))
 
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
 const hub = readFileSync(new URL('../src/components/WorkstationHub.tsx', import.meta.url), 'utf8')

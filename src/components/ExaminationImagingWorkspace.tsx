@@ -78,7 +78,6 @@ import type {
   ImagingAnnotationRecord,
   ImagingAnnotationInput,
 } from '../types'
-import { LabResultEditor } from './LabResultEditor'
 import {
   ANATOMY_VIEW_MODES,
   LOCAL_ANATOMY_GLB_URL,
@@ -329,6 +328,7 @@ export function ExaminationImagingWorkspace({
   const [activeTab, setActiveTab] = useState<ExamTab>('IMAGING_2D')
   const [followUpRecords, setFollowUpRecords] = useState<PatientFollowUpRecords | null>(null)
   const [clinicalAiOpen, setClinicalAiOpen] = useState(false)
+  const [clinicalAiAutoRunExaminationId, setClinicalAiAutoRunExaminationId] = useState<number | null>(null)
   const [xcaAiOpen, setXcaAiOpen] = useState(false)
   const [xcaAiBusy, setXcaAiBusy] = useState(false)
   const closeXcaAi = useCallback(() => setXcaAiOpen(false), [])
@@ -401,13 +401,11 @@ export function ExaminationImagingWorkspace({
   const annotationSaveLock = useRef(false)
   const annotationContext = useRef('')
   const renderingStudyContext = useRef<number | null>(null)
-  const [labRevision, setLabRevision] = useState(0)
-  const [labEditorOpen, setLabEditorOpen] = useState(false)
-  const [labEditorResultId, setLabEditorResultId] = useState<number | null>(null)
   const viewerMode = activeTab === 'IMAGING_3D' ? '3D' : '2D'
 
   useEffect(() => {
     setClinicalAiOpen(false)
+    setClinicalAiAutoRunExaminationId(null)
     setXcaAiOpen(false)
     setCtAiOpen(false)
     setCreateRenderingOpen(false)
@@ -424,8 +422,6 @@ export function ExaminationImagingWorkspace({
     setRenderings3D([])
     setSelectedRenderingId(null)
     setModelUrl('')
-    setLabEditorOpen(false)
-    setLabEditorResultId(null)
     setAnnotationsByFrame({})
     setAnnotationRecords([])
     setSaveNotice('')
@@ -499,7 +495,7 @@ export function ExaminationImagingWorkspace({
     return () => {
       active = false
     }
-  }, [patient?.backendId, labRevision])
+  }, [patient?.backendId])
 
   const labGroups = useMemo(() => {
     const groups = new Map<string, LabObservation[]>()
@@ -1269,6 +1265,7 @@ export function ExaminationImagingWorkspace({
     if (!targetId) return
     if (!labAiCandidates.some((candidate) => candidate.exam.examinationId === targetId)) return
     setSelectedLabExaminationId(targetId)
+    setClinicalAiAutoRunExaminationId(targetId)
     setClinicalAiOpen(true)
   }
 
@@ -1294,7 +1291,7 @@ export function ExaminationImagingWorkspace({
       </nav>
 
       <div hidden={activeSection !== 'LAB'}>
-        <FollowUpTimeline scope="LAB" refreshKey={labRevision} patientId={patient?.backendId} onRecords={setFollowUpRecords} labObservations={labItems} selectedExaminationId={selectedLabAi?.exam.examinationId} onSelectLab={(examinationId) => { setSelectedLabExaminationId(examinationId); setActiveSection('LAB') }} onAnalyzeLab={() => openLabAi()} />
+        <FollowUpTimeline scope="LAB" patientId={patient?.backendId} onRecords={setFollowUpRecords} labObservations={labItems} selectedExaminationId={selectedLabAi?.exam.examinationId} onSelectLab={(examinationId) => { setSelectedLabExaminationId(examinationId); setActiveSection('LAB') }} onAnalyzeLab={() => openLabAi()} />
       </div>
 
       {activeSection === 'IMAGING' && (
@@ -1663,7 +1660,7 @@ export function ExaminationImagingWorkspace({
           </div>
 
           <section className="feature-card lab-result-table-card">
-            <header><h2>전체 혈액검사 결과</h2><span>수치·참고범위 기준 함께 보기</span>{selectedLabAi?.exam.result && <button type="button" onClick={() => { setLabEditorResultId(selectedLabAi.exam.result!.id); setLabEditorOpen(true) }}>선택 차수 검사값 편집</button>}</header>
+            <header><h2>전체 혈액검사 결과</h2><span>수치·참고범위 기준 함께 보기</span></header>
             <div className="lab-result-table">
               <div className="lab-result-head"><span>검사일</span><span>항목</span><span>결과</span><span>단위</span><span>참고치</span><span>{LAB_REFERENCE_LABELS.tableStatusHeader}</span></div>
               {labGroups.flatMap((group) => {
@@ -1684,7 +1681,6 @@ export function ExaminationImagingWorkspace({
         </div>
       )}
 
-      {labEditorOpen && labEditorResultId && <LabResultEditor resultId={labEditorResultId} onClose={() => setLabEditorOpen(false)} onSaved={() => setLabRevision((value) => value + 1)} />}
       {resultLightbox && (
         <div className="feature-modal-backdrop" onClick={() => setResultLightbox(null)}>
           <section className="feature-modal ccta-lightbox" role="dialog" aria-modal="true" aria-label={resultLightbox.title} onClick={(event) => event.stopPropagation()}>
@@ -1701,7 +1697,7 @@ export function ExaminationImagingWorkspace({
       {clinicalAiOpen && patient && (
         <div className="feature-modal-backdrop lab-ai-modal-backdrop">
           <section className="lab-ai-modal" role="dialog" aria-modal="true" aria-label="혈액검사 Clinical AI 분석">
-            <button className="lab-ai-modal-close" onClick={() => setClinicalAiOpen(false)} aria-label="닫기" type="button"><X size={18} /></button>
+            <button className="lab-ai-modal-close" onClick={() => { setClinicalAiOpen(false); setClinicalAiAutoRunExaminationId(null) }} aria-label="닫기" type="button"><X size={18} /></button>
             <nav className="lab-ai-stage-tabs" aria-label="혈액검사 차수 선택">
               {labAiCandidates.map((candidate) => <button className={candidate.exam.examinationId === selectedLabAi?.exam.examinationId ? 'active' : ''} key={candidate.exam.examinationId} onClick={() => setSelectedLabExaminationId(candidate.exam.examinationId)} type="button"><strong>{candidate.stageLabel}</strong><small>{formatDate(candidate.visitDate || candidate.exam.performedAt)}</small></button>)}
             </nav>
@@ -1710,9 +1706,19 @@ export function ExaminationImagingWorkspace({
               patient={displayPatient}
               patientDetail={null}
               examinationId={selectedLabAi?.exam.examinationId}
-              examinationPatient={followUpRecords && followUpRecords.patient.id === patient.backendId ? followUpRecords.patient : null}
+              examinationPatient={
+                followUpRecords && followUpRecords.patient.id === patient.backendId
+                  ? followUpRecords.patient
+                  : null
+              }
               initialInput={clinicalLabInput}
-              sourceLabel={selectedLabAi?.stageLabel ?? (clinicalFeatureSnapshot ? '환자 등록 원본 임상기록' : '')}
+              initialMeasurements={selectedLabAi?.exam.result?.measurements ?? []}
+              sourceLabel={
+                selectedLabAi?.stageLabel ??
+                (clinicalFeatureSnapshot ? '환자 등록 원본 임상기록' : '')
+              }
+              autoRun={clinicalAiAutoRunExaminationId === selectedLabAi?.exam.examinationId}
+              onAutoRunConsumed={() => setClinicalAiAutoRunExaminationId(null)}
             />
           </section>
         </div>
