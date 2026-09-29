@@ -245,11 +245,24 @@ export function matchRecommendedOrderTypes<T extends { name: string; code: strin
   return types.filter((type) => keys.some((key) => `${type.name} ${type.code} ${type.category}`.toUpperCase().includes(key.toUpperCase())))
 }
 
-export function orderCategoryTab(category: string, name: string, code: string): 'exam' | 'procedure' | 'other' {
-  const haystack = `${category} ${name} ${code}`.toUpperCase()
-  if (haystack.includes('PCI') || haystack.includes('PROCEDURE') || haystack.includes('시술') || haystack.includes('CAG')) return 'procedure'
-  if (haystack.includes('LAB') || haystack.includes('OTHER') || haystack.includes('CONSULT')) return 'other'
-  return 'exam'
+export function canonicalExaminationKey(item: { code?: string; name?: string }): string {
+  const code = (item.code ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  const name = (item.name ?? '').trim().toUpperCase()
+  const combined = `${code} ${name}`
+
+  if (/(^|_)(CCTA|CTCA)($|_)|CORONARY_(CTA|CT)|관상동맥.*CT/.test(combined)) return 'CCTA'
+  if (/(^|_)(CAG|XCA)($|_)|ANGIO_?2D|ANGIOGRAPHY.*XA|CORONARY_ANGIO|관상동맥.*(조영|혈관조영)/.test(combined)) return 'CAG'
+  if (/(^|_)(PCI)($|_)|PERCUTANEOUS_CORONARY|관상동맥.*중재/.test(combined)) return 'PCI'
+  return code || `NAME:${name}`
+}
+
+export function isDuplicateOrderError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  return /중복|duplicate|이미\s*(등록|존재|오더|처방)|동일한\s*검사/i.test(message)
 }
 
 export type DurTone = 'ok' | 'warn' | 'alert' | 'muted'

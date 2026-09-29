@@ -2367,8 +2367,8 @@ function mapExaminationOrder(
   const id = readNumber(item, 'id')
   const encounter = nestedRecord(item, 'encounter')
   const examinationType = nestedRecord(item, 'examination_type')
-  const encounterId = readNumber(item, 'encounter_id') ?? (encounter ? readNumber(encounter, 'id') : undefined)
-  const examinationTypeId = readNumber(item, 'examination_type_id', 'type_id') ?? (examinationType ? readNumber(examinationType, 'id') : undefined)
+  const encounterId = readNumber(item, 'encounter_id', 'encounter') ?? (encounter ? readNumber(encounter, 'id') : undefined)
+  const examinationTypeId = readNumber(item, 'examination_type_id', 'type_id', 'examination_type') ?? (examinationType ? readNumber(examinationType, 'id') : undefined)
 
   if (
     id === undefined ||

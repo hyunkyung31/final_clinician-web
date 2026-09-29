@@ -836,7 +836,7 @@ export function PrescriptionPanel({
   const handleSignPrescription = async () => {
     if (!patientId || !detail || detail.prescription.status !== "DRAFT") return;
     if (!signPassword.trim()) {
-      setError("처방 확정을 위해 로그인 비밀번호를 입력해주세요.");
+      setError("처방 서명 및 확정을 위해 로그인 비밀번호를 입력해주세요.");
       return;
     }
     setSigning(true);
@@ -1527,11 +1527,11 @@ export function PrescriptionPanel({
               className="primary"
               type="button"
               disabled={signing || durLoading || !durCheck || unresolvedCriticalDUR || detail.items.length === 0}
-              title={!durCheck ? "DUR 검사 후 처방을 확정할 수 있습니다." : unresolvedCriticalDUR ? "처리되지 않은 중대 DUR 경고가 있습니다." : "처방 확정"}
+              title={!durCheck ? "DUR 검사 후 처방을 서명·확정할 수 있습니다." : unresolvedCriticalDUR ? "처리되지 않은 중대 DUR 경고가 있습니다." : "처방 서명 및 확정"}
               onClick={() => setShowSignForm(true)}
             >
               <FileSignature size={14} strokeWidth={1.8} />
-              처방 확정
+              처방 서명 및 확정
             </button>
           )}
 
@@ -1554,7 +1554,7 @@ export function PrescriptionPanel({
         <div className="prescription-sign-form">
           <div>
             <FileSignature size={18} />
-            <span><strong>처방을 확정하시겠습니까?</strong><small>등록된 의료진 서명으로 확정되며 이후 약품을 수정할 수 없습니다.</small></span>
+            <span><strong>처방을 서명하고 확정하시겠습니까?</strong><small>검사 오더와 별개로 처리되며, 서명 이후에는 약품을 수정할 수 없습니다.</small></span>
           </div>
           <label>
             로그인 비밀번호 재확인

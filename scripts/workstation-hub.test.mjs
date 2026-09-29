@@ -30,6 +30,8 @@ const {
   cctaAssistBullets,
   clinicianErrorMessage,
   matchRecommendedOrderTypes,
+  canonicalExaminationKey,
+  isDuplicateOrderError,
 } = await import(compileTestModule(workstationSource))
 
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
@@ -75,6 +77,11 @@ test('prescription order workspace is patient scoped and linked from workstation
   assert.match(orderWorkspace, /getExaminationOrders\(patientId\)/)
   assert.match(orderWorkspace, /createExaminationOrder\(encounterId/)
   assert.match(orderWorkspace, /진행 중 오더/)
+  assert.match(orderWorkspace, /Promise\.allSettled/)
+  assert.match(orderWorkspace, /오더 처리 결과/)
+  assert.match(orderWorkspace, /중복 제외/)
+  assert.match(orderWorkspace, /약물 처방과 별도로/)
+  assert.match(orderWorkspace, /검사 오더와 별도로/)
   assert.match(prescriptionPanel, /환자 전체 처방/)
   assert.match(prescriptionPanel, /전체 처방 이력/)
   assert.match(prescriptionPanel, /getPrescriptions\(patientId\)/)
@@ -82,6 +89,17 @@ test('prescription order workspace is patient scoped and linked from workstation
   assert.equal(prescriptionPanel.includes('조영실·PCI'), false)
   assert.equal(prescriptionPanel.includes('흉부외과'), false)
   assert.equal(prescriptionPanel.includes('순환기'), false)
+  assert.match(prescriptionPanel, /처방 서명 및 확정/)
+})
+
+test('order duplicate detection groups clinical aliases and classifies server conflicts', () => {
+  assert.equal(canonicalExaminationKey({ code: 'ANGIO_2D-XA', name: '2D 관상동맥 혈관조영술' }), 'CAG')
+  assert.equal(canonicalExaminationKey({ code: 'ANGIOGRAPHY-XA', name: '관상동맥조영술' }), 'CAG')
+  assert.equal(canonicalExaminationKey({ code: 'CCTA_3D', name: '관상동맥 CT 혈관조영술' }), 'CCTA')
+  assert.equal(canonicalExaminationKey({ code: 'CCTA', name: '관상동맥 CT 혈관조영술' }), 'CCTA')
+  assert.equal(canonicalExaminationKey({ code: 'CARDIAC_LAB_PANEL', name: '심혈관 혈액·임상 패널' }), 'CARDIAC_LAB_PANEL')
+  assert.equal(isDuplicateOrderError(new Error('검사 오더 중복을 반환하지 못했습니다.')), true)
+  assert.equal(isDuplicateOrderError(new Error('이 기능을 사용할 권한이 없습니다.')), false)
 })
 
 test('report lifecycle copy stays non-diagnostic', () => {

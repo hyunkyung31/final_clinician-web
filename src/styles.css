@@ -7087,6 +7087,15 @@ button.feature-primary:disabled,
 .exam-order-warning { color: #9b620c; background: #fff4df; }
 .exam-order-error { color: var(--color-danger); background: #fff0f1; }
 .exam-order-success { color: #187b57; background: #e5f8ef; }
+.exam-order-submit-summary { display: grid; gap: 6px; margin-top: 9px; padding: 10px; border: 1px solid #b8dfce; border-radius: 8px; background: #f0faf6; }
+.exam-order-submit-summary.has-failure { border-color: #e8c99a; background: #fffaf1; }
+.exam-order-submit-summary > strong { color: var(--color-text); font-size: 10px; }
+.exam-order-submit-summary > div { display: flex; flex-wrap: wrap; gap: 5px; }
+.exam-order-submit-summary span { padding: 3px 7px; border-radius: 999px; font-size: 8px; font-weight: 800; }
+.exam-order-submit-summary span.registered { color: #187b57; background: #dff5ea; }
+.exam-order-submit-summary span.skipped { color: #95600c; background: #fff0cf; }
+.exam-order-submit-summary span.failed { color: #a13b3b; background: #ffe2e2; }
+.exam-order-submit-summary p { margin: 0; color: var(--color-text-subtle); font-size: 8px; line-height: 1.45; overflow-wrap: anywhere; }
 .exam-order-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; }
 .exam-order-actions small { max-width: 55%; color: var(--color-text-subtle); font-size: 8px; line-height: 1.5; }
 .exam-order-actions button { min-height: 34px; padding: 0 14px; border: 0; border-radius: 8px; color: #fff; background: var(--color-primary); font-size: 10px; font-weight: 800; }

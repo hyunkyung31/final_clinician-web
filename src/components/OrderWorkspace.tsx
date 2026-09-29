@@ -19,7 +19,11 @@ import type {
   ExaminationTypeSummary,
   PatientSummary,
 } from '../types'
-import { clinicianErrorMessage } from '../workstationHub'
+import {
+  canonicalExaminationKey,
+  clinicianErrorMessage,
+  isDuplicateOrderError,
+} from '../workstationHub'
 import { PrescriptionPanel } from './PrescriptionPanel'
 
 interface OrderWorkspaceProps {
@@ -34,6 +38,12 @@ const orderStatusLabel: Record<ExaminationOrderSummary['status'], string> = {
   SCHEDULED: '예약됨',
   COMPLETED: '완료',
   CANCELED: '취소',
+}
+
+interface OrderSubmitSummary {
+  registered: string[]
+  skipped: string[]
+  failed: Array<{ name: string; reason: string }>
 }
 
 function formatDateTime(value: string) {
@@ -65,6 +75,7 @@ function OrderPanel({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [submitSummary, setSubmitSummary] = useState<OrderSubmitSummary | null>(null)
   const [cancelTarget, setCancelTarget] = useState<ExaminationOrderSummary | null>(null)
   const [cancelReason, setCancelReason] = useState('')
 
@@ -91,6 +102,7 @@ function OrderPanel({
   useEffect(() => {
     setSelectedTypeIds([])
     setMessage('')
+    setSubmitSummary(null)
     setCancelTarget(null)
     if (patientId) void reload()
   }, [patientId])
@@ -99,38 +111,50 @@ function OrderPanel({
     () => new Map(types.map((item) => [item.id, item])),
     [types],
   )
-  const activeTypeIds = useMemo(
+  const activeOrderKeys = useMemo(
     () => new Set(
       orders
         .filter((item) => ['ORDERED', 'SCHEDULED'].includes(item.status))
-        .map((item) => item.examinationTypeId),
+        .map((item) => typeMap.get(item.examinationTypeId))
+        .filter((item): item is ExaminationTypeSummary => Boolean(item))
+        .map(canonicalExaminationKey),
     ),
-    [orders],
+    [orders, typeMap],
   )
-  const completedTypeIds = useMemo(
+  const completedOrderKeys = useMemo(
     () => new Set(
       orders
         .filter((item) => item.status === 'COMPLETED')
-        .map((item) => item.examinationTypeId),
+        .map((item) => typeMap.get(item.examinationTypeId))
+        .filter((item): item is ExaminationTypeSummary => Boolean(item))
+        .map(canonicalExaminationKey),
     ),
-    [orders],
+    [orders, typeMap],
   )
   const visibleTypes = useMemo(() => {
     const keyword = query.trim().toLowerCase()
-    return types.filter((item) => {
-      if (!keyword) return true
-      return `${item.code} ${item.name}`.toLowerCase().includes(keyword)
-    }).slice(0, 40)
+    const seen = new Set<string>()
+    return types
+      .filter((item) => !keyword || `${item.code} ${item.name}`.toLowerCase().includes(keyword))
+      .filter((item) => {
+        const key = canonicalExaminationKey(item)
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .slice(0, 40)
   }, [query, types])
 
   const toggleType = (typeId: number) => {
-    if (activeTypeIds.has(typeId)) return
+    const type = typeMap.get(typeId)
+    if (!type || activeOrderKeys.has(canonicalExaminationKey(type))) return
     setSelectedTypeIds((current) => (
       current.includes(typeId)
         ? current.filter((id) => id !== typeId)
         : [...current, typeId]
     ))
     setMessage('')
+    setSubmitSummary(null)
   }
 
   const submitOrders = async () => {
@@ -138,17 +162,47 @@ function OrderPanel({
     setSaving(true)
     setError('')
     setMessage('')
+    setSubmitSummary(null)
+
+    const selectedTypes = selectedTypeIds
+      .map((typeId) => typeMap.get(typeId))
+      .filter((item): item is ExaminationTypeSummary => Boolean(item))
+    const skipped = selectedTypes.filter((item) => activeOrderKeys.has(canonicalExaminationKey(item)))
+    const candidates = selectedTypes.filter((item) => !activeOrderKeys.has(canonicalExaminationKey(item)))
+
     try {
-      for (const typeId of selectedTypeIds) {
-        await createExaminationOrder(encounterId, typeId, clinicalNote, priority)
+      const results = await Promise.allSettled(
+        candidates.map((item) => createExaminationOrder(encounterId, item.id, clinicalNote, priority)),
+      )
+      const registered: string[] = []
+      const duplicateSkipped = skipped.map((item) => item.name)
+      const failed: OrderSubmitSummary['failed'] = []
+      const failedTypeIds: number[] = []
+
+      results.forEach((result, index) => {
+        const type = candidates[index]
+        if (result.status === 'fulfilled') {
+          registered.push(type.name)
+        } else if (isDuplicateOrderError(result.reason)) {
+          duplicateSkipped.push(type.name)
+        } else {
+          failedTypeIds.push(type.id)
+          failed.push({
+            name: type.name,
+            reason: clinicianErrorMessage(result.reason, '오더를 등록하지 못했습니다.'),
+          })
+        }
+      })
+
+      setSubmitSummary({ registered, skipped: duplicateSkipped, failed })
+      setSelectedTypeIds(failedTypeIds)
+      if (registered.length > 0) {
+        setClinicalNote('')
+        setPriority('NORMAL')
       }
-      setMessage(`${selectedTypeIds.length}건의 오더를 입력했습니다.`)
-      setSelectedTypeIds([])
-      setClinicalNote('')
-      setPriority('NORMAL')
       await reload()
     } catch (requestError) {
-      setError(clinicianErrorMessage(requestError, '오더 입력에 실패했습니다.'))
+      setError(clinicianErrorMessage(requestError, '오더 처리 결과를 확인하지 못했습니다.'))
     } finally {
       setSaving(false)
     }
@@ -223,8 +277,9 @@ function OrderPanel({
 
         <div className="exam-order-type-list">
           {visibleTypes.map((type) => {
-            const activeDuplicate = activeTypeIds.has(type.id)
-            const completedBefore = completedTypeIds.has(type.id)
+            const orderKey = canonicalExaminationKey(type)
+            const activeDuplicate = activeOrderKeys.has(orderKey)
+            const completedBefore = completedOrderKeys.has(orderKey)
             return (
               <label className={activeDuplicate ? 'disabled' : ''} key={type.id}>
                 <input disabled={activeDuplicate} checked={selectedTypeIds.includes(type.id)} onChange={() => toggleType(type.id)} type="checkbox" />
@@ -243,10 +298,23 @@ function OrderPanel({
         </div>
 
         {(error || message) && <p className={error ? 'exam-order-error' : 'exam-order-success'}>{error || message}</p>}
+        {submitSummary && (
+          <div className={`exam-order-submit-summary${submitSummary.failed.length ? ' has-failure' : ''}`} role="status">
+            <strong>오더 처리 결과</strong>
+            <div>
+              {submitSummary.registered.length > 0 && <span className="registered">등록 {submitSummary.registered.length}건</span>}
+              {submitSummary.skipped.length > 0 && <span className="skipped">중복 제외 {submitSummary.skipped.length}건</span>}
+              {submitSummary.failed.length > 0 && <span className="failed">실패 {submitSummary.failed.length}건</span>}
+            </div>
+            {submitSummary.registered.length > 0 && <p>등록: {submitSummary.registered.join(', ')}</p>}
+            {submitSummary.skipped.length > 0 && <p>중복 제외: {submitSummary.skipped.join(', ')}</p>}
+            {submitSummary.failed.map((item) => <p key={`${item.name}-${item.reason}`}>실패 · {item.name}: {item.reason}</p>)}
+          </div>
+        )}
         <div className="exam-order-actions">
           <small>모델 권고는 참고 정보이며, 선택한 항목만 의료진 확인 후 저장됩니다.</small>
           <button className="primary" disabled={!encounterId || selectedTypeIds.length === 0 || saving} onClick={() => void submitOrders()} type="button">
-            {saving ? '저장 중…' : `선택 오더 입력${selectedTypeIds.length ? ` (${selectedTypeIds.length})` : ''}`}
+            {saving ? '등록 중…' : `선택 오더 등록${selectedTypeIds.length ? ` (${selectedTypeIds.length})` : ''}`}
           </button>
         </div>
       </section>
@@ -310,14 +378,14 @@ export function OrderWorkspace({
               <section className="order-prescription-column order-column">
                 <header className="order-prescription-column-heading">
                   <span><ClipboardList size={17} /></span>
-                  <div><h2>검사·시술 오더</h2><p>검사 항목과 중복 여부를 확인한 뒤 오더합니다.</p></div>
+                  <div><h2>검사·시술 오더</h2><p>약물 처방과 별도로 필요한 검사만 독립적으로 등록합니다.</p></div>
                 </header>
                 <OrderPanel patientId={selectedPatient.backendId} encounterId={encounterId} />
               </section>
               <section className="order-prescription-column prescription-column">
                 <header className="order-prescription-column-heading">
                   <span><Pill size={17} /></span>
-                  <div><h2>약물 처방</h2><p>처방 이력과 DUR 확인 결과를 함께 관리합니다.</p></div>
+                  <div><h2>약물 처방</h2><p>검사 오더와 별도로 DUR 확인 후 서명·확정합니다.</p></div>
                 </header>
                 <PrescriptionPanel patientId={selectedPatient.backendId} encounterId={encounterId} />
               </section>
