@@ -35,7 +35,10 @@ import {
 } from '../labReferenceStatus'
 
 import { CLINICAL_MODEL_DISCLOSURE } from '../clinicalModelDisclosure'
-import { buildClinicalExamGuidance } from '../clinicalExamGuidance'
+import {
+  buildClinicalExamGuidance,
+  type ClinicalExamHistoryItem,
+} from '../clinicalExamGuidance'
 import {
   formatClinicalShapValue,
   rankClinicalShapFeatures,
@@ -348,6 +351,7 @@ export function ClinicalAIAnalysisPanel({
   initialInput = {},
   initialMeasurements = [],
   sourceLabel = '',
+  existingExaminations = [],
   autoRun = false,
   onAutoRunConsumed,
 }: {
@@ -358,6 +362,7 @@ export function ClinicalAIAnalysisPanel({
   initialInput?: Record<string, number | string>
   initialMeasurements?: FollowUpMeasurement[]
   sourceLabel?: string
+  existingExaminations?: ClinicalExamHistoryItem[]
   autoRun?: boolean
   onAutoRunConsumed?: () => void
 }) {
@@ -382,6 +387,8 @@ export function ClinicalAIAnalysisPanel({
   const [activeGroupIndex, setActiveGroupIndex] = useState(0)
   const [attentionOnly, setAttentionOnly] = useState(false)
   const [analyzedValuesKey, setAnalyzedValuesKey] = useState('')
+  const [guidanceEvidenceConfirmed, setGuidanceEvidenceConfirmed] = useState(false)
+  const [selectedExamCandidateId, setSelectedExamCandidateId] = useState('')
   const autoRunStarted = useRef(false)
 
   useEffect(() => {
@@ -590,8 +597,18 @@ export function ClinicalAIAnalysisPanel({
         prediction: result.result_json.prediction,
         criticalLabCount,
         modelWarningCount: result.result_json.warnings?.length ?? 0,
+        existingExaminations,
       })
     : null
+  const guidanceCandidateKey = examGuidance?.candidates.map((candidate) => candidate.id).join('|') ?? ''
+  const selectedExamCandidate = examGuidance?.candidates.find(
+    (candidate) => candidate.id === selectedExamCandidateId,
+  )
+
+  useEffect(() => {
+    setGuidanceEvidenceConfirmed(false)
+    setSelectedExamCandidateId('')
+  }, [analysis?.analysis.id, guidanceCandidateKey])
   const modelWarningFields = useMemo(
     () => shapWarningFeatures(result?.result_json.warnings ?? []),
     [result?.result_json.warnings],
@@ -940,7 +957,68 @@ export function ClinicalAIAnalysisPanel({
                 ))}
               </ul>
 
-              <footer>{examGuidance.sourceNote}</footer>
+              <div className="clinical-ai-guidance-selection">
+                {examGuidance.candidates.length > 0 ? (
+                  <>
+                    <label className="clinical-ai-guidance-confirm">
+                      <input
+                        checked={guidanceEvidenceConfirmed}
+                        onChange={(event) => {
+                          setGuidanceEvidenceConfirmed(event.target.checked)
+                          if (!event.target.checked) setSelectedExamCandidateId('')
+                        }}
+                        type="checkbox"
+                      />
+                      <span>
+                        <strong>임상 근거와 기존 검사 이력을 확인했습니다.</strong>
+                        <small>확인 후 현재 환자에게 검토할 검사 하나를 선택하세요.</small>
+                      </span>
+                    </label>
+
+                    <div className="clinical-ai-guidance-candidates" role="radiogroup" aria-label="검토할 검사 선택">
+                      {examGuidance.candidates.map((candidate) => (
+                        <button
+                          aria-checked={selectedExamCandidateId === candidate.id}
+                          className={selectedExamCandidateId === candidate.id ? 'selected' : ''}
+                          disabled={!guidanceEvidenceConfirmed}
+                          key={candidate.id}
+                          onClick={() => setSelectedExamCandidateId(candidate.id)}
+                          role="radio"
+                          type="button"
+                        >
+                          <span>{candidate.pathwayLabel}</span>
+                          <strong>{candidate.title}</strong>
+                          <small>{candidate.purpose}</small>
+                        </button>
+                      ))}
+                    </div>
+
+                    {selectedExamCandidate && (
+                      <div className="clinical-ai-guidance-selected">
+                        <CheckCircle2 aria-hidden="true" size={16} />
+                        <span>
+                          <strong>검토 대상으로 선택: {selectedExamCandidate.title}</strong>
+                          <small>선택 내용은 참고 상태이며 검사 오더는 생성되지 않습니다.</small>
+                        </span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="clinical-ai-guidance-empty">
+                    현재 경로에서 새로 선택할 검사 후보가 없습니다. 임상 상태와 기존 검사 결과를 우선 확인하세요.
+                  </div>
+                )}
+
+                {examGuidance.excludedTests.length > 0 && (
+                  <p className="clinical-ai-guidance-excluded">
+                    중복 방지로 후보에서 제외: {examGuidance.excludedTests.join(', ')}
+                  </p>
+                )}
+              </div>
+
+              <footer>
+                {examGuidance.sourceNote} · 모델 결과만으로 검사 오더를 생성하지 않습니다.
+              </footer>
             </section>
           )}
           {result?.result_json.warnings?.length ? (
