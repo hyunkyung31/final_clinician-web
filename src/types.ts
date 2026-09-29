@@ -612,6 +612,25 @@ export interface PrescriptionDetail {
   items: PrescriptionItemSummary[]
 }
 
+export interface PrescriptionDURResult {
+  id: number
+  severity: string
+  warningMessage: string
+  action: string
+  overrideReason: string
+  prescriptionItemId?: number
+  relatedItemId?: number
+  ruleName: string
+  ruleType: string
+}
+
+export interface PrescriptionDURCheck {
+  id: number
+  status: string
+  checkedAt: string
+  results: PrescriptionDURResult[]
+}
+
 export interface PrescriptionItemInput {
   medicationId?: number
   doseValue?: number

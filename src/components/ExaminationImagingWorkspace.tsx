@@ -213,6 +213,30 @@ function LabFlagBadge({ item }: { item: LabObservation }) {
   )
 }
 
+function normalReferenceBand(
+  low: number | undefined,
+  high: number | undefined,
+  y: (value: number) => number,
+  plotTop: number,
+  plotBottom: number,
+) {
+  const clamp = (value: number) => Math.min(plotBottom, Math.max(plotTop, value))
+  if (low !== undefined && high !== undefined) {
+    const start = clamp(Math.min(y(low), y(high)))
+    const end = clamp(Math.max(y(low), y(high)))
+    return { y: start, height: end - start }
+  }
+  if (high !== undefined) {
+    const start = clamp(y(high))
+    return { y: start, height: plotBottom - start }
+  }
+  if (low !== undefined) {
+    const end = clamp(y(low))
+    return { y: plotTop, height: end - plotTop }
+  }
+  return null
+}
+
 function TrendChart({ observations }: { observations: LabObservation[] }) {
   const values = observations.filter(
     (item): item is LabObservation & { value: number } => item.value !== undefined,
@@ -251,6 +275,8 @@ function TrendChart({ observations }: { observations: LabObservation[] }) {
   const latest = values[values.length - 1]
   const low = latest.referenceLow
   const high = latest.referenceHigh
+  const plotBottom = top + plotHeight
+  const referenceBand = normalReferenceBand(low, high, y, top, plotBottom)
 
   return (
     <div className="lab-trend-chart">
@@ -259,12 +285,12 @@ function TrendChart({ observations }: { observations: LabObservation[] }) {
           const lineY = top + (plotHeight / 3) * line
           return <g key={line}><line x1={left} y1={lineY} x2={width - right} y2={lineY} className="trend-grid-line" /><text x={left - 8} y={lineY + 3} textAnchor="end" className="trend-axis-value">{Number((max - ((max - min) / 3) * line).toFixed(1))}</text></g>
         })}
-        {low !== undefined && high !== undefined && (
+        {referenceBand && referenceBand.height > 0 && (
           <rect
             x={left}
-            y={Math.min(y(high), y(low))}
+            y={referenceBand.y}
             width={plotWidth}
-            height={Math.abs(y(low) - y(high))}
+            height={referenceBand.height}
             className="trend-reference-band"
           />
         )}
@@ -439,12 +465,8 @@ export function ExaminationImagingWorkspace({
     } else if (launchFocus === 'imaging') {
       setActiveSection('IMAGING')
       setActiveTab('IMAGING_2D')
-    } else if (localAnatomyTest) {
-      setActiveSection('IMAGING')
-      setActiveTab('IMAGING_3D')
-      setActive3DPane('RENDERED')
     }
-  }, [launchFocus, localAnatomyTest])
+  }, [launchFocus])
 
   useEffect(() => {
     if (!patient?.backendId) {

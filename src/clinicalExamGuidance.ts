@@ -64,19 +64,49 @@ const EXAM_CANDIDATES: Record<ClinicalExamCandidateId, ClinicalExamCandidate> = 
   },
 }
 
-function isActiveHistoryItem(item: ClinicalExamHistoryItem) {
-  return !/(CANCEL|VOID|REJECT|취소)/i.test(item.status ?? '')
+const EXAM_CODE_ALIASES: Record<ClinicalExamCandidateId, ReadonlySet<string>> = {
+  XCA_CAG: new Set(['XCA', 'CAG', 'XA_CAG', 'CORONARY_ANGIOGRAPHY', 'CORONARY_ANGIOGRAM']),
+  CCTA: new Set(['CCTA', 'CTCA', 'CORONARY_CTA', 'CTA_CORONARY', 'CORONARY_CT_ANGIOGRAPHY']),
+  FUNCTIONAL_TEST: new Set([
+    'SPECT',
+    'MPI_SPECT',
+    'PET',
+    'MPI_PET',
+    'STRESS_ECHO',
+    'STRESS_MRI',
+    'STRESS_CMR',
+    'MYOCARDIAL_PERFUSION',
+    'FUNCTIONAL_TEST',
+  ]),
 }
 
-function historyMatches(item: ClinicalExamHistoryItem, candidateId: ClinicalExamCandidateId) {
-  const text = `${item.code ?? ''} ${item.name ?? ''}`.toUpperCase()
+export function normalizeClinicalExamCode(code?: string) {
+  return (code ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
+function isActiveHistoryItem(item: ClinicalExamHistoryItem) {
+  return !/^(CANCELED|CANCELLED|VOID(?:ED)?|REJECT(?:ED)?|FAILED|취소)$/i.test((item.status ?? '').trim())
+}
+
+function nameFallbackMatches(name: string, candidateId: ClinicalExamCandidateId) {
+  const normalizedName = name.toUpperCase()
   if (candidateId === 'XCA_CAG') {
-    return /(^|[^A-Z])(XCA|CAG)([^A-Z]|$)|CORONARY\s*(ANGIO|ANGIOGRAPHY)|관상동맥.*조영/.test(text)
+    return /CORONARY\s*(ANGIO|ANGIOGRAPHY)|관상동맥.*조영/.test(normalizedName)
   }
   if (candidateId === 'CCTA') {
-    return /CCTA|CORONARY\s*(CTA|CT)|관상동맥.*(CT|전산화단층)/.test(text)
+    return /CORONARY\s*(CTA|CT)|관상동맥.*(CT|전산화단층)/.test(normalizedName)
   }
-  return /SPECT|PET|STRESS\s*(ECHO|MRI|TEST)|FUNCTIONAL|PERFUSION|부하.*(심초음파|검사)|심근.*관류/.test(text)
+  return /SPECT|PET|STRESS\s*(ECHO|MRI|TEST)|FUNCTIONAL|PERFUSION|부하.*(심초음파|검사)|심근.*관류/.test(normalizedName)
+}
+
+export function historyMatchesCandidate(item: ClinicalExamHistoryItem, candidateId: ClinicalExamCandidateId) {
+  const code = normalizeClinicalExamCode(item.code)
+  if (code) return EXAM_CODE_ALIASES[candidateId].has(code)
+  return nameFallbackMatches(item.name ?? '', candidateId)
 }
 
 function availableCandidates(
@@ -86,10 +116,12 @@ function availableCandidates(
   const excludedTests: string[] = []
   const candidates = ids.flatMap((id) => {
     const existing = existingExaminations.find(
-      (item) => isActiveHistoryItem(item) && historyMatches(item, id),
+      (item) => isActiveHistoryItem(item) && historyMatchesCandidate(item, id),
     )
     if (!existing) return [EXAM_CANDIDATES[id]]
-    excludedTests.push(`${EXAM_CANDIDATES[id].title} (${existing.status || '기시행/오더됨'})`)
+    const status = (existing.status ?? '').toUpperCase()
+    const reason = status === 'COMPLETED' ? '기시행' : '이미 오더됨'
+    excludedTests.push(`${EXAM_CANDIDATES[id].title} (${existing.code || existing.name || '코드 미상'} · ${reason})`)
     return []
   })
   return { candidates, excludedTests }

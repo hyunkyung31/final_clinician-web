@@ -1599,3 +1599,20 @@ html[data-theme='dark'] .ws-dur-action-buttons button.danger {
   background: #3d2529;
   color: #ffadb4;
 }
+
+.ws-rx-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ws-rx-header-actions > button {
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  font-size: 10px;
+  font-weight: 700;
+}

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { compileTestModule } from './load-api-test-module.mjs'
 
-const { buildClinicalExamGuidance } = await import(
+const { buildClinicalExamGuidance, historyMatchesCandidate, normalizeClinicalExamCode } = await import(
   compileTestModule(
     readFileSync(
       new URL('../src/clinicalExamGuidance.ts', import.meta.url),
@@ -99,4 +99,29 @@ test('high-risk pathway never displays noninvasive candidates', () => {
 
   assert.deepEqual(guidance.candidates, [])
   assert.equal(guidance.excludedTests.length, 1)
+})
+
+test('duplicate detection normalizes exact examination codes and common aliases', () => {
+  assert.equal(normalizeClinicalExamCode(' coronary-cta '), 'CORONARY_CTA')
+  assert.equal(historyMatchesCandidate({ code: 'CTCA', name: '임의 검사명' }, 'CCTA'), true)
+  assert.equal(historyMatchesCandidate({ code: 'MPI-SPECT', name: '임의 검사명' }, 'FUNCTIONAL_TEST'), true)
+  assert.equal(historyMatchesCandidate({ code: 'XA-CAG', name: '임의 검사명' }, 'XCA_CAG'), true)
+})
+
+test('a populated unrelated code is not excluded by a misleading display name', () => {
+  assert.equal(historyMatchesCandidate({ code: 'CHEST_CT', name: '관상동맥 CT' }, 'CCTA'), false)
+  assert.equal(historyMatchesCandidate({ code: '', name: '관상동맥 CT 혈관조영술' }, 'CCTA'), true)
+})
+
+test('canceled and failed examinations can be considered again', () => {
+  for (const status of ['CANCELED', 'CANCELLED', 'FAILED']) {
+    const guidance = buildClinicalExamGuidance({
+      values: { Atypical: '1', BP: '120', 'EF-TTE': '55' },
+      prediction: 1,
+      criticalLabCount: 0,
+      modelWarningCount: 0,
+      existingExaminations: [{ code: 'CCTA', name: 'Coronary CTA', status }],
+    })
+    assert.equal(guidance.candidates.some((candidate) => candidate.id === 'CCTA'), true, status)
+  }
 })

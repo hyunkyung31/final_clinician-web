@@ -12,6 +12,7 @@ import {
 import {
   createClinicalAIAnalysis,
   getClinicalAIAnalysis,
+  getPatientFollowUpRecords,
   getStoredClinicalShap,
   loadLatestClinicalAnalysis,
   type ClinicalAIAnalysis,
@@ -351,7 +352,7 @@ export function ClinicalAIAnalysisPanel({
   initialInput = {},
   initialMeasurements = [],
   sourceLabel = '',
-  existingExaminations = [],
+  existingExaminations,
   autoRun = false,
   onAutoRunConsumed,
 }: {
@@ -375,6 +376,7 @@ export function ClinicalAIAnalysisPanel({
 
   const [resolvedMeasurements, setResolvedMeasurements] =
     useState<FollowUpMeasurement[]>(initialMeasurements)
+  const [loadedExamHistory, setLoadedExamHistory] = useState<ClinicalExamHistoryItem[]>([])
 
   const [analysis, setAnalysis] = useState<ClinicalAIAnalysis | null>(null)
 
@@ -580,6 +582,29 @@ export function ClinicalAIAnalysisPanel({
     submitting,
   ])
 
+  useEffect(() => {
+    if (existingExaminations !== undefined) {
+      setLoadedExamHistory(existingExaminations)
+      return
+    }
+    if (!patient?.backendId) {
+      setLoadedExamHistory([])
+      return
+    }
+    let active = true
+    void getPatientFollowUpRecords(patient.backendId)
+      .then((records) => {
+        if (!active || records.patient.id !== patient.backendId) return
+        setLoadedExamHistory(records.visits.flatMap((visit) => visit.examinations.map((exam) => ({
+          code: exam.examinationType.code,
+          name: exam.examinationType.name,
+          status: exam.status,
+        }))))
+      })
+      .catch(() => { if (active) setLoadedExamHistory([]) })
+    return () => { active = false }
+  }, [existingExaminations, patient?.backendId])
+
   const result = analysis?.results?.find((item) => item.result_type === 'RISK_PREDICTION')
   const probability = result?.result_json.probability
   const inlineExplanation = result?.result_json.explanation
@@ -595,7 +620,7 @@ export function ClinicalAIAnalysisPanel({
         prediction: result.result_json.prediction,
         criticalLabCount,
         modelWarningCount: result.result_json.warnings?.length ?? 0,
-        existingExaminations,
+        existingExaminations: loadedExamHistory,
       })
     : null
   const modelWarningFields = useMemo(

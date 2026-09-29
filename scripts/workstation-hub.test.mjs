@@ -36,6 +36,8 @@ const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
 const hub = readFileSync(new URL('../src/components/WorkstationHub.tsx', import.meta.url), 'utf8')
 const css = readFileSync(new URL('../src/workstation-hub.css', import.meta.url), 'utf8')
 const nav = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
+const orderWorkspace = readFileSync(new URL('../src/components/OrderWorkspace.tsx', import.meta.url), 'utf8')
+const prescriptionPanel = readFileSync(new URL('../src/components/PrescriptionPanel.tsx', import.meta.url), 'utf8')
 
 test('workstation hub uses clinical action copy instead of generator labels', () => {
   assert.equal(hub.includes('원본 생성'), false)
@@ -51,9 +53,25 @@ test('workstation hub uses clinical action copy instead of generator labels', ()
 test('left nav labels stay in the current order', () => {
   assert.match(nav, /label: "홈"/)
   assert.match(nav, /label: "워크스테이션"/)
+  assert.match(nav, /label: "처방 오더"/)
   assert.match(nav, /label: "시술기록"/)
   assert.match(nav, /ChatDock/)
   assert.match(app, /<WorkstationHub/)
+})
+
+test('prescription order workspace is patient scoped and linked from workstation', () => {
+  assert.match(orderWorkspace, /patientId=\{selectedPatient\.backendId\}/)
+  assert.match(orderWorkspace, /encounterId=\{encounterId\}/)
+  assert.match(orderWorkspace, /환자명 또는 환자번호 검색/)
+  assert.match(hub, /전체 처방 오더/)
+  assert.match(app, /onOpenPrescriptions=\{\(\) => setActiveSection\('처방 오더'\)\}/)
+  assert.match(prescriptionPanel, /환자 전체 처방/)
+  assert.match(prescriptionPanel, /전체 처방 이력/)
+  assert.match(prescriptionPanel, /getPrescriptions\(patientId\)/)
+  assert.match(prescriptionPanel, /전체 약품/)
+  assert.equal(prescriptionPanel.includes('조영실·PCI'), false)
+  assert.equal(prescriptionPanel.includes('흉부외과'), false)
+  assert.equal(prescriptionPanel.includes('순환기'), false)
 })
 
 test('report lifecycle copy stays non-diagnostic', () => {
@@ -94,7 +112,7 @@ test('workstation hub adapts to available container width without horizontal cli
   assert.match(css, /container-type:\s*inline-size/)
   assert.match(css, /minmax\(180px,\s*220px\)/)
   assert.match(css, /minmax\(420px,\s*1fr\)/)
-  assert.match(css, /minmax\(260px,\s*300px\)/)
+  assert.match(css, /minmax\(320px,\s*340px\)/)
   assert.match(css, /@container\s*\(max-width:\s*1080px\)/)
   assert.match(css, /grid-column:\s*1\s*\/\s*-1/)
   assert.match(css, /overflow-x:\s*hidden/)

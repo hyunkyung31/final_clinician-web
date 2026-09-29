@@ -73,3 +73,95 @@ test('createProcedureEvent sends timeline clinical fields', async () => {
   assert.equal(saved.medicationOrDevice, 'Heparin')
   assert.equal(saved.createdByName, '김도윤')
 })
+
+test('createMedicationAdministration does not send a procedure event id', async () => {
+  const { createMedicationAdministration } = await loadApiTestModule()
+  let sentUrl
+  let sentBody
+  globalThis.fetch = async (url, options) => {
+    sentUrl = url
+    sentBody = JSON.parse(options.body)
+    return Response.json({
+      id: 8,
+      examination: 42,
+      medication_name: 'Heparin',
+      source_type: 'PRESCRIPTION',
+      status: 'ACTIVE',
+      administered_at: '2026-09-29T09:10:00Z',
+      dose_value: '5000',
+      dose_unit: 'IU',
+      route: 'IV',
+      note: '',
+      prescription_item: 3,
+      medication: 11,
+    })
+  }
+  const saved = await createMedicationAdministration(42, {
+    sourceType: 'PRESCRIPTION',
+    administeredAt: '2026-09-29T09:10:00.000Z',
+    prescriptionItemId: 3,
+    medicationId: 11,
+    medicationName: 'Heparin',
+    procedureRecordId: 9,
+    doseValue: '5000',
+    doseUnit: 'IU',
+    route: 'IV',
+  })
+  assert.equal(sentUrl, '/api/staff/examinations/42/medication-administrations/')
+  assert.equal(sentBody.source_type, 'PRESCRIPTION')
+  assert.equal(sentBody.prescription_item_id, 3)
+  assert.equal(sentBody.dose_value, '5000')
+  assert.equal(sentBody.route, 'IV')
+  assert.equal(Object.hasOwn(sentBody, 'procedure_event_id'), false)
+  assert.equal(saved.medicationName, 'Heparin')
+  assert.equal(saved.prescriptionItemId, 3)
+})
+
+test('getMedicationAdministrations keeps active rows and drops canceled rows', async () => {
+  const { getMedicationAdministrations } = await loadApiTestModule()
+  globalThis.fetch = async (url) => {
+    assert.equal(url, '/api/staff/examinations/42/medication-administrations/')
+    return Response.json([
+      { id: 1, medication_name: 'Heparin', source_type: 'AD_HOC', status: 'CANCELED', administered_at: '2026-09-29T09:00:00Z' },
+      { id: 2, medication_name: 'Nitroglycerin', source_type: 'PRESCRIPTION', status: 'ACTIVE', administered_at: '2026-09-29T09:05:00Z', dose_value: '200', dose_unit: 'mcg', route: 'IC', prescription_item: 4 },
+    ])
+  }
+  const items = await getMedicationAdministrations(42)
+  assert.equal(items.length, 1)
+  assert.equal(items[0].medicationName, 'Nitroglycerin')
+  assert.equal(items[0].route, 'IC')
+})
+
+test('createProcedureDeviceUsage sends device_id and does not create a procedure event', async () => {
+  const { createProcedureDeviceUsage } = await loadApiTestModule()
+  let sentUrl
+  let sentBody
+  globalThis.fetch = async (url, options) => {
+    sentUrl = url
+    sentBody = JSON.parse(options.body)
+    return Response.json({
+      id: 6,
+      examination: 42,
+      device: 15,
+      product_name: 'Sion Blue',
+      device_detail: { id: 15, code: 'GW-1', category: 'GUIDEWIRE', product_name: 'Sion Blue', is_active: true },
+      quantity: 1,
+      used_at: '2026-09-29T09:20:00Z',
+      status: 'ACTIVE',
+      note: 'LAD wiring',
+    })
+  }
+  const saved = await createProcedureDeviceUsage(42, {
+    deviceId: 15,
+    usedAt: '2026-09-29T09:20:00.000Z',
+    procedureRecordId: 9,
+    quantity: 1,
+    note: 'LAD wiring',
+  })
+  assert.equal(sentUrl, '/api/staff/examinations/42/procedure-device-usages/')
+  assert.equal(sentBody.device_id, 15)
+  assert.equal(sentBody.quantity, 1)
+  assert.equal(Object.hasOwn(sentBody, 'procedure_event_id'), false)
+  assert.equal(saved.productName, 'Sion Blue')
+  assert.equal(saved.device?.category, 'GUIDEWIRE')
+})

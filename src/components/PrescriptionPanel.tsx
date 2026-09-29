@@ -8,9 +8,10 @@ import {
 import {
   AlertTriangle,
   CheckCircle2,
-  HeartPulse,
+  FileSignature,
   LoaderCircle,
   Pencil,
+  Pill,
   Plus,
   Search,
   ShieldCheck,
@@ -28,7 +29,9 @@ import {
   getMedications,
   getPrescriptionDetail,
   getPrescriptions,
+  reauthenticateStaff,
   runPrescriptionDurCheck,
+  signPrescription,
   updatePrescriptionItem,
   updatePrescriptionNotes,
 } from "../api/client";
@@ -37,6 +40,7 @@ import type {
   MedicationFavoriteSummary,
   MedicationSummary,
   PrescriptionDetail,
+  PrescriptionDURCheck,
   PrescriptionItemSummary,
   PrescriptionSummary,
 } from "../types";
@@ -46,11 +50,7 @@ interface PrescriptionPanelProps {
   encounterId: number | null;
 }
 
-type MedicationGroup =
-  | "favorites"
-  | "cath"
-  | "cardiology"
-  | "surgery";
+type MedicationGroup = "all" | "favorites";
 
 interface MedicationEditor {
   medicationId: number | null;
@@ -76,93 +76,9 @@ const medicationGroups: Array<{
   id: MedicationGroup;
   label: string;
 }> = [
+  { id: "all", label: "전체 약품" },
   { id: "favorites", label: "즐겨찾기" },
-  { id: "cath", label: "조영실·PCI" },
-  { id: "cardiology", label: "순환기" },
-  { id: "surgery", label: "흉부외과" },
 ];
-
-const medicationKeywords: Record<
-  Exclude<MedicationGroup, "favorites">,
-  string[]
-> = {
-  cath: [
-    "aspirin",
-    "아스피린",
-    "clopidogrel",
-    "클로피도그렐",
-    "ticagrelor",
-    "티카그렐러",
-    "atorvastatin",
-    "아토르바스타틴",
-    "rosuvastatin",
-    "로수바스타틴",
-    "nitroglycerin",
-    "니트로글리세린",
-  ],
-  cardiology: [
-    "aspirin",
-    "아스피린",
-    "clopidogrel",
-    "클로피도그렐",
-    "ticagrelor",
-    "티카그렐러",
-    "apixaban",
-    "아픽사반",
-    "rivaroxaban",
-    "리바록사반",
-    "edoxaban",
-    "에독사반",
-    "dabigatran",
-    "다비가트란",
-    "warfarin",
-    "와파린",
-    "atorvastatin",
-    "아토르바스타틴",
-    "rosuvastatin",
-    "로수바스타틴",
-    "ezetimibe",
-    "에제티미브",
-    "bisoprolol",
-    "비소프롤롤",
-    "carvedilol",
-    "카르베딜롤",
-    "sacubitril",
-    "사쿠비트릴",
-    "valsartan",
-    "발사르탄",
-    "spironolactone",
-    "스피로노락톤",
-    "dapagliflozin",
-    "다파글리플로진",
-    "empagliflozin",
-    "엠파글리플로진",
-    "furosemide",
-    "푸로세미드",
-    "amiodarone",
-    "아미오다론",
-  ],
-  surgery: [
-    "aspirin",
-    "아스피린",
-    "warfarin",
-    "와파린",
-    "atorvastatin",
-    "아토르바스타틴",
-    "rosuvastatin",
-    "로수바스타틴",
-    "bisoprolol",
-    "비소프롤롤",
-    "carvedilol",
-    "카르베딜롤",
-    "metoprolol",
-    "메토프로롤",
-    "amiodarone",
-    "아미오다론",
-    "furosemide",
-    "푸로세미드",
-  ],
-};
 
 const prescriptionStatusLabel: Record<
   PrescriptionSummary["status"],
@@ -238,6 +154,21 @@ function formatPrescriptionDate(value: string) {
   }).format(date);
 }
 
+function sortPrescriptions(items: PrescriptionSummary[]) {
+  return [...items].sort((left, right) => {
+    const leftTime = Date.parse(left.prescribedAt || left.updatedAt) || left.id;
+    const rightTime = Date.parse(right.prescribedAt || right.updatedAt) || right.id;
+    return rightTime - leftTime;
+  });
+}
+
+function durSeverityLabel(value: string) {
+  const severity = value.toUpperCase();
+  if (severity === "CRITICAL") return "중대";
+  if (severity === "WARNING" || severity === "WARN") return "주의";
+  return "안내";
+}
+
 export function PrescriptionPanel({
   patientId,
   encounterId,
@@ -258,7 +189,7 @@ export function PrescriptionPanel({
     useState<PrescriptionDetail | null>(null);
 
   const [activeGroup, setActiveGroup] =
-    useState<MedicationGroup>("cardiology");
+    useState<MedicationGroup>("all");
 
   const [search, setSearch] = useState("");
 
@@ -289,6 +220,13 @@ export function PrescriptionPanel({
   const [error, setError] = useState("");
   const [durMessage, setDurMessage] =
     useState("");
+  const [durCheck, setDurCheck] =
+    useState<PrescriptionDURCheck | null>(null);
+  const [prescriptionItemCounts, setPrescriptionItemCounts] =
+    useState<Record<number, number>>({});
+  const [showSignForm, setShowSignForm] = useState(false);
+  const [signPassword, setSignPassword] = useState("");
+  const [signing, setSigning] = useState(false);
 
   const activePrescription =
     detail?.prescription ??
@@ -306,6 +244,9 @@ export function PrescriptionPanel({
 
   const canEdit =
     activePrescription?.status === "DRAFT";
+  const unresolvedCriticalDUR = durCheck?.results.some((item) => (
+    item.severity === "CRITICAL" && !["ACKNOWLEDGED", "OVERRIDDEN"].includes(item.action)
+  )) ?? false;
 
   const visibleMedications = useMemo(() => {
     const keyword = search
@@ -331,38 +272,7 @@ export function PrescriptionPanel({
       ).slice(0, 12);
     }
 
-    const keywords =
-      medicationKeywords[activeGroup];
-
-    return medications
-      .map((medication) => {
-        const text =
-          medicationSearchText(
-            medication,
-          );
-
-        const priority =
-          keywords.findIndex(
-            (keywordItem) =>
-              text.includes(
-                keywordItem.toLowerCase(),
-              ),
-          );
-
-        return {
-          medication,
-          priority,
-        };
-      })
-      .filter(
-        (item) => item.priority >= 0,
-      )
-      .sort(
-        (a, b) =>
-          a.priority - b.priority,
-      )
-      .map((item) => item.medication)
-      .slice(0, 12);
+    return medications.slice(0, 30);
   }, [
     activeGroup,
     favorites,
@@ -389,6 +299,14 @@ export function PrescriptionPanel({
       setPrescriptionNotes(
         nextDetail.prescription.notes,
       );
+      setPrescriptionItemCounts((current) => ({
+        ...current,
+        [prescriptionId]: nextDetail.items.length,
+      }));
+      setDurCheck(null);
+      setDurMessage("");
+      setShowSignForm(false);
+      setSignPassword("");
     } catch (requestError) {
       setDetail(null);
 
@@ -406,10 +324,9 @@ export function PrescriptionPanel({
     selectedPatientId: number,
     preferredId?: number,
   ) => {
-    const nextPrescriptions =
-      await getPrescriptions(
-        selectedPatientId,
-      );
+    const nextPrescriptions = sortPrescriptions(
+      await getPrescriptions(selectedPatientId),
+    );
 
     setPrescriptions(nextPrescriptions);
 
@@ -419,11 +336,17 @@ export function PrescriptionPanel({
           item.id === preferredId,
       ) ??
       nextPrescriptions.find(
-        (item) =>
-          item.status === "DRAFT",
+        (item) => item.status === "DRAFT" && item.encounterId === encounterId,
       ) ??
       nextPrescriptions[0] ??
       null;
+
+    const countResults = await Promise.allSettled(
+      nextPrescriptions.map((item) => getPrescriptionDetail(item.id)),
+    );
+    setPrescriptionItemCounts(Object.fromEntries(countResults.flatMap((result, index) => (
+      result.status === "fulfilled" ? [[nextPrescriptions[index].id, result.value.items.length]] : []
+    ))));
 
     if (!selected) {
       setActivePrescriptionId(null);
@@ -445,6 +368,10 @@ export function PrescriptionPanel({
       setActivePrescriptionId(null);
       setDetail(null);
       setEditor(emptyEditor);
+      setPrescriptionItemCounts({});
+      setDurCheck(null);
+      setShowSignForm(false);
+      setSignPassword("");
       setError("");
       return;
     }
@@ -454,6 +381,10 @@ export function PrescriptionPanel({
     setLoading(true);
     setError("");
     setDurMessage("");
+    setDurCheck(null);
+    setPrescriptionItemCounts({});
+    setShowSignForm(false);
+    setSignPassword("");
     setShowCancelForm(false);
     setCancelReason("");
     setEditor(emptyEditor);
@@ -478,17 +409,24 @@ export function PrescriptionPanel({
             nextMedications,
           );
           setFavorites(nextFavorites);
-          setPrescriptions(
-            nextPrescriptions,
-          );
+          const orderedPrescriptions = sortPrescriptions(nextPrescriptions);
+          setPrescriptions(orderedPrescriptions);
 
           const selected =
-            nextPrescriptions.find(
-              (item) =>
-                item.status === "DRAFT",
+            orderedPrescriptions.find(
+              (item) => item.status === "DRAFT" && item.encounterId === encounterId,
             ) ??
-            nextPrescriptions[0] ??
+            orderedPrescriptions[0] ??
             null;
+
+          const countResults = await Promise.allSettled(
+            orderedPrescriptions.map((item) => getPrescriptionDetail(item.id)),
+          );
+
+          if (!active) return;
+          setPrescriptionItemCounts(Object.fromEntries(countResults.flatMap((result, index) => (
+            result.status === "fulfilled" ? [[orderedPrescriptions[index].id, result.value.items.length]] : []
+          ))));
 
           if (!selected) {
             setDetail(null);
@@ -537,7 +475,7 @@ export function PrescriptionPanel({
     return () => {
       active = false;
     };
-  }, [patientId]);
+  }, [encounterId, patientId]);
 
   const resetEditor = () => {
     setEditor(emptyEditor);
@@ -567,15 +505,15 @@ export function PrescriptionPanel({
 
     if (
       detail?.prescription.status ===
-      "DRAFT"
+      "DRAFT" &&
+      detail.prescription.encounterId === encounterId
     ) {
       return detail.prescription.id;
     }
 
     const existingDraft =
       prescriptions.find(
-        (item) =>
-          item.status === "DRAFT",
+        (item) => item.status === "DRAFT" && item.encounterId === encounterId,
       );
 
     if (existingDraft) {
@@ -594,8 +532,9 @@ export function PrescriptionPanel({
 
     setPrescriptions((current) => [
       created,
-      ...current,
+      ...current.filter((item) => item.id !== created.id),
     ]);
+    setPrescriptionItemCounts((current) => ({ ...current, [created.id]: 0 }));
 
     setActivePrescriptionId(
       created.id,
@@ -876,13 +815,13 @@ export function PrescriptionPanel({
     setDurMessage("");
 
     try {
-      await runPrescriptionDurCheck(
+      const checked = await runPrescriptionDurCheck(
         detail.prescription.id,
       );
-
-      setDurMessage(
-        "DUR 검사가 완료되었습니다.",
-      );
+      setDurCheck(checked);
+      setDurMessage(checked.results.length
+        ? `DUR 확인 항목 ${checked.results.length}건이 있습니다.`
+        : "DUR 검사 결과 확인 항목이 없습니다.");
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -891,6 +830,29 @@ export function PrescriptionPanel({
       );
     } finally {
       setDurLoading(false);
+    }
+  };
+
+  const handleSignPrescription = async () => {
+    if (!patientId || !detail || detail.prescription.status !== "DRAFT") return;
+    if (!signPassword.trim()) {
+      setError("처방 확정을 위해 로그인 비밀번호를 입력해주세요.");
+      return;
+    }
+    setSigning(true);
+    setError("");
+    try {
+      const reauthToken = await reauthenticateStaff(signPassword);
+      const signed = await signPrescription(detail.prescription.id, reauthToken);
+      setDetail(signed);
+      setPrescriptionNotes(signed.prescription.notes);
+      setSignPassword("");
+      setShowSignForm(false);
+      await refreshPrescriptions(patientId, signed.prescription.id);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "처방을 확정하지 못했습니다.");
+    } finally {
+      setSigning(false);
     }
   };
 
@@ -947,11 +909,11 @@ export function PrescriptionPanel({
       <div className="prescription-heading">
         <div>
           <span>
-            <HeartPulse
+            <Pill
               size={16}
               strokeWidth={1.8}
             />
-            <strong>처방 오더</strong>
+            <strong>환자 전체 처방</strong>
           </span>
 
           {activePrescription && (
@@ -968,8 +930,7 @@ export function PrescriptionPanel({
         </div>
 
         <small>
-          심혈관 진료에서 자주 사용하는
-          약품을 우선 표시합니다.
+          시술기록과 분리된 약제 처방 원장입니다. 진료과 구분 없이 모든 처방 이력을 조회합니다.
         </small>
       </div>
 
@@ -987,63 +948,8 @@ export function PrescriptionPanel({
       )}
 
       <div className="prescription-selector">
-        <label htmlFor="prescription-select">
-          처방 내역
-        </label>
-
-        <div>
-          <select
-            id="prescription-select"
-            value={
-              activePrescriptionId ?? ""
-            }
-            onChange={(event) => {
-              const nextId = Number(
-                event.target.value,
-              );
-
-              if (
-                Number.isFinite(nextId)
-              ) {
-                void loadPrescriptionDetail(
-                  nextId,
-                );
-              }
-            }}
-            disabled={
-              loading ||
-              detailLoading ||
-              prescriptions.length === 0
-            }
-          >
-            {prescriptions.length === 0 && (
-              <option value="">
-                등록된 처방 없음
-              </option>
-            )}
-
-            {prescriptions.map(
-              (prescription) => (
-                <option
-                  key={prescription.id}
-                  value={prescription.id}
-                >
-                  #
-                  {prescription.id} ·{" "}
-                  {
-                    prescriptionStatusLabel[
-                      prescription.status
-                    ]
-                  }{" "}
-                  ·{" "}
-                  {formatPrescriptionDate(
-                    prescription.prescribedAt,
-                  )}
-                </option>
-              ),
-            )}
-          </select>
-
+        <div className="prescription-history-heading">
+          <label>전체 처방 이력 · 총 {prescriptions.length}건</label>
           <button
             className="primary"
             onClick={() =>
@@ -1063,6 +969,29 @@ export function PrescriptionPanel({
             />
             새 처방
           </button>
+        </div>
+        <div className="prescription-history-list" aria-label="전체 처방 이력">
+          {prescriptions.map((prescription) => (
+            <button
+              className={activePrescriptionId === prescription.id ? "active" : ""}
+              key={prescription.id}
+              onClick={() => void loadPrescriptionDetail(prescription.id)}
+              type="button"
+            >
+              <span>
+                <strong>{formatPrescriptionDate(prescription.prescribedAt)}</strong>
+                <b className={`prescription-status status-${prescription.status.toLowerCase()}`}>
+                  {prescriptionStatusLabel[prescription.status]}
+                </b>
+              </span>
+              <small>진료 #{prescription.encounterId} · 처방 #{prescription.id}</small>
+              <small>
+                {prescription.prescribedById ? `의료진 #${prescription.prescribedById}` : "처방 의료진 미표시"}
+                {` · 약품 ${prescriptionItemCounts[prescription.id] ?? "-"}개`}
+              </small>
+            </button>
+          ))}
+          {!loading && prescriptions.length === 0 && <p>등록된 처방 이력이 없습니다.</p>}
         </div>
       </div>
 
@@ -1124,24 +1053,6 @@ export function PrescriptionPanel({
           )}
         </div>
       )}
-
-      {activeGroup === "cath" &&
-        !search && (
-          <div className="procedure-medication-note">
-            <AlertTriangle
-              size={13}
-              strokeWidth={1.8}
-            />
-
-            <span>
-              헤파린·아데노신·혈관 내
-              니트로글리세린 등은 일반
-              처방이 아닌
-              <strong> 시술 투약</strong>
-              으로 별도 연결할 예정입니다.
-            </span>
-          </div>
-        )}
 
       <div className="medication-results">
         {loading ? (
@@ -1211,7 +1122,9 @@ export function PrescriptionPanel({
               <div className="medication-empty">
                 {search
                   ? "검색된 약품이 없습니다."
-                  : "이 분류에 등록된 약품이 없습니다. 전체 검색을 이용해주세요."}
+                  : activeGroup === "favorites"
+                    ? "즐겨찾기로 등록된 약품이 없습니다."
+                    : "등록된 약품이 없습니다."}
               </div>
             )}
           </>
@@ -1418,7 +1331,7 @@ export function PrescriptionPanel({
       )}
 
       <div className="prescription-draft-heading">
-        <strong>처방 초안</strong>
+        <strong>{canEdit ? "현재 처방 초안" : "처방 상세"}</strong>
 
         <span>
           {detail?.items.length ?? 0}개
@@ -1550,12 +1463,31 @@ export function PrescriptionPanel({
       )}
 
       {durMessage && (
-        <div className="dur-success">
+        <div className={unresolvedCriticalDUR ? "prescription-error" : "dur-success"}>
           <CheckCircle2
             size={14}
             strokeWidth={1.8}
           />
           {durMessage}
+        </div>
+      )}
+
+      {durCheck && durCheck.results.length > 0 && (
+        <div className="prescription-dur-results">
+          <header>
+            <strong>DUR 상세 결과</strong>
+            <span>{durCheck.results.length}건</span>
+          </header>
+          {durCheck.results.map((item) => (
+            <article className={`severity-${item.severity.toLowerCase()}`} key={item.id}>
+              <b>{durSeverityLabel(item.severity)}</b>
+              <div>
+                <strong>{item.ruleName || item.ruleType || "DUR 확인"}</strong>
+                <p>{item.warningMessage}</p>
+                {item.action && <small>처리 상태: {item.action}</small>}
+              </div>
+            </article>
+          ))}
         </div>
       )}
 
@@ -1594,10 +1526,12 @@ export function PrescriptionPanel({
             <button
               className="primary"
               type="button"
-              disabled
-              title="서명 파일과 재인증 API 연결 후 활성화됩니다."
+              disabled={signing || durLoading || !durCheck || unresolvedCriticalDUR || detail.items.length === 0}
+              title={!durCheck ? "DUR 검사 후 처방을 확정할 수 있습니다." : unresolvedCriticalDUR ? "처리되지 않은 중대 DUR 경고가 있습니다." : "처방 확정"}
+              onClick={() => setShowSignForm(true)}
             >
-              전자서명 예정
+              <FileSignature size={14} strokeWidth={1.8} />
+              처방 확정
             </button>
           )}
 
@@ -1613,6 +1547,32 @@ export function PrescriptionPanel({
               처방 취소
             </button>
           )}
+        </div>
+      )}
+
+      {showSignForm && activePrescription?.status === "DRAFT" && (
+        <div className="prescription-sign-form">
+          <div>
+            <FileSignature size={18} />
+            <span><strong>처방을 확정하시겠습니까?</strong><small>등록된 의료진 서명으로 확정되며 이후 약품을 수정할 수 없습니다.</small></span>
+          </div>
+          <label>
+            로그인 비밀번호 재확인
+            <input
+              autoComplete="current-password"
+              type="password"
+              value={signPassword}
+              onChange={(event) => setSignPassword(event.target.value)}
+              placeholder="비밀번호"
+            />
+          </label>
+          <div>
+            <button className="secondary" disabled={signing} onClick={() => { setShowSignForm(false); setSignPassword(""); }} type="button">돌아가기</button>
+            <button className="primary" disabled={signing || !signPassword.trim()} onClick={() => void handleSignPrescription()} type="button">
+              {signing ? <LoaderCircle className="spin" size={14} /> : <FileSignature size={14} />}
+              {signing ? "확정 중…" : "재인증 후 확정"}
+            </button>
+          </div>
         </div>
       )}
 

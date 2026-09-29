@@ -2,18 +2,23 @@ import { useEffect, useId, useState } from 'react'
 import { FileText, LoaderCircle, Search } from 'lucide-react'
 import type { MedicalReportType, MedicalResultDetail, PatientReportSummary, PatientSummary, ReportAiSummary, ReportXcaAttachment, StaffDoctor, StaffIdentity } from '../types'
 import {
+  getClinicalAIAnalysis,
   getFileContentObjectUrl,
   getMedicalResultDetail,
+  getPatientClinicalAnalyses,
   getPatientReports,
   getPatientsPage,
   getReportDownload,
+  getStoredClinicalShap,
   releaseMedicalResult,
   saveMedicalResultConclusion,
   signoffMedicalResult,
 } from '../api/client'
+import type { ClinicalAIAnalysis, ClinicalAIAnalysisListItem, ClinicalShapExplanation } from '../api/client'
 import { getDoctorSignature } from '../doctorSignatures'
 import './report-workspace.css'
 import { CLINICAL_MODEL_DISCLOSURE } from '../clinicalModelDisclosure'
+import { ClinicalAiReportDetail } from './ClinicalAiReportDetail'
 
 interface ReportWorkspaceProps {
   selectedPatient: PatientSummary | null
@@ -277,11 +282,15 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
   const [reportSearchLoading, setReportSearchLoading] = useState(false)
   const [reportSearchError, setReportSearchError] = useState('')
   const [patientReports, setPatientReports] = useState<PatientReportSummary[]>([])
-  const [reportTypeFilter, setReportTypeFilter] = useState<'ALL' | MedicalReportType>('ALL')
+  const [clinicalReports, setClinicalReports] = useState<ClinicalAIAnalysisListItem[]>([])
+  const [reportTypeFilter, setReportTypeFilter] = useState<'ALL' | MedicalReportType | 'CLINICAL_AI'>('ALL')
   const [reportsLoading, setReportsLoading] = useState(false)
   const [reportsError, setReportsError] = useState('')
   const [selectedResultId, setSelectedResultId] = useState<number | null>(null)
+  const [selectedClinicalAnalysisId, setSelectedClinicalAnalysisId] = useState<number | null>(null)
   const [detail, setDetail] = useState<MedicalResultDetail | null>(null)
+  const [clinicalDetail, setClinicalDetail] = useState<ClinicalAIAnalysis | null>(null)
+  const [clinicalShap, setClinicalShap] = useState<ClinicalShapExplanation | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [conclusion, setConclusion] = useState('')
   const [busyAction, setBusyAction] = useState('')
@@ -293,7 +302,10 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
     if (!selectedPatient) return
     setReportPatient(selectedPatient)
     setSelectedResultId(null)
+    setSelectedClinicalAnalysisId(null)
     setDetail(null)
+    setClinicalDetail(null)
+    setClinicalShap(null)
     setConclusion('')
     setReportsError('')
   }, [selectedPatient?.backendId])
@@ -325,20 +337,73 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
   useEffect(() => {
     if (!reportPatient?.backendId) {
       setPatientReports([])
+      setClinicalReports([])
       setReportsError('')
       setSelectedResultId(null)
+      setSelectedClinicalAnalysisId(null)
       setDetail(null)
+      setClinicalDetail(null)
+      setClinicalShap(null)
       return
     }
     let active = true
     setReportsLoading(true)
     setReportsError('')
-    void getAllPatientReports(reportPatient.backendId)
-      .then((items) => { if (active) setPatientReports(items) })
-      .catch((error) => { if (active) { setPatientReports([]); setReportsError(error instanceof Error ? error.message : '보고서 목록을 불러오지 못했습니다.') } })
+    void Promise.allSettled([
+      getAllPatientReports(reportPatient.backendId),
+      getPatientClinicalAnalyses(reportPatient.backendId),
+    ])
+      .then(([medical, clinical]) => {
+        if (!active) return
+        setPatientReports(medical.status === 'fulfilled' ? medical.value : [])
+        setClinicalReports(clinical.status === 'fulfilled' ? clinical.value : [])
+        if (medical.status === 'rejected' && clinical.status === 'rejected') {
+          const reason = medical.reason instanceof Error ? medical.reason.message : '보고서 목록을 불러오지 못했습니다.'
+          setReportsError(reason)
+        } else if (clinical.status === 'rejected') {
+          setReportsError('Clinical AI 결과 목록을 불러오지 못했습니다.')
+        }
+      })
       .finally(() => { if (active) setReportsLoading(false) })
     return () => { active = false }
   }, [reportPatient?.backendId])
+
+  useEffect(() => {
+    if (!selectedClinicalAnalysisId) {
+      setClinicalDetail(null)
+      setClinicalShap(null)
+      return
+    }
+    let active = true
+    setDetailLoading(true)
+    setReportsError('')
+    void getClinicalAIAnalysis(selectedClinicalAnalysisId)
+      .then(async (payload) => {
+        if (!active) return
+        setClinicalDetail(payload)
+        const result = [...(payload.results ?? [])].sort((left, right) => right.id - left.id)[0]
+        if (!result) {
+          setClinicalShap(null)
+          return
+        }
+        const inline = result.result_json.explanation
+        if (inline?.top_features?.length) {
+          setClinicalShap(inline)
+          return
+        }
+        const stored = await getStoredClinicalShap(result.id)
+        if (active) setClinicalShap(stored)
+      })
+      .catch((error) => {
+        if (active) {
+          setClinicalDetail(null)
+          setClinicalShap(null)
+          setReportsError(error instanceof Error ? error.message : 'Clinical AI 보고서를 불러오지 못했습니다.')
+        }
+      })
+      .finally(() => { if (active) setDetailLoading(false) })
+    return () => { active = false }
+  }, [selectedClinicalAnalysisId])
 
   useEffect(() => {
     if (!selectedResultId) {
@@ -416,7 +481,14 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
   )
   const visibleReports = reportTypeFilter === 'ALL'
     ? patientReports.filter((item) => item.reportType !== 'INTEGRATED')
-    : patientReports.filter((item) => item.reportType === reportTypeFilter)
+    : reportTypeFilter === 'CLINICAL_AI'
+      ? []
+      : patientReports.filter((item) => item.reportType === reportTypeFilter)
+  const visibleClinicalReports = reportTypeFilter === 'ALL' || reportTypeFilter === 'CLINICAL_AI'
+    ? clinicalReports
+    : []
+  const totalReportCount = patientReports.filter((item) => item.reportType !== 'INTEGRATED').length + clinicalReports.length
+  const visibleReportCount = visibleReports.length + visibleClinicalReports.length
 
   return (
     <section className="feature-page module-page report-workspace">
@@ -424,7 +496,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
         <div>
           <small>CLINICAL REPORT</small>
           <h1>결과보고서</h1>
-          <p>2D XCA와 3D CCTA 결과보고서를 검사별로 조회하고 승인·공개합니다.</p>
+          <p>영상 판독 보고서와 Clinical AI 의료진용 결과를 환자별로 조회합니다.</p>
         </div>
         <span className="feature-live"><i /> LIVE API</span>
       </header>
@@ -441,7 +513,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
           {reportSearchKeyword.trim() && (
             <div className="module-report-search-results">
               {reportSearchResults.map((patient) => (
-                <button className={reportPatient?.backendId === patient.backendId ? 'active' : ''} key={patient.id} onClick={() => { setReportPatient(patient); setReportSearchKeyword(''); setReportSearchResults([]); setSelectedResultId(null) }} type="button">
+                <button className={reportPatient?.backendId === patient.backendId ? 'active' : ''} key={patient.id} onClick={() => { setReportPatient(patient); setReportSearchKeyword(''); setReportSearchResults([]); setSelectedResultId(null); setSelectedClinicalAnalysisId(null) }} type="button">
                   <strong>{patient.name}</strong><span>{patient.id}</span>
                 </button>
               ))}
@@ -454,10 +526,10 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
           <p>{reportPatient?.id ?? '환자를 검색해 선택해주세요.'}</p>
         </section>
         <section className="feature-card module-table-card">
-          <header><h2>보고서 목록</h2><span>총 {patientReports.length}건</span></header>
+          <header><h2>보고서 목록</h2><span>총 {totalReportCount}건</span></header>
           <div className="report-type-tabs" role="tablist" aria-label="보고서 종류">
-            {([['ALL', '전체'], ['XCA_2D', '2D XCA'], ['CCTA_3D', '3D CCTA']] as const).map(([value, label]) => (
-              <button aria-selected={reportTypeFilter === value} className={reportTypeFilter === value ? 'active' : ''} key={value} onClick={() => { setReportTypeFilter(value); setSelectedResultId(null) }} role="tab" type="button">{label}</button>
+            {([['ALL', '전체'], ['CLINICAL_AI', 'Clinical AI'], ['XCA_2D', '2D XCA'], ['CCTA_3D', '3D CCTA']] as const).map(([value, label]) => (
+              <button aria-selected={reportTypeFilter === value} className={reportTypeFilter === value ? 'active' : ''} key={value} onClick={() => { setReportTypeFilter(value); setSelectedResultId(null); setSelectedClinicalAnalysisId(null) }} role="tab" type="button">{label}</button>
             ))}
           </div>
           {reportsError && <p className="api-inline-error">{reportsError}</p>}
@@ -466,8 +538,8 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
             <div className="module-table module-report-table">
               <div className="module-table-head"><span>검사일</span><span>보고서 종류</span><span>상태</span><span>작성/서명 의료진</span><span /></div>
               {visibleReports.map((item) => (
-                <div className={`module-table-row ${selectedResultId === item.medicalResultId ? 'is-selected' : ''}`} key={item.medicalResultId}>
-                  <button className="report-row-select" onClick={() => setSelectedResultId(item.medicalResultId)} type="button">
+                <div className={`module-table-row ${selectedResultId === item.medicalResultId ? 'is-selected' : ''}`} key={`medical-${item.medicalResultId}`}>
+                  <button className="report-row-select" onClick={() => { setSelectedResultId(item.medicalResultId); setSelectedClinicalAnalysisId(null) }} type="button">
                     <span>{(item.performedAt || item.visitDate) ? new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium' }).format(new Date(item.performedAt || item.visitDate!)) : '-'}</span>
                     <span><strong>{reportTypeLabels[item.reportType]}</strong>{item.examName ? ` · ${item.examName}` : ''}</span>
                     <b className={`status-pill status-report-${item.status.toLowerCase()}`}>{reportStatusLabels[item.status] ?? item.status}</b>
@@ -483,9 +555,20 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
                   </button>
                 </div>
               ))}
+              {visibleClinicalReports.map((item) => (
+                <div className={`module-table-row ${selectedClinicalAnalysisId === item.id ? 'is-selected' : ''}`} key={`clinical-${item.id}`}>
+                  <button className="report-row-select" onClick={() => { setSelectedClinicalAnalysisId(item.id); setSelectedResultId(null) }} type="button">
+                    <span>{formatDate(item.completed_at || item.requested_at)}</span>
+                    <span><strong>Clinical AI</strong>{` · 검사 #${item.examination}`}</span>
+                    <b className="status-pill status-report-clinical">분석 완료</b>
+                    <span>의료진 검토용</span>
+                  </button>
+                  <button onClick={() => { setSelectedClinicalAnalysisId(item.id); setSelectedResultId(null) }} title="Clinical AI 결과 상세에서 PDF 저장" type="button">보기</button>
+                </div>
+              ))}
               {reportsLoading && <p className="report-empty-inline">목록을 불러오는 중…</p>}
-              {!reportsLoading && patientReports.length === 0 && <div className="feature-empty"><FileText size={28} /><strong>등록된 보고서가 없습니다.</strong></div>}
-              {!reportsLoading && patientReports.length > 0 && visibleReports.length === 0 && <div className="feature-empty"><FileText size={28} /><strong>선택한 종류의 보고서가 없습니다.</strong></div>}
+              {!reportsLoading && totalReportCount === 0 && <div className="feature-empty"><FileText size={28} /><strong>등록된 보고서가 없습니다.</strong></div>}
+              {!reportsLoading && totalReportCount > 0 && visibleReportCount === 0 && <div className="feature-empty"><FileText size={28} /><strong>선택한 종류의 보고서가 없습니다.</strong></div>}
             </div>
           )}
         </section>
@@ -595,6 +678,18 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
             </>
           )}
         </section>
+      )}
+      {selectedClinicalAnalysisId && detailLoading && !clinicalDetail && (
+        <section className="feature-card report-detail-card"><p className="report-empty-inline">Clinical AI 보고서를 불러오는 중…</p></section>
+      )}
+      {selectedClinicalAnalysisId && clinicalDetail && reportPatient && (
+        <ClinicalAiReportDetail
+          analysis={clinicalDetail}
+          patient={reportPatient}
+          shap={clinicalShap}
+          staffDoctor={staffDoctor}
+          staffIdentity={staffIdentity}
+        />
       )}
       {confirmSignoff && detail && (
         <div className="report-modal-backdrop" role="presentation" onClick={() => setConfirmSignoff(false)}>
