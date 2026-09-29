@@ -14,6 +14,24 @@ test('report workspace lists patient-scoped Clinical AI analyses', () => {
   assert.match(client, /patient_id=\$\{patientId\}&type=CLINICAL&status=SUCCEEDED/)
 })
 
+test('report workspace lists completed CCTA analyses before a medical report draft exists', () => {
+  assert.match(workspace, /getPatientCCTAAnalyses\(reportPatient\.backendId\)/)
+  assert.match(workspace, /pendingCctaReports/)
+  assert.match(workspace, /보고서 작성 전/)
+  assert.match(workspace, /<CCTAReportDraft/)
+  assert.match(client, /patient_id=\$\{patientId\}&type=CCTA&status=SUCCEEDED/)
+})
+
+test('report workspace preserves the signed 2D and 3D integrated approval workflow', () => {
+  assert.match(workspace, /\['INTEGRATED', '통합'\]/)
+  assert.match(workspace, /signedXcaReports/)
+  assert.match(workspace, /signedCctaReports/)
+  assert.match(workspace, /createPatientMedicalResult/)
+  assert.match(workspace, /선택한 2D·3D 통합 초안 생성/)
+  assert.match(client, /xca_medical_result_id/)
+  assert.match(client, /ccta_medical_result_id/)
+})
+
 test('Clinical AI report stays clinician-only and read-only', () => {
   assert.match(detail, /의료진 전용 · 읽기 전용/)
   assert.match(detail, /자동 진단·자동 오더·환자 공개 문서가 아닙니다/)

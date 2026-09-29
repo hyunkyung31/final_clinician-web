@@ -1791,6 +1791,32 @@ export async function releaseMedicalResult(resultId: number): Promise<MedicalRes
   }))
 }
 
+/** 승인된 2D XCA와 3D CCTA 결과의 고정 버전을 하나의 통합 보고서 초안으로 묶는다. */
+export async function createPatientMedicalResult(
+  patientId: number,
+  xcaMedicalResultId: number,
+  cctaMedicalResultId: number,
+): Promise<MedicalResultDetail> {
+  if (![patientId, xcaMedicalResultId, cctaMedicalResultId].every((value) => Number.isSafeInteger(value) && value > 0)) {
+    throw new ApiError('통합할 환자 및 2D·3D 보고서 정보가 올바르지 않습니다.', 400)
+  }
+  const created = await request<unknown>(`/api/patients/${patientId}/medical-results/`, {
+    method: 'POST',
+    refreshOnUnauthorized: false,
+    body: JSON.stringify({
+      patient_id: patientId,
+      report_type: 'INTEGRATED',
+      xca_medical_result_id: xcaMedicalResultId,
+      ccta_medical_result_id: cctaMedicalResultId,
+    }),
+  })
+  const root = isRecord(created) ? created : {}
+  const medical = isRecord(root.medical_result) ? root.medical_result : root
+  const resultId = readNumber(medical, 'id', 'medical_result_id')
+  if (!resultId) throw new ApiError('통합 결과보고서 초안을 만들지 못했습니다.', 500)
+  return getMedicalResultDetail(resultId)
+}
+
 export async function getAngiographyFrames(
   sequenceId: number,
 ): Promise<AngiographyFrame[]> {
@@ -4224,8 +4250,17 @@ export async function getPatientFollowUpRecords(patientId: number): Promise<Pati
 
 export type ClinicalInputPayload = Record<string, number | string>
 
+export interface CCTAAnalysisListItem {
+  id: number
+  examination: number
+  analysis_type: 'CCTA'
+  status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
+  requested_at?: string | null
+  completed_at?: string | null
+}
+
 export interface CTAIAnalysis {
-  analysis: { id: number; status: string }
+  analysis: CCTAAnalysisListItem
   jobs: Array<{ id: number; status: string; error_message?: string | null; progress_percent?: number | string | null }>
   results?: Array<{ id: number; result_type: string; summary_text: string; status: string; generated_at: string }>
 }
@@ -4250,13 +4285,30 @@ export function getCTAIAnalysis(id: number): Promise<CTAIAnalysis> {
   return request<CTAIAnalysis>(`/api/ai-analyses/${id}/`)
 }
 
-export async function loadLatestCTAIAnalysis(patientId: number, examinationId: number): Promise<CTAIAnalysis | null> {
-  const listed = await request<Array<{ id: number; examination: number; analysis_type: string; status: string }>>(
+/** 결과보고서 화면에서 환자별 완료 CCTA 분석을 조회한다.
+ * 동일 검사에 재분석이 여러 번 있으면 가장 최근 성공 결과만 노출한다. */
+export async function getPatientCCTAAnalyses(patientId: number): Promise<CCTAAnalysisListItem[]> {
+  const listed = await request<CCTAAnalysisListItem[]>(
     `/api/ai-analyses/?patient_id=${patientId}&type=CCTA&status=SUCCEEDED`,
   )
-  const matches = (Array.isArray(listed) ? listed : [])
-    .filter((item) => item.examination === examinationId && item.analysis_type === 'CCTA' && item.status === 'SUCCEEDED')
-    .sort((a, b) => b.id - a.id)
+  const seenExaminations = new Set<number>()
+  return (Array.isArray(listed) ? listed : [])
+    .filter((item) => item.analysis_type === 'CCTA' && item.status === 'SUCCEEDED')
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.completed_at || left.requested_at || '') || left.id
+      const rightTime = Date.parse(right.completed_at || right.requested_at || '') || right.id
+      return rightTime - leftTime
+    })
+    .filter((item) => {
+      if (seenExaminations.has(item.examination)) return false
+      seenExaminations.add(item.examination)
+      return true
+    })
+}
+
+export async function loadLatestCTAIAnalysis(patientId: number, examinationId: number): Promise<CTAIAnalysis | null> {
+  const matches = (await getPatientCCTAAnalyses(patientId))
+    .filter((item) => item.examination === examinationId)
   return matches[0] ? getCTAIAnalysis(matches[0].id) : null
 }
 

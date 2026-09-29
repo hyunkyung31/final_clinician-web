@@ -1709,3 +1709,154 @@ html[data-theme='dark'] .ws-dur-action-buttons button.danger {
   font-size: 10px;
   font-weight: 700;
 }
+
+/* Use the available desktop canvas so the summary reads as a dashboard, not a
+   compressed strip above an empty page. Tablet/mobile layouts keep their
+   existing compact flow. */
+@container (min-width: 1081px) {
+  .ws-hub-body {
+    padding: 12px 18px 18px;
+  }
+
+  .ws-hub-grid-clean {
+    min-height: min(650px, calc(100vh - 150px));
+    grid-template-columns:
+      minmax(220px, 250px)
+      minmax(520px, 1fr)
+      minmax(330px, 360px);
+    gap: 14px;
+    align-items: stretch;
+  }
+
+  .ws-hub-grid-clean > .ws-col {
+    gap: 12px;
+  }
+
+  .ws-hub-grid-clean .ws-card {
+    padding: 14px 16px;
+    border-radius: 12px;
+  }
+
+  .ws-hub-grid-clean .ws-card > header {
+    margin-bottom: 12px;
+  }
+
+  .ws-hub-grid-clean .ws-card > header h3,
+  .ws-hub-grid-clean .ws-card > header strong {
+    font-size: 14px;
+  }
+
+  .ws-hub-grid-clean .ws-col-left .ws-card-exams {
+    min-height: 420px;
+    flex: 1 1 auto;
+  }
+
+  .ws-hub-grid-clean .ws-filters {
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .ws-hub-grid-clean .ws-filters button {
+    min-height: 26px;
+    padding: 0 10px;
+  }
+
+  .ws-hub-grid-clean .ws-exam-row {
+    gap: 8px;
+    margin-bottom: 6px;
+    padding: 9px 8px;
+  }
+
+  .ws-hub-grid-clean .ws-exam-row strong {
+    font-size: 12px;
+  }
+
+  .ws-hub-grid-clean .ws-hub-banner {
+    height: 84px;
+    min-height: 84px;
+    gap: 12px;
+    padding: 0 16px;
+    border-radius: 12px;
+  }
+
+  .ws-hub-grid-clean .ws-hub-banner-mark {
+    width: 42px;
+    height: 42px;
+  }
+
+  .ws-hub-grid-clean .ws-hub-banner strong {
+    font-size: 16px;
+  }
+
+  .ws-hub-grid-clean .ws-synthesis {
+    min-height: 188px;
+  }
+
+  .ws-hub-grid-clean .ws-synthesis .lead {
+    margin-bottom: 10px;
+    font-size: 17px;
+  }
+
+  .ws-hub-grid-clean .ws-list {
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .ws-hub-grid-clean .ws-ai-grid,
+  .ws-hub-grid-clean .ws-ai-card {
+    min-height: 190px;
+  }
+
+  .ws-hub-grid-clean .ws-ai-grid {
+    gap: 10px;
+  }
+
+  .ws-hub-grid-clean .ws-ai-card .metric {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .ws-hub-grid-clean .ws-card-recommend {
+    min-height: 140px;
+  }
+
+  .ws-hub-grid-clean .ws-col-right {
+    gap: 12px;
+    padding: 10px;
+  }
+
+  .ws-hub-grid-clean .ws-overview-card {
+    gap: 12px;
+  }
+
+  .ws-hub-grid-clean .ws-overview-card > header small {
+    font-size: 10px;
+  }
+
+  .ws-hub-grid-clean .ws-overview-block {
+    gap: 7px;
+    padding: 11px;
+  }
+
+  .ws-hub-grid-clean .ws-overview-title > span {
+    font-size: 11px;
+  }
+
+  .ws-hub-grid-clean .ws-overview-row {
+    padding: 9px;
+  }
+
+  .ws-hub-grid-clean .ws-overview-row strong {
+    font-size: 11px;
+  }
+
+  .ws-hub-grid-clean .ws-overview-row small,
+  .ws-hub-grid-clean .ws-overview-row > b {
+    font-size: 9px;
+  }
+
+  .ws-hub-grid-clean .ws-card-sign {
+    min-height: 190px;
+    flex: 1 1 auto;
+  }
+}

@@ -2,10 +2,13 @@ import { useEffect, useId, useState } from 'react'
 import { FileText, LoaderCircle, Search } from 'lucide-react'
 import type { MedicalReportType, MedicalResultDetail, PatientReportSummary, PatientSummary, ReportAiSummary, ReportXcaAttachment, StaffDoctor, StaffIdentity } from '../types'
 import {
+  createPatientMedicalResult,
   getClinicalAIAnalysis,
+  getCTAIAnalysis,
   getFileContentObjectUrl,
   getMedicalResultDetail,
   getPatientClinicalAnalyses,
+  getPatientCCTAAnalyses,
   getPatientReports,
   getPatientsPage,
   getReportDownload,
@@ -14,11 +17,12 @@ import {
   saveMedicalResultConclusion,
   signoffMedicalResult,
 } from '../api/client'
-import type { ClinicalAIAnalysis, ClinicalAIAnalysisListItem, ClinicalShapExplanation } from '../api/client'
+import type { CCTAAnalysisListItem, CTAIAnalysis, ClinicalAIAnalysis, ClinicalAIAnalysisListItem, ClinicalShapExplanation } from '../api/client'
 import { getDoctorSignature } from '../doctorSignatures'
 import './report-workspace.css'
 import { CLINICAL_MODEL_DISCLOSURE } from '../clinicalModelDisclosure'
 import { ClinicalAiReportDetail } from './ClinicalAiReportDetail'
+import { CCTAReportDraft } from './CCTAReportDraft'
 
 interface ReportWorkspaceProps {
   selectedPatient: PatientSummary | null
@@ -73,6 +77,7 @@ function clinicalSignalLabel(
 }
 async function getAllPatientReports(patientId: number) {
   const responses = await Promise.allSettled([
+    getPatientReports(patientId),
     getPatientReports(patientId, 'XCA_2D'),
     getPatientReports(patientId, 'CCTA_3D'),
   ])
@@ -283,17 +288,23 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
   const [reportSearchError, setReportSearchError] = useState('')
   const [patientReports, setPatientReports] = useState<PatientReportSummary[]>([])
   const [clinicalReports, setClinicalReports] = useState<ClinicalAIAnalysisListItem[]>([])
+  const [cctaAnalyses, setCctaAnalyses] = useState<CCTAAnalysisListItem[]>([])
   const [reportTypeFilter, setReportTypeFilter] = useState<'ALL' | MedicalReportType | 'CLINICAL_AI'>('ALL')
   const [reportsLoading, setReportsLoading] = useState(false)
   const [reportsError, setReportsError] = useState('')
   const [selectedResultId, setSelectedResultId] = useState<number | null>(null)
   const [selectedClinicalAnalysisId, setSelectedClinicalAnalysisId] = useState<number | null>(null)
+  const [selectedCctaAnalysisId, setSelectedCctaAnalysisId] = useState<number | null>(null)
   const [detail, setDetail] = useState<MedicalResultDetail | null>(null)
   const [clinicalDetail, setClinicalDetail] = useState<ClinicalAIAnalysis | null>(null)
+  const [cctaDetail, setCctaDetail] = useState<CTAIAnalysis | null>(null)
+  const [cctaReportBusy, setCctaReportBusy] = useState(false)
   const [clinicalShap, setClinicalShap] = useState<ClinicalShapExplanation | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [conclusion, setConclusion] = useState('')
   const [busyAction, setBusyAction] = useState('')
+  const [integratedXcaId, setIntegratedXcaId] = useState('')
+  const [integratedCctaId, setIntegratedCctaId] = useState('')
   const [reportDownloadingId, setReportDownloadingId] = useState<number | null>(null)
   const [confirmSignoff, setConfirmSignoff] = useState(false)
   const currentDoctorSignature = getDoctorSignature(staffIdentity?.username)
@@ -303,12 +314,21 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
     setReportPatient(selectedPatient)
     setSelectedResultId(null)
     setSelectedClinicalAnalysisId(null)
+    setSelectedCctaAnalysisId(null)
     setDetail(null)
     setClinicalDetail(null)
+    setCctaDetail(null)
     setClinicalShap(null)
     setConclusion('')
+    setIntegratedXcaId('')
+    setIntegratedCctaId('')
     setReportsError('')
   }, [selectedPatient?.backendId])
+
+  useEffect(() => {
+    setIntegratedXcaId('')
+    setIntegratedCctaId('')
+  }, [reportPatient?.backendId])
 
   useEffect(() => {
     const keyword = reportSearchKeyword.trim()
@@ -338,11 +358,14 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
     if (!reportPatient?.backendId) {
       setPatientReports([])
       setClinicalReports([])
+      setCctaAnalyses([])
       setReportsError('')
       setSelectedResultId(null)
       setSelectedClinicalAnalysisId(null)
+      setSelectedCctaAnalysisId(null)
       setDetail(null)
       setClinicalDetail(null)
+      setCctaDetail(null)
       setClinicalShap(null)
       return
     }
@@ -352,16 +375,20 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
     void Promise.allSettled([
       getAllPatientReports(reportPatient.backendId),
       getPatientClinicalAnalyses(reportPatient.backendId),
+      getPatientCCTAAnalyses(reportPatient.backendId),
     ])
-      .then(([medical, clinical]) => {
+      .then(([medical, clinical, ccta]) => {
         if (!active) return
         setPatientReports(medical.status === 'fulfilled' ? medical.value : [])
         setClinicalReports(clinical.status === 'fulfilled' ? clinical.value : [])
-        if (medical.status === 'rejected' && clinical.status === 'rejected') {
+        setCctaAnalyses(ccta.status === 'fulfilled' ? ccta.value : [])
+        if (medical.status === 'rejected' && clinical.status === 'rejected' && ccta.status === 'rejected') {
           const reason = medical.reason instanceof Error ? medical.reason.message : '보고서 목록을 불러오지 못했습니다.'
           setReportsError(reason)
         } else if (clinical.status === 'rejected') {
           setReportsError('Clinical AI 결과 목록을 불러오지 못했습니다.')
+        } else if (ccta.status === 'rejected') {
+          setReportsError('3D CCTA 분석 결과 목록을 불러오지 못했습니다.')
         }
       })
       .finally(() => { if (active) setReportsLoading(false) })
@@ -404,6 +431,26 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
       .finally(() => { if (active) setDetailLoading(false) })
     return () => { active = false }
   }, [selectedClinicalAnalysisId])
+
+  useEffect(() => {
+    if (!selectedCctaAnalysisId) {
+      setCctaDetail(null)
+      return
+    }
+    let active = true
+    setDetailLoading(true)
+    setReportsError('')
+    void getCTAIAnalysis(selectedCctaAnalysisId)
+      .then((payload) => { if (active) setCctaDetail(payload) })
+      .catch((error) => {
+        if (active) {
+          setCctaDetail(null)
+          setReportsError(error instanceof Error ? error.message : '3D CCTA 분석 결과를 불러오지 못했습니다.')
+        }
+      })
+      .finally(() => { if (active) setDetailLoading(false) })
+    return () => { active = false }
+  }, [selectedCctaAnalysisId])
 
   useEffect(() => {
     if (!selectedResultId) {
@@ -480,15 +527,28 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
     && (workflow.canEdit || workflow.canSignoff),
   )
   const visibleReports = reportTypeFilter === 'ALL'
-    ? patientReports.filter((item) => item.reportType !== 'INTEGRATED')
+    ? patientReports
     : reportTypeFilter === 'CLINICAL_AI'
       ? []
       : patientReports.filter((item) => item.reportType === reportTypeFilter)
   const visibleClinicalReports = reportTypeFilter === 'ALL' || reportTypeFilter === 'CLINICAL_AI'
     ? clinicalReports
     : []
-  const totalReportCount = patientReports.filter((item) => item.reportType !== 'INTEGRATED').length + clinicalReports.length
-  const visibleReportCount = visibleReports.length + visibleClinicalReports.length
+  const cctaReportExaminations = new Set(
+    patientReports
+      .filter((item) => item.reportType === 'CCTA_3D' && item.examinationId)
+      .map((item) => item.examinationId as number),
+  )
+  const pendingCctaReports = cctaAnalyses.filter((item) => !cctaReportExaminations.has(item.examination))
+  const visibleCctaReports = reportTypeFilter === 'ALL' || reportTypeFilter === 'CCTA_3D'
+    ? pendingCctaReports
+    : []
+  const selectedCctaAnalysis = cctaAnalyses.find((item) => item.id === selectedCctaAnalysisId) ?? null
+  const selectedCctaResult = cctaDetail?.results?.find((item) => item.status !== 'INVALID') ?? null
+  const signedXcaReports = patientReports.filter((item) => item.reportType === 'XCA_2D' && ['SIGNED', 'RELEASED'].includes(item.status))
+  const signedCctaReports = patientReports.filter((item) => item.reportType === 'CCTA_3D' && ['SIGNED', 'RELEASED'].includes(item.status))
+  const totalReportCount = patientReports.length + clinicalReports.length + pendingCctaReports.length
+  const visibleReportCount = visibleReports.length + visibleClinicalReports.length + visibleCctaReports.length
 
   return (
     <section className="feature-page module-page report-workspace">
@@ -513,7 +573,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
           {reportSearchKeyword.trim() && (
             <div className="module-report-search-results">
               {reportSearchResults.map((patient) => (
-                <button className={reportPatient?.backendId === patient.backendId ? 'active' : ''} key={patient.id} onClick={() => { setReportPatient(patient); setReportSearchKeyword(''); setReportSearchResults([]); setSelectedResultId(null); setSelectedClinicalAnalysisId(null) }} type="button">
+                <button className={reportPatient?.backendId === patient.backendId ? 'active' : ''} key={patient.id} onClick={() => { setReportPatient(patient); setReportSearchKeyword(''); setReportSearchResults([]); setSelectedResultId(null); setSelectedClinicalAnalysisId(null); setSelectedCctaAnalysisId(null) }} type="button">
                   <strong>{patient.name}</strong><span>{patient.id}</span>
                 </button>
               ))}
@@ -524,12 +584,46 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
           <small>선택된 환자</small>
           <h2>{reportPatient?.name ?? '선택된 환자 없음'}</h2>
           <p>{reportPatient?.id ?? '환자를 검색해 선택해주세요.'}</p>
+          {reportPatient?.backendId && (
+            <div className="integrated-report-source-picker">
+              <strong>2D·3D 통합 결과보고서</strong>
+              <p>최종 승인된 2D와 3D 결과를 선택해 하나의 검토용 초안으로 묶습니다.</p>
+              <label>2D XCA 보고서
+                <select value={integratedXcaId} onChange={(event) => setIntegratedXcaId(event.target.value)}>
+                  <option value="">선택하세요</option>
+                  {signedXcaReports.map((item) => <option key={item.medicalResultId} value={item.medicalResultId}>#{item.medicalResultId} · {item.latestSignoff?.doctorName ?? item.doctorName ?? '의료진'} · {formatDate(item.performedAt || item.visitDate)}</option>)}
+                </select>
+              </label>
+              <label>3D CCTA 보고서
+                <select value={integratedCctaId} onChange={(event) => setIntegratedCctaId(event.target.value)}>
+                  <option value="">선택하세요</option>
+                  {signedCctaReports.map((item) => <option key={item.medicalResultId} value={item.medicalResultId}>#{item.medicalResultId} · {item.latestSignoff?.doctorName ?? item.doctorName ?? '의료진'} · {formatDate(item.performedAt || item.visitDate)}</option>)}
+                </select>
+              </label>
+              <button
+                className="report-primary-btn"
+                disabled={busyAction === 'create-integrated' || !integratedXcaId || !integratedCctaId}
+                onClick={() => void runAction('create-integrated', async () => {
+                  const created = await createPatientMedicalResult(reportPatient.backendId as number, Number(integratedXcaId), Number(integratedCctaId))
+                  setSelectedResultId(created.medicalResultId)
+                  setSelectedClinicalAnalysisId(null)
+                  setSelectedCctaAnalysisId(null)
+                  setReportTypeFilter('INTEGRATED')
+                  return created
+                })}
+                type="button"
+              >
+                {busyAction === 'create-integrated' ? '통합 중…' : '선택한 2D·3D 통합 초안 생성'}
+              </button>
+              {(!signedXcaReports.length || !signedCctaReports.length) && <small>최종 승인된 2D XCA와 3D CCTA 보고서가 각각 필요합니다.</small>}
+            </div>
+          )}
         </section>
         <section className="feature-card module-table-card">
           <header><h2>보고서 목록</h2><span>총 {totalReportCount}건</span></header>
           <div className="report-type-tabs" role="tablist" aria-label="보고서 종류">
-            {([['ALL', '전체'], ['CLINICAL_AI', 'Clinical AI'], ['XCA_2D', '2D XCA'], ['CCTA_3D', '3D CCTA']] as const).map(([value, label]) => (
-              <button aria-selected={reportTypeFilter === value} className={reportTypeFilter === value ? 'active' : ''} key={value} onClick={() => { setReportTypeFilter(value); setSelectedResultId(null); setSelectedClinicalAnalysisId(null) }} role="tab" type="button">{label}</button>
+            {([['ALL', '전체'], ['CLINICAL_AI', 'Clinical AI'], ['XCA_2D', '2D XCA'], ['CCTA_3D', '3D CCTA'], ['INTEGRATED', '통합']] as const).map(([value, label]) => (
+              <button aria-selected={reportTypeFilter === value} className={reportTypeFilter === value ? 'active' : ''} key={value} onClick={() => { setReportTypeFilter(value); setSelectedResultId(null); setSelectedClinicalAnalysisId(null); setSelectedCctaAnalysisId(null) }} role="tab" type="button">{label}</button>
             ))}
           </div>
           {reportsError && <p className="api-inline-error">{reportsError}</p>}
@@ -539,7 +633,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
               <div className="module-table-head"><span>검사일</span><span>보고서 종류</span><span>상태</span><span>작성/서명 의료진</span><span /></div>
               {visibleReports.map((item) => (
                 <div className={`module-table-row ${selectedResultId === item.medicalResultId ? 'is-selected' : ''}`} key={`medical-${item.medicalResultId}`}>
-                  <button className="report-row-select" onClick={() => { setSelectedResultId(item.medicalResultId); setSelectedClinicalAnalysisId(null) }} type="button">
+                  <button className="report-row-select" onClick={() => { setSelectedResultId(item.medicalResultId); setSelectedClinicalAnalysisId(null); setSelectedCctaAnalysisId(null) }} type="button">
                     <span>{(item.performedAt || item.visitDate) ? new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium' }).format(new Date(item.performedAt || item.visitDate!)) : '-'}</span>
                     <span><strong>{reportTypeLabels[item.reportType]}</strong>{item.examName ? ` · ${item.examName}` : ''}</span>
                     <b className={`status-pill status-report-${item.status.toLowerCase()}`}>{reportStatusLabels[item.status] ?? item.status}</b>
@@ -557,13 +651,24 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
               ))}
               {visibleClinicalReports.map((item) => (
                 <div className={`module-table-row ${selectedClinicalAnalysisId === item.id ? 'is-selected' : ''}`} key={`clinical-${item.id}`}>
-                  <button className="report-row-select" onClick={() => { setSelectedClinicalAnalysisId(item.id); setSelectedResultId(null) }} type="button">
+                  <button className="report-row-select" onClick={() => { setSelectedClinicalAnalysisId(item.id); setSelectedResultId(null); setSelectedCctaAnalysisId(null) }} type="button">
                     <span>{formatDate(item.completed_at || item.requested_at)}</span>
                     <span><strong>Clinical AI</strong>{` · 검사 #${item.examination}`}</span>
                     <b className="status-pill status-report-clinical">분석 완료</b>
                     <span>의료진 검토용</span>
                   </button>
-                  <button onClick={() => { setSelectedClinicalAnalysisId(item.id); setSelectedResultId(null) }} title="Clinical AI 결과 상세에서 PDF 저장" type="button">보기</button>
+                  <button onClick={() => { setSelectedClinicalAnalysisId(item.id); setSelectedResultId(null); setSelectedCctaAnalysisId(null) }} title="Clinical AI 결과 상세에서 PDF 저장" type="button">보기</button>
+                </div>
+              ))}
+              {visibleCctaReports.map((item) => (
+                <div className={`module-table-row ${selectedCctaAnalysisId === item.id ? 'is-selected' : ''}`} key={`ccta-analysis-${item.id}`}>
+                  <button className="report-row-select" onClick={() => { setSelectedCctaAnalysisId(item.id); setSelectedResultId(null); setSelectedClinicalAnalysisId(null) }} type="button">
+                    <span>{formatDate(item.completed_at || item.requested_at)}</span>
+                    <span><strong>3D CCTA</strong>{` · 검사 #${item.examination}`}</span>
+                    <b className="status-pill status-report-clinical">분석 완료</b>
+                    <span>보고서 작성 전</span>
+                  </button>
+                  <button onClick={() => { setSelectedCctaAnalysisId(item.id); setSelectedResultId(null); setSelectedClinicalAnalysisId(null) }} title="3D CCTA 분석 결과 확인 및 보고서 작성" type="button">보기</button>
                 </div>
               ))}
               {reportsLoading && <p className="report-empty-inline">목록을 불러오는 중…</p>}
@@ -690,6 +795,42 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
           staffDoctor={staffDoctor}
           staffIdentity={staffIdentity}
         />
+      )}
+      {selectedCctaAnalysisId && detailLoading && !cctaDetail && (
+        <section className="feature-card report-detail-card"><p className="report-empty-inline">3D CCTA 분석 결과를 불러오는 중…</p></section>
+      )}
+      {selectedCctaAnalysis && cctaDetail && reportPatient?.backendId && (
+        <section className="feature-card report-detail-card">
+          <header className="report-detail-header">
+            <div>
+              <small>3D CCTA AI 분석 #{selectedCctaAnalysis.id}</small>
+              <h2>{reportPatient.name} · 검사 #{selectedCctaAnalysis.examination}</h2>
+            </div>
+            <b className="status-pill status-report-clinical">분석 완료</b>
+          </header>
+          <article className="report-section">
+            <h3>1. AI 분석 결과</h3>
+            <dl className="report-meta-grid">
+              <div><dt>분석 완료</dt><dd>{formatDate(selectedCctaAnalysis.completed_at || selectedCctaAnalysis.requested_at)}</dd></div>
+              <div><dt>분석 ID</dt><dd>#{selectedCctaAnalysis.id}</dd></div>
+              <div><dt>검사 ID</dt><dd>#{selectedCctaAnalysis.examination}</dd></div>
+              <div><dt>결과 상태</dt><dd>{selectedCctaResult?.status ?? '결과 확인 필요'}</dd></div>
+            </dl>
+            <p>{selectedCctaResult?.summary_text || '저장된 CCTA 석회화 분석 결과를 의료진이 확인해주세요.'}</p>
+          </article>
+          {selectedCctaResult ? (
+            <CCTAReportDraft
+              analysisResultId={selectedCctaResult.id}
+              disabled={cctaReportBusy}
+              examinationId={selectedCctaAnalysis.examination}
+              onBusyChange={setCctaReportBusy}
+              onReportChange={() => { void reloadList(reportPatient.backendId!) }}
+              patientId={reportPatient.backendId!}
+            />
+          ) : (
+            <p className="api-inline-error" role="alert">보고서에 연결할 수 있는 유효한 CCTA 결과가 없습니다.</p>
+          )}
+        </section>
       )}
       {confirmSignoff && detail && (
         <div className="report-modal-backdrop" role="presentation" onClick={() => setConfirmSignoff(false)}>
