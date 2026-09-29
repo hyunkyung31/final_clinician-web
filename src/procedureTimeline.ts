@@ -45,6 +45,24 @@ export function isDeviceTimelineCategory(category: string): boolean {
   return category === 'Guidewire' || category === 'Balloon' || category === 'Stent'
 }
 
+export function resolvedTimelineContent(sourceType: ProcedureTimelineSource, content: string, material: string): string {
+  const normalizedContent = content.trim()
+  if (normalizedContent) return normalizedContent
+  return sourceType === 'DEVICE_USAGE' ? material.trim() : ''
+}
+
+export function syncedDeviceContent(
+  sourceType: ProcedureTimelineSource,
+  content: string,
+  previousMaterial: string,
+  nextMaterial: string,
+): string {
+  if (sourceType !== 'DEVICE_USAGE') return content
+  const normalizedContent = content.trim().toLowerCase()
+  const normalizedPreviousMaterial = previousMaterial.trim().toLowerCase()
+  return !normalizedContent || normalizedContent === normalizedPreviousMaterial ? nextMaterial : content
+}
+
 export interface TimelineSortItem {
   id: string
   occurredAt?: string
