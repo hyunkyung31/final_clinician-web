@@ -29,7 +29,6 @@ import {
   getMedications,
   getPrescriptionDetail,
   getPrescriptions,
-  reauthenticateStaff,
   runPrescriptionDurCheck,
   signPrescription,
   updatePrescriptionItem,
@@ -44,6 +43,7 @@ import type {
   PrescriptionItemSummary,
   PrescriptionSummary,
 } from "../types";
+import { DoctorSignaturePreview } from "./DoctorSignaturePreview";
 
 interface PrescriptionPanelProps {
   patientId?: number;
@@ -225,7 +225,7 @@ export function PrescriptionPanel({
   const [prescriptionItemCounts, setPrescriptionItemCounts] =
     useState<Record<number, number>>({});
   const [showSignForm, setShowSignForm] = useState(false);
-  const [signPassword, setSignPassword] = useState("");
+  const [signatureShown, setSignatureShown] = useState(false);
   const [signing, setSigning] = useState(false);
 
   const activePrescription =
@@ -306,7 +306,7 @@ export function PrescriptionPanel({
       setDurCheck(null);
       setDurMessage("");
       setShowSignForm(false);
-      setSignPassword("");
+      setSignatureShown(false);
     } catch (requestError) {
       setDetail(null);
 
@@ -371,7 +371,7 @@ export function PrescriptionPanel({
       setPrescriptionItemCounts({});
       setDurCheck(null);
       setShowSignForm(false);
-      setSignPassword("");
+      setSignatureShown(false);
       setError("");
       return;
     }
@@ -384,7 +384,7 @@ export function PrescriptionPanel({
     setDurCheck(null);
     setPrescriptionItemCounts({});
     setShowSignForm(false);
-    setSignPassword("");
+    setSignatureShown(false);
     setShowCancelForm(false);
     setCancelReason("");
     setEditor(emptyEditor);
@@ -392,7 +392,7 @@ export function PrescriptionPanel({
 
     Promise.all([
       getMedications(),
-      getMedicationFavorites(),
+      getMedicationFavorites().catch(() => []),
       getPrescriptions(patientId),
     ])
       .then(
@@ -835,18 +835,17 @@ export function PrescriptionPanel({
 
   const handleSignPrescription = async () => {
     if (!patientId || !detail || detail.prescription.status !== "DRAFT") return;
-    if (!signPassword.trim()) {
-      setError("처방 확정을 위해 로그인 비밀번호를 입력해주세요.");
+    if (!signatureShown) {
+      setError("등록된 의료진 서명을 먼저 확인해주세요.");
       return;
     }
     setSigning(true);
     setError("");
     try {
-      const reauthToken = await reauthenticateStaff(signPassword);
-      const signed = await signPrescription(detail.prescription.id, reauthToken);
+      const signed = await signPrescription(detail.prescription.id);
       setDetail(signed);
       setPrescriptionNotes(signed.prescription.notes);
-      setSignPassword("");
+      setSignatureShown(false);
       setShowSignForm(false);
       await refreshPrescriptions(patientId, signed.prescription.id);
     } catch (requestError) {
@@ -1527,11 +1526,11 @@ export function PrescriptionPanel({
               className="primary"
               type="button"
               disabled={signing || durLoading || !durCheck || unresolvedCriticalDUR || detail.items.length === 0}
-              title={!durCheck ? "DUR 검사 후 처방을 확정할 수 있습니다." : unresolvedCriticalDUR ? "처리되지 않은 중대 DUR 경고가 있습니다." : "처방 확정"}
+              title={!durCheck ? "DUR 검사 후 처방을 서명·확정할 수 있습니다." : unresolvedCriticalDUR ? "처리되지 않은 중대 DUR 경고가 있습니다." : "처방 서명 및 확정"}
               onClick={() => setShowSignForm(true)}
             >
               <FileSignature size={14} strokeWidth={1.8} />
-              처방 확정
+              처방 서명 및 확정
             </button>
           )}
 
@@ -1554,23 +1553,20 @@ export function PrescriptionPanel({
         <div className="prescription-sign-form">
           <div>
             <FileSignature size={18} />
-            <span><strong>처방을 확정하시겠습니까?</strong><small>등록된 의료진 서명으로 확정되며 이후 약품을 수정할 수 없습니다.</small></span>
+            <span><strong>처방을 서명하고 확정하시겠습니까?</strong><small>검사 오더와 별개로 처리되며, 서명 이후에는 약품을 수정할 수 없습니다.</small></span>
           </div>
-          <label>
-            로그인 비밀번호 재확인
-            <input
-              autoComplete="current-password"
-              type="password"
-              value={signPassword}
-              onChange={(event) => setSignPassword(event.target.value)}
-              placeholder="비밀번호"
-            />
-          </label>
+          <DoctorSignaturePreview
+            actionLabel="등록 서명 확인"
+            description="로그인한 처방 의사의 등록 서명입니다. 서명을 확인하면 현재 처방에 서명 파일과 확정 시각이 기록됩니다."
+            disabled={signing}
+            resetKey={`${activePrescription.id}:${showSignForm}`}
+            onShownChange={setSignatureShown}
+          />
           <div>
-            <button className="secondary" disabled={signing} onClick={() => { setShowSignForm(false); setSignPassword(""); }} type="button">돌아가기</button>
-            <button className="primary" disabled={signing || !signPassword.trim()} onClick={() => void handleSignPrescription()} type="button">
+            <button className="secondary" disabled={signing} onClick={() => { setShowSignForm(false); setSignatureShown(false); }} type="button">돌아가기</button>
+            <button className="primary" disabled={signing || !signatureShown} onClick={() => void handleSignPrescription()} type="button">
               {signing ? <LoaderCircle className="spin" size={14} /> : <FileSignature size={14} />}
-              {signing ? "확정 중…" : "재인증 후 확정"}
+              {signing ? "확정 중…" : "등록 서명으로 확정"}
             </button>
           </div>
         </div>

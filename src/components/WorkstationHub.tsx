@@ -53,6 +53,7 @@ import { StudyDicomViewer } from './StudyDicomViewer'
 import '../workstation-hub.css'
 
 interface WorkstationHubProps {
+  active: boolean
   patient: PatientSummary
   patientDetail: PatientDetail | null
   patientDetailLoading: boolean
@@ -91,6 +92,7 @@ const orderStatusLabel: Record<ExaminationOrderSummary['status'], string> = {
 }
 
 export function WorkstationHub({
+  active,
   patient,
   patientDetail,
   patientDetailLoading,
@@ -147,34 +149,73 @@ export function WorkstationHub({
   }, [])
 
   useEffect(() => {
-    if (!patientId) return
-    let active = true
-    void Promise.all([
-      getPatientReports(patientId),
-      getExaminationOrders(patientId),
-      getPrescriptions(patientId),
-    ])
-      .then(async ([reportItems, orderItems, prescriptionItems]) => {
-        if (!active) return
-        setReports(reportItems)
-        setOrders([...orderItems].sort((left, right) => (
+    if (!active || !patientId) return
+    let mounted = true
+    setHubError('')
+
+    void (async () => {
+      const [reportResult, orderResult, prescriptionResult] = await Promise.allSettled([
+        getPatientReports(patientId),
+        getExaminationOrders(patientId),
+        getPrescriptions(patientId),
+      ])
+      if (!mounted) return
+
+      if (orderResult.status === 'fulfilled') {
+        setOrders([...orderResult.value].sort((left, right) => (
           (Date.parse(right.orderedAt) || right.id) - (Date.parse(left.orderedAt) || left.id)
         )))
+      }
 
-        const latestPrescription = [...prescriptionItems].sort((left, right) => (
-          (Date.parse(right.prescribedAt || right.updatedAt) || right.id) -
-          (Date.parse(left.prescribedAt || left.updatedAt) || left.id)
-        ))[0]
-        setPrescription(latestPrescription ? await getPrescriptionDetail(latestPrescription.id) : null)
+      if (prescriptionResult.status === 'fulfilled') {
+        const available = prescriptionResult.value.filter((item) => item.status !== 'CANCELED')
+        const byRecency = (left: typeof available[number], right: typeof available[number]) => (
+          (Date.parse(right.updatedAt || right.prescribedAt) || right.id) -
+          (Date.parse(left.updatedAt || left.prescribedAt) || left.id)
+        )
+        const currentEncounterPrescription = encounterId
+          ? available.filter((item) => item.encounterId === encounterId).sort(byRecency)[0]
+          : undefined
+        const latestPrescription = currentEncounterPrescription ?? [...available].sort(byRecency)[0]
 
-        const firstReport = reportItems[0]
-        setDetail(firstReport ? await getMedicalResultDetail(firstReport.medicalResultId) : null)
-      })
-      .catch((error) => {
-        if (active) setHubError(clinicianErrorMessage(error, HUB_COPY.loadFailed))
-      })
-    return () => { active = false }
-  }, [patientId])
+        if (latestPrescription) {
+          try {
+            const nextPrescription = await getPrescriptionDetail(latestPrescription.id)
+            if (mounted) setPrescription(nextPrescription)
+          } catch (error) {
+            if (mounted) setHubError(clinicianErrorMessage(error, '최근 처방 상세를 불러오지 못했습니다.'))
+          }
+        } else {
+          setPrescription(null)
+        }
+      }
+
+      if (reportResult.status === 'fulfilled') {
+        setReports(reportResult.value)
+        const firstReport = reportResult.value[0]
+        if (firstReport) {
+          try {
+            const nextDetail = await getMedicalResultDetail(firstReport.medicalResultId)
+            if (mounted) setDetail(nextDetail)
+          } catch {
+            // 처방과 오더 요약은 보고서 상세 조회 실패와 독립적으로 표시합니다.
+          }
+        } else {
+          setDetail(null)
+        }
+      }
+
+      if (
+        reportResult.status === 'rejected' &&
+        orderResult.status === 'rejected' &&
+        prescriptionResult.status === 'rejected'
+      ) {
+        setHubError(HUB_COPY.loadFailed)
+      }
+    })()
+
+    return () => { mounted = false }
+  }, [active, encounterId, patientId])
 
   const filteredStudies = imagingStudies.filter((study) => (
     examFilter === 'ALL' || studyFilterKey(study) === examFilter

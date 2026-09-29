@@ -2367,8 +2367,8 @@ function mapExaminationOrder(
   const id = readNumber(item, 'id')
   const encounter = nestedRecord(item, 'encounter')
   const examinationType = nestedRecord(item, 'examination_type')
-  const encounterId = readNumber(item, 'encounter_id') ?? (encounter ? readNumber(encounter, 'id') : undefined)
-  const examinationTypeId = readNumber(item, 'examination_type_id', 'type_id') ?? (examinationType ? readNumber(examinationType, 'id') : undefined)
+  const encounterId = readNumber(item, 'encounter_id', 'encounter') ?? (encounter ? readNumber(encounter, 'id') : undefined)
+  const examinationTypeId = readNumber(item, 'examination_type_id', 'type_id', 'examination_type') ?? (examinationType ? readNumber(examinationType, 'id') : undefined)
 
   if (
     id === undefined ||
@@ -3137,11 +3137,10 @@ export async function runPrescriptionDurCheck(
 
 export async function signPrescription(
   prescriptionId: number,
-  reauthToken: string,
 ): Promise<PrescriptionDetail> {
   const payload = await request<unknown>(`/api/prescriptions/${prescriptionId}/sign/`, {
     method: 'POST',
-    body: JSON.stringify({ reauth_token: reauthToken }),
+    body: JSON.stringify({ confirm_signature: true }),
   })
   const detail = mapPrescriptionDetail(payload)
   if (!detail) throw new ApiError('확정된 처방 정보를 확인하지 못했습니다.', 500)
