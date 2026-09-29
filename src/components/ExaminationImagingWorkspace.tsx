@@ -1240,6 +1240,17 @@ export function ExaminationImagingWorkspace({
         .map((exam) => ({ exam, stageLabel: visit.stageLabel, visitDate: visit.visitDate })),
     )
   }, [followUpRecords, patient?.backendId])
+  const clinicalExamHistory = useMemo(() => {
+    const records = followUpRecords
+    if (!records || records.patient.id !== patient?.backendId) return []
+    return records.visits.flatMap((visit) =>
+      visit.examinations.map((exam) => ({
+        code: exam.examinationType.code,
+        name: exam.examinationType.name,
+        status: exam.status,
+      })),
+    )
+  }, [followUpRecords, patient?.backendId])
   const selectedLabAi = selectLabExaminationForPatient(
     labAiCandidates,
     selectedLabExaminationId,
@@ -1713,6 +1724,7 @@ export function ExaminationImagingWorkspace({
               }
               initialInput={clinicalLabInput}
               initialMeasurements={selectedLabAi?.exam.result?.measurements ?? []}
+              existingExaminations={clinicalExamHistory}
               sourceLabel={
                 selectedLabAi?.stageLabel ??
                 (clinicalFeatureSnapshot ? '환자 등록 원본 임상기록' : '')

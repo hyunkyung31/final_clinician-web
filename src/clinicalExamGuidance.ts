@@ -4,12 +4,30 @@ export type ClinicalExamGuidanceTone =
   | 'noninvasive-review'
   | 'clinical-review'
 
+export type ClinicalExamCandidateId = 'XCA_CAG' | 'CCTA' | 'FUNCTIONAL_TEST'
+
+export interface ClinicalExamCandidate {
+  id: ClinicalExamCandidateId
+  pathway: '2D_INVASIVE' | '3D_NONINVASIVE'
+  pathwayLabel: string
+  title: string
+  purpose: string
+}
+
+export interface ClinicalExamHistoryItem {
+  code?: string
+  name?: string
+  status?: string
+}
+
 export interface ClinicalExamGuidance {
   tone: ClinicalExamGuidanceTone
   route: string
   summary: string
   checks: string[]
   sourceNote: string
+  candidates: ClinicalExamCandidate[]
+  excludedTests: string[]
 }
 
 interface ClinicalExamGuidanceInput {
@@ -17,9 +35,65 @@ interface ClinicalExamGuidanceInput {
   prediction: 0 | 1
   criticalLabCount: number
   modelWarningCount: number
+  existingExaminations?: ClinicalExamHistoryItem[]
 }
 
 const SOURCE_NOTE = '근거 경로: 2024 ESC Chronic Coronary Syndromes · 2021 AHA/ACC Chest Pain'
+
+const EXAM_CANDIDATES: Record<ClinicalExamCandidateId, ClinicalExamCandidate> = {
+  XCA_CAG: {
+    id: 'XCA_CAG',
+    pathway: '2D_INVASIVE',
+    pathwayLabel: '2D · 침습적 검사',
+    title: 'XCA/CAG 적응증 확인',
+    purpose: '고위험 소견의 원인 혈관을 확인하고 필요 시 치료 전략을 결정하기 위한 경로',
+  },
+  CCTA: {
+    id: 'CCTA',
+    pathway: '3D_NONINVASIVE',
+    pathwayLabel: '3D · 비침습적 해부학 검사',
+    title: 'CCTA 검토',
+    purpose: '안정 환자에서 관상동맥 해부학과 폐쇄성 CAD 가능성을 평가하는 경로',
+  },
+  FUNCTIONAL_TEST: {
+    id: 'FUNCTIONAL_TEST',
+    pathway: '3D_NONINVASIVE',
+    pathwayLabel: '비침습적 기능검사',
+    title: '기능검사 검토',
+    purpose: 'CCTA가 부적합하거나 허혈의 기능적 의미 확인이 필요한 경우의 경로',
+  },
+}
+
+function isActiveHistoryItem(item: ClinicalExamHistoryItem) {
+  return !/(CANCEL|VOID|REJECT|취소)/i.test(item.status ?? '')
+}
+
+function historyMatches(item: ClinicalExamHistoryItem, candidateId: ClinicalExamCandidateId) {
+  const text = `${item.code ?? ''} ${item.name ?? ''}`.toUpperCase()
+  if (candidateId === 'XCA_CAG') {
+    return /(^|[^A-Z])(XCA|CAG)([^A-Z]|$)|CORONARY\s*(ANGIO|ANGIOGRAPHY)|관상동맥.*조영/.test(text)
+  }
+  if (candidateId === 'CCTA') {
+    return /CCTA|CORONARY\s*(CTA|CT)|관상동맥.*(CT|전산화단층)/.test(text)
+  }
+  return /SPECT|PET|STRESS\s*(ECHO|MRI|TEST)|FUNCTIONAL|PERFUSION|부하.*(심초음파|검사)|심근.*관류/.test(text)
+}
+
+function availableCandidates(
+  ids: ClinicalExamCandidateId[],
+  existingExaminations: ClinicalExamHistoryItem[],
+) {
+  const excludedTests: string[] = []
+  const candidates = ids.flatMap((id) => {
+    const existing = existingExaminations.find(
+      (item) => isActiveHistoryItem(item) && historyMatches(item, id),
+    )
+    if (!existing) return [EXAM_CANDIDATES[id]]
+    excludedTests.push(`${EXAM_CANDIDATES[id].title} (${existing.status || '기시행/오더됨'})`)
+    return []
+  })
+  return { candidates, excludedTests }
+}
 
 function selected(values: Record<string, string>, name: string) {
   return Number(values[name]) === 1
@@ -41,6 +115,7 @@ export function buildClinicalExamGuidance({
   prediction,
   criticalLabCount,
   modelWarningCount,
+  existingExaminations = [],
 }: ClinicalExamGuidanceInput): ClinicalExamGuidance {
   const highRiskFindings: string[] = []
   const systolicBloodPressure = numeric(values, 'BP')
@@ -75,10 +150,13 @@ export function buildClinicalExamGuidance({
         ...modelRangeCheck(modelWarningCount),
       ],
       sourceNote: SOURCE_NOTE,
+      candidates: [],
+      excludedTests: [],
     }
   }
 
   if (highRiskFindings.length > 0) {
+    const pathway = availableCandidates(['XCA_CAG'], existingExaminations)
     return {
       tone: 'invasive-review',
       route: '침습적 관상동맥조영술(2D XCA/CAG) 적응증 우선 확인',
@@ -91,10 +169,12 @@ export function buildClinicalExamGuidance({
         ...modelRangeCheck(modelWarningCount),
       ],
       sourceNote: SOURCE_NOTE,
+      ...pathway,
     }
   }
 
   if (hasSymptoms || prediction === 1) {
+    const pathway = availableCandidates(['CCTA', 'FUNCTIONAL_TEST'], existingExaminations)
     const checks = [
       '급성 관상동맥증후군과 기타 응급 원인이 배제된 안정 환자인지 확인',
       '알려진 CAD, 이전 검사, 관상동맥 석회화, 영상 품질과 기관 전문성을 함께 고려',
@@ -113,6 +193,7 @@ export function buildClinicalExamGuidance({
         '급성 고위험 상태가 배제된 안정 환자에서 알려진 CAD가 없고 검사 적합성이 확보되면 CCTA로 폐쇄성 CAD를 평가할 수 있습니다. 모델 점수만으로 검사를 결정하지 않습니다.',
       checks,
       sourceNote: SOURCE_NOTE,
+      ...pathway,
     }
   }
 
@@ -127,5 +208,7 @@ export function buildClinicalExamGuidance({
       ...modelRangeCheck(modelWarningCount),
     ],
     sourceNote: SOURCE_NOTE,
+    candidates: [],
+    excludedTests: [],
   }
 }
