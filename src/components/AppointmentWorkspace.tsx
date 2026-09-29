@@ -30,6 +30,10 @@ function genderLabel(value: string) {
   return '-'
 }
 
+function patientRegistrationLabel(patientId?: number) {
+  return patientId ? `등록 환자 · #${patientId}` : '초진·미등록 환자'
+}
+
 export function AppointmentWorkspace({ roles, doctorId }: { roles: string[]; doctorId?: number }) {
   const isNurse = roles.some((role) => role.trim().toUpperCase() === 'NURSE')
   const [reservations, setReservations] = useState<StaffReservation[]>([])
@@ -129,7 +133,11 @@ export function AppointmentWorkspace({ roles, doctorId }: { roles: string[]; doc
         <div>
           {filtered.map((reservation) => <button className={selected?.id === reservation.id ? 'active' : ''} key={reservation.id} onClick={() => setSelectedId(reservation.id)} type="button">
             <time><Clock3 size={14} />{formatDateTime(reservation.reservedAt)}</time>
-            <span><strong>{reservation.applicantName}</strong><small>{doctorMap.get(reservation.doctorId ?? 0)?.name ?? (reservation.doctorId ? `의료진 #${reservation.doctorId}` : '담당 의사 없음')}</small></span>
+            <span>
+              <strong>{reservation.applicantName}</strong>
+              <small>{patientRegistrationLabel(reservation.patientId)} · {reservation.applicantContact || '연락처 없음'}</small>
+              <small>{doctorMap.get(reservation.doctorId ?? 0)?.name ?? (reservation.doctorId ? `의료진 #${reservation.doctorId}` : '담당 의사 없음')}</small>
+            </span>
             <em className={`appointment-status status-${reservation.status.toLowerCase()}`}>{statusLabels[reservation.status] ?? reservation.status}</em>
           </button>)}
           {loading && <div className="feature-empty">예약 목록을 불러오는 중…</div>}
@@ -147,7 +155,7 @@ export function AppointmentWorkspace({ roles, doctorId }: { roles: string[]; doc
             <div><dt>예약 일시</dt><dd>{formatDateTime(selected.reservedAt)}</dd></div>
             <div><dt>상태</dt><dd>{statusLabels[selected.status] ?? selected.status}</dd></div>
             <div><dt>담당 의료진</dt><dd>{doctorMap.get(selected.doctorId ?? 0)?.name ?? (selected.doctorId ? `#${selected.doctorId}` : '-')}</dd></div>
-            <div><dt>환자 연결</dt><dd>{selected.patientId ? `연결됨 · #${selected.patientId}` : '승인 시 생성·연결'}</dd></div>
+            <div><dt>환자 구분</dt><dd>{patientRegistrationLabel(selected.patientId)}</dd></div>
             {selected.acceptedAt && <div><dt>승인 일시</dt><dd>{formatDateTime(selected.acceptedAt)}</dd></div>}
           </dl>
           {selected.status === 'REQUESTED' && isNurse && <button className="reservation-approve-button" disabled={approving || !selected.doctorId} onClick={() => setPendingApproval(selected)} type="button"><CheckCircle2 size={16} />{selected.doctorId ? '예약 승인' : '담당 의사 정보 없음'}</button>}
@@ -161,7 +169,8 @@ export function AppointmentWorkspace({ roles, doctorId }: { roles: string[]; doc
         <p><strong>{pendingApproval.applicantName}</strong>님의 예약을 <strong>{doctorMap.get(pendingApproval.doctorId ?? 0)?.name ?? `의료진 #${pendingApproval.doctorId}`}</strong> 담당으로 승인합니다.</p>
         <dl>
           <div><dt>예약 일시</dt><dd>{formatDateTime(pendingApproval.reservedAt)}</dd></div>
-          <div><dt>승인 후 처리</dt><dd>{pendingApproval.patientId ? '기존 환자 연결 유지' : '환자 생성 및 계정 연결'}</dd></div>
+          <div><dt>환자 구분</dt><dd>{patientRegistrationLabel(pendingApproval.patientId)}</dd></div>
+          {!pendingApproval.patientId && <div><dt>신청자 연락처</dt><dd>{pendingApproval.applicantContact || '-'}</dd></div>}
         </dl>
         <div>
           <button disabled={approving} onClick={() => setPendingApproval(null)} type="button">취소</button>

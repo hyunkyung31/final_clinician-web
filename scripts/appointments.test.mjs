@@ -14,7 +14,7 @@ test('pending reservation queue uses the staff status filter and maps approval f
       patient: null,
       doctor: 7,
       department: 3,
-      applicant_name: '예약환자',
+      applicant_name: '민지영',
       applicant_birth_date: '1990-02-03',
       applicant_contact: '010-1234-5678',
       applicant_gender: 'FEMALE',
@@ -26,6 +26,9 @@ test('pending reservation queue uses the staff status filter and maps approval f
   }
   const reservations = await getPendingStaffReservations()
   assert.equal(reservations.length, 1)
+  assert.equal(reservations[0].patientId, undefined)
+  assert.equal(reservations[0].applicantName, '민지영')
+  assert.equal(reservations[0].applicantContact, '010-1234-5678')
   assert.equal(reservations[0].doctorId, 7)
   assert.equal(reservations[0].applicantGender, 'FEMALE')
 })
@@ -37,6 +40,29 @@ test('doctor reservation view scopes the staff list by doctor ID', async () => {
     return Response.json([])
   }
   assert.deepEqual(await getAllStaffReservations(7), [])
+})
+
+test('nurse reservation list keeps an unregistered first-visit applicant', async () => {
+  const { getAllStaffReservations } = await loadApiTestModule()
+  globalThis.fetch = async (url) => {
+    assert.equal(url, '/api/staff/reservations/')
+    return Response.json([{
+      id: 31,
+      patient: null,
+      patient_id: null,
+      doctor: 7,
+      applicant_name: '민지영',
+      applicant_contact: '010-9876-5432',
+      reserved_at: '2026-09-30T01:00:00Z',
+      status: 'REQUESTED',
+    }])
+  }
+
+  const reservations = await getAllStaffReservations()
+  assert.equal(reservations.length, 1)
+  assert.equal(reservations[0].patientId, undefined)
+  assert.equal(reservations[0].applicantName, '민지영')
+  assert.equal(reservations[0].applicantContact, '010-9876-5432')
 })
 
 test('reservation approval posts the selected doctor and does not replay an unauthorized request', async () => {
