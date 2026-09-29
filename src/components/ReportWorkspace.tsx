@@ -487,7 +487,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
                   <div><dt>환자번호</dt><dd>{detail.patient.medicalRecordNo}</dd></div>
                   <div><dt>검사/진료</dt><dd>{detail.workflow.examName ?? detail.encounter.encounterType ?? '-'}</dd></div>
                   <div><dt>검사일</dt><dd>{formatDate(detail.encounter.visitDate)}</dd></div>
-                  <div><dt>담당 의료진</dt><dd>{detail.encounter.doctorName ?? '-'}</dd></div>
+                  <div><dt>담당 의료진</dt><dd>{detail.workflow.signedBy ?? detail.encounter.doctorName ?? '-'}</dd></div>
                 </dl>
               </article>
 
