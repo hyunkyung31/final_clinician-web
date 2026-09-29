@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import { FileText, LoaderCircle, Search } from 'lucide-react'
 import type { MedicalReportType, MedicalResultDetail, PatientReportSummary, PatientSummary, ReportAiSummary, ReportXcaAttachment, StaffDoctor, StaffIdentity } from '../types'
 import {
+  createPatientMedicalResult,
   getClinicalAIAnalysis,
   getCTAIAnalysis,
   getFileContentObjectUrl,
@@ -76,6 +77,7 @@ function clinicalSignalLabel(
 }
 async function getAllPatientReports(patientId: number) {
   const responses = await Promise.allSettled([
+    getPatientReports(patientId),
     getPatientReports(patientId, 'XCA_2D'),
     getPatientReports(patientId, 'CCTA_3D'),
   ])
@@ -301,6 +303,8 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
   const [detailLoading, setDetailLoading] = useState(false)
   const [conclusion, setConclusion] = useState('')
   const [busyAction, setBusyAction] = useState('')
+  const [integratedXcaId, setIntegratedXcaId] = useState('')
+  const [integratedCctaId, setIntegratedCctaId] = useState('')
   const [reportDownloadingId, setReportDownloadingId] = useState<number | null>(null)
   const [confirmSignoff, setConfirmSignoff] = useState(false)
   const currentDoctorSignature = getDoctorSignature(staffIdentity?.username)
@@ -316,8 +320,15 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
     setCctaDetail(null)
     setClinicalShap(null)
     setConclusion('')
+    setIntegratedXcaId('')
+    setIntegratedCctaId('')
     setReportsError('')
   }, [selectedPatient?.backendId])
+
+  useEffect(() => {
+    setIntegratedXcaId('')
+    setIntegratedCctaId('')
+  }, [reportPatient?.backendId])
 
   useEffect(() => {
     const keyword = reportSearchKeyword.trim()
@@ -516,7 +527,7 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
     && (workflow.canEdit || workflow.canSignoff),
   )
   const visibleReports = reportTypeFilter === 'ALL'
-    ? patientReports.filter((item) => item.reportType !== 'INTEGRATED')
+    ? patientReports
     : reportTypeFilter === 'CLINICAL_AI'
       ? []
       : patientReports.filter((item) => item.reportType === reportTypeFilter)
@@ -534,7 +545,9 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
     : []
   const selectedCctaAnalysis = cctaAnalyses.find((item) => item.id === selectedCctaAnalysisId) ?? null
   const selectedCctaResult = cctaDetail?.results?.find((item) => item.status !== 'INVALID') ?? null
-  const totalReportCount = patientReports.filter((item) => item.reportType !== 'INTEGRATED').length + clinicalReports.length + pendingCctaReports.length
+  const signedXcaReports = patientReports.filter((item) => item.reportType === 'XCA_2D' && ['SIGNED', 'RELEASED'].includes(item.status))
+  const signedCctaReports = patientReports.filter((item) => item.reportType === 'CCTA_3D' && ['SIGNED', 'RELEASED'].includes(item.status))
+  const totalReportCount = patientReports.length + clinicalReports.length + pendingCctaReports.length
   const visibleReportCount = visibleReports.length + visibleClinicalReports.length + visibleCctaReports.length
 
   return (
@@ -571,11 +584,45 @@ export function ReportWorkspace({ selectedPatient, staffIdentity, staffDoctor }:
           <small>선택된 환자</small>
           <h2>{reportPatient?.name ?? '선택된 환자 없음'}</h2>
           <p>{reportPatient?.id ?? '환자를 검색해 선택해주세요.'}</p>
+          {reportPatient?.backendId && (
+            <div className="integrated-report-source-picker">
+              <strong>2D·3D 통합 결과보고서</strong>
+              <p>최종 승인된 2D와 3D 결과를 선택해 하나의 검토용 초안으로 묶습니다.</p>
+              <label>2D XCA 보고서
+                <select value={integratedXcaId} onChange={(event) => setIntegratedXcaId(event.target.value)}>
+                  <option value="">선택하세요</option>
+                  {signedXcaReports.map((item) => <option key={item.medicalResultId} value={item.medicalResultId}>#{item.medicalResultId} · {item.latestSignoff?.doctorName ?? item.doctorName ?? '의료진'} · {formatDate(item.performedAt || item.visitDate)}</option>)}
+                </select>
+              </label>
+              <label>3D CCTA 보고서
+                <select value={integratedCctaId} onChange={(event) => setIntegratedCctaId(event.target.value)}>
+                  <option value="">선택하세요</option>
+                  {signedCctaReports.map((item) => <option key={item.medicalResultId} value={item.medicalResultId}>#{item.medicalResultId} · {item.latestSignoff?.doctorName ?? item.doctorName ?? '의료진'} · {formatDate(item.performedAt || item.visitDate)}</option>)}
+                </select>
+              </label>
+              <button
+                className="report-primary-btn"
+                disabled={busyAction === 'create-integrated' || !integratedXcaId || !integratedCctaId}
+                onClick={() => void runAction('create-integrated', async () => {
+                  const created = await createPatientMedicalResult(reportPatient.backendId as number, Number(integratedXcaId), Number(integratedCctaId))
+                  setSelectedResultId(created.medicalResultId)
+                  setSelectedClinicalAnalysisId(null)
+                  setSelectedCctaAnalysisId(null)
+                  setReportTypeFilter('INTEGRATED')
+                  return created
+                })}
+                type="button"
+              >
+                {busyAction === 'create-integrated' ? '통합 중…' : '선택한 2D·3D 통합 초안 생성'}
+              </button>
+              {(!signedXcaReports.length || !signedCctaReports.length) && <small>최종 승인된 2D XCA와 3D CCTA 보고서가 각각 필요합니다.</small>}
+            </div>
+          )}
         </section>
         <section className="feature-card module-table-card">
           <header><h2>보고서 목록</h2><span>총 {totalReportCount}건</span></header>
           <div className="report-type-tabs" role="tablist" aria-label="보고서 종류">
-            {([['ALL', '전체'], ['CLINICAL_AI', 'Clinical AI'], ['XCA_2D', '2D XCA'], ['CCTA_3D', '3D CCTA']] as const).map(([value, label]) => (
+            {([['ALL', '전체'], ['CLINICAL_AI', 'Clinical AI'], ['XCA_2D', '2D XCA'], ['CCTA_3D', '3D CCTA'], ['INTEGRATED', '통합']] as const).map(([value, label]) => (
               <button aria-selected={reportTypeFilter === value} className={reportTypeFilter === value ? 'active' : ''} key={value} onClick={() => { setReportTypeFilter(value); setSelectedResultId(null); setSelectedClinicalAnalysisId(null); setSelectedCctaAnalysisId(null) }} role="tab" type="button">{label}</button>
             ))}
           </div>

@@ -1791,6 +1791,32 @@ export async function releaseMedicalResult(resultId: number): Promise<MedicalRes
   }))
 }
 
+/** 승인된 2D XCA와 3D CCTA 결과의 고정 버전을 하나의 통합 보고서 초안으로 묶는다. */
+export async function createPatientMedicalResult(
+  patientId: number,
+  xcaMedicalResultId: number,
+  cctaMedicalResultId: number,
+): Promise<MedicalResultDetail> {
+  if (![patientId, xcaMedicalResultId, cctaMedicalResultId].every((value) => Number.isSafeInteger(value) && value > 0)) {
+    throw new ApiError('통합할 환자 및 2D·3D 보고서 정보가 올바르지 않습니다.', 400)
+  }
+  const created = await request<unknown>(`/api/patients/${patientId}/medical-results/`, {
+    method: 'POST',
+    refreshOnUnauthorized: false,
+    body: JSON.stringify({
+      patient_id: patientId,
+      report_type: 'INTEGRATED',
+      xca_medical_result_id: xcaMedicalResultId,
+      ccta_medical_result_id: cctaMedicalResultId,
+    }),
+  })
+  const root = isRecord(created) ? created : {}
+  const medical = isRecord(root.medical_result) ? root.medical_result : root
+  const resultId = readNumber(medical, 'id', 'medical_result_id')
+  if (!resultId) throw new ApiError('통합 결과보고서 초안을 만들지 못했습니다.', 500)
+  return getMedicalResultDetail(resultId)
+}
+
 export async function getAngiographyFrames(
   sequenceId: number,
 ): Promise<AngiographyFrame[]> {
