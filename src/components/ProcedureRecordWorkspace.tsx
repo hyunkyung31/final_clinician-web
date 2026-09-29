@@ -16,23 +16,37 @@ import {
 } from 'lucide-react'
 import {
   ApiError,
-  createPatientAllergy,
-  createProcedureEvent,
+  cancelMedicationAdministration,
+  cancelProcedureDeviceUsage,
   cancelProcedureEvent,
+  createMedicationAdministration,
+  createPatientAllergy,
+  createProcedureDeviceUsage,
+  createProcedureEvent,
+  correctMedicationAdministration,
+  correctProcedureDeviceUsage,
   correctProcedureEvent,
   finalizeProcedureRecord,
+  getMedicationAdministrations,
   getPatientAllergies,
   getPatientDiagnoses,
   getPatientLabObservations,
   getPatientMedicalHistories,
   getPrescriptionDetail,
   getPrescriptions,
+  getProcedureDeviceUsages,
+  getProcedureDevices,
   getProcedureEvents,
   getProcedureRecord,
   updateProcedureRecord,
+  type MedicationAdministration,
+  type ProcedureDevice,
+  type ProcedureDeviceUsage,
+  type ProcedureEventData,
 } from '../api/client'
 import type { LabObservation, PatientAllergySummary, PatientDetail, PatientDiagnosisSummary, PatientMedicalHistorySummary, PatientSummary, PrescriptionItemSummary } from '../types'
 import { labReferenceStatus, labReferenceStatusClass, labReferenceStatusLabel } from '../labReferenceStatus'
+import { compareTimelineItems, deviceCategoryLabel, isDeviceTimelineCategory, procedureEventSource, type ProcedureTimelineSource } from '../procedureTimeline'
 
 type ProcedureTab = 'TIMELINE' | 'MATERIALS' | 'VITALS' | 'LAB' | 'REPORT'
 type ProcedureCategory =
@@ -52,14 +66,23 @@ type ProcedureCategory =
 
 interface ProcedureEvent {
   id: string
+  recordId?: number
+  sourceType: ProcedureTimelineSource
+  persisted: boolean
   time: string
+  occurredAt?: string
   category: ProcedureCategory
   content: string
   material: string
   dose: string
+  doseUnit: string
+  route: string
+  administered: boolean
   note: string
   author: string
   linkedPrescriptionItemId?: number
+  medicationId?: number
+  deviceId?: number
   materialSource?: 'ORDER' | 'CATALOG' | 'MANUAL'
   planned?: boolean
 }
@@ -153,8 +176,41 @@ function createId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+function clockTime(value: string) {
+  if (/^\d{2}:\d{2}$/.test(value)) return value
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+function eventAtFromTime(time: string) {
+  const [hour = '00', minute = '00'] = time.split(':')
+  const eventAt = new Date()
+  eventAt.setHours(Number(hour), Number(minute), 0, 0)
+  return eventAt.toISOString()
+}
+
 function emptyEvent(author: string): ProcedureEvent {
-  return { id: createId('event'), time: nowTime(), category: '입실', content: '', material: '', dose: '', note: '', author }
+  return {
+    id: createId('event'),
+    sourceType: 'PROCEDURE_EVENT',
+    persisted: false,
+    time: nowTime(),
+    category: '입실',
+    content: '',
+    material: '',
+    dose: '',
+    doseUnit: '',
+    route: '',
+    administered: false,
+    note: '',
+    author,
+  }
+}
+
+function findCatalogDevice(devices: ProcedureDevice[], material: string) {
+  const query = material.trim().toLowerCase()
+  if (!query) return undefined
+  return devices.find((item) => item.productName.trim().toLowerCase() === query)
 }
 
 function emptyVital(): VitalRecord {
@@ -179,6 +235,82 @@ function flagLabel(item: LabObservation) {
 
 function prescriptionDose(item: PrescriptionItemSummary) {
   return [item.doseValue, item.doseUnit].filter((value) => value !== undefined && value !== '').join(' ')
+}
+
+function administrationItem(item: MedicationAdministration): ProcedureEvent {
+  return {
+    id: `medication:${item.id}`,
+    recordId: item.id,
+    sourceType: 'MEDICATION_ADMINISTRATION',
+    persisted: true,
+    time: clockTime(item.administeredAt),
+    occurredAt: item.administeredAt,
+    category: '약물 투여',
+    content: item.medicationName,
+    material: item.medicationName,
+    dose: item.doseValue,
+    doseUnit: item.doseUnit,
+    route: item.route,
+    administered: true,
+    note: item.note,
+    author: '의료진',
+    linkedPrescriptionItemId: item.prescriptionItemId,
+    medicationId: item.medicationId,
+    materialSource: item.sourceType === 'PRESCRIPTION' ? 'ORDER' : 'MANUAL',
+  }
+}
+
+function deviceUsageItem(item: ProcedureDeviceUsage): ProcedureEvent {
+  return {
+    id: `device:${item.id}`,
+    recordId: item.id,
+    sourceType: 'DEVICE_USAGE',
+    persisted: true,
+    time: clockTime(item.usedAt),
+    occurredAt: item.usedAt,
+    category: deviceCategoryLabel(item.device?.category ?? 'OTHER') as ProcedureCategory,
+    content: item.note || item.productName,
+    material: item.productName,
+    dose: item.specification,
+    doseUnit: '',
+    route: '',
+    administered: false,
+    note: item.note,
+    author: '의료진',
+    deviceId: item.deviceId,
+    materialSource: 'CATALOG',
+  }
+}
+
+function storedEventItem(item: ProcedureEventData): ProcedureEvent {
+  const eventDate = new Date(item.eventAt)
+  const category = categories.includes(item.eventCategory as ProcedureCategory)
+    ? item.eventCategory as ProcedureCategory
+    : '소견'
+  const sourceType = procedureEventSource({
+    eventCategory: item.eventCategory,
+    medicationOrDevice: item.medicationOrDevice,
+    prescriptionItemId: item.prescriptionItemId,
+  })
+  return {
+    id: sourceType === 'LEGACY_EVENT' ? `legacy:${item.id}` : `event:${item.id}`,
+    recordId: item.id,
+    sourceType,
+    persisted: true,
+    time: Number.isNaN(eventDate.getTime()) ? '' : eventDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
+    occurredAt: item.eventAt,
+    category,
+    content: item.eventText || item.eventCode,
+    material: item.medicationOrDevice,
+    dose: item.actualDoseOrSpec,
+    doseUnit: '',
+    route: '',
+    administered: false,
+    note: item.note,
+    author: item.createdByName,
+    linkedPrescriptionItemId: item.prescriptionItemId,
+    materialSource: item.prescriptionItemId ? 'ORDER' : item.medicationOrDevice ? 'MANUAL' : undefined,
+  }
 }
 
 export function ProcedureRecordWorkspace({
@@ -226,6 +358,8 @@ export function ProcedureRecordWorkspace({
   const [prescriptionError, setPrescriptionError] = useState('')
   const [procedureSaving, setProcedureSaving] = useState(false)
   const [recordStatus, setRecordStatus] = useState('DRAFT')
+  const [procedureRecordId, setProcedureRecordId] = useState<number | undefined>()
+  const [catalogDevices, setCatalogDevices] = useState<ProcedureDevice[]>([])
   const [materialMenuFlip, setMaterialMenuFlip] = useState(false)
   const materialPickerRef = useRef<HTMLSpanElement>(null)
   const recordLocked = recordStatus === 'FINAL'
@@ -306,38 +440,32 @@ export function ProcedureRecordWorkspace({
   useEffect(() => {
     if (!examinationId) return
     let active = true
-    void Promise.allSettled([getProcedureRecord(examinationId), getProcedureEvents(examinationId)])
-      .then(([recordResult, eventResult]) => {
-        if (!active) return
-        if (recordResult.status === 'fulfilled') {
-          const record = recordResult.value
-          if (record.procedureName) setProcedureType(record.procedureName)
-          if (record.accessSite) setAccessSite(record.accessSite)
-          setMemo(record.specialNotes)
-          setRecordStatus(record.status)
-        }
-        if (eventResult.status === 'fulfilled') {
-          setEvents(eventResult.value.map((item) => {
-            const eventDate = new Date(item.eventAt)
-            const category = categories.includes(item.eventCategory as ProcedureCategory)
-              ? item.eventCategory as ProcedureCategory
-              : '소견'
-            return {
-              id: String(item.id),
-              time: Number.isNaN(eventDate.getTime()) ? '' : eventDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-              category,
-              content: item.eventText || item.eventCode,
-              material: item.medicationOrDevice,
-              dose: item.actualDoseOrSpec,
-              note: item.note,
-              author: item.createdByName,
-              linkedPrescriptionItemId: item.prescriptionItemId,
-              materialSource: item.prescriptionItemId ? 'ORDER' : item.medicationOrDevice ? 'MANUAL' : undefined,
-              planned: false,
-            }
-          }))
-        }
-      })
+    void Promise.allSettled([
+      getProcedureRecord(examinationId),
+      getProcedureEvents(examinationId),
+      getMedicationAdministrations(examinationId),
+      getProcedureDeviceUsages(examinationId),
+      getProcedureDevices({ active: true }),
+    ]).then(([recordResult, eventResult, administrationResult, deviceResult, catalogResult]) => {
+      if (!active) return
+      if (recordResult.status === 'fulfilled') {
+        const record = recordResult.value
+        if (record.procedureName) setProcedureType(record.procedureName)
+        if (record.accessSite) setAccessSite(record.accessSite)
+        setMemo(record.specialNotes)
+        setRecordStatus(record.status)
+        setProcedureRecordId(record.id)
+      }
+      if (catalogResult.status === 'fulfilled') setCatalogDevices(catalogResult.value)
+      const timeline = [
+        ...(eventResult.status === 'fulfilled' ? eventResult.value.map(storedEventItem) : []),
+        ...(administrationResult.status === 'fulfilled' ? administrationResult.value.map(administrationItem) : []),
+        ...(deviceResult.status === 'fulfilled' ? deviceResult.value.map(deviceUsageItem) : []),
+      ].sort(compareTimelineItems)
+      if (eventResult.status === 'fulfilled' || administrationResult.status === 'fulfilled' || deviceResult.status === 'fulfilled') {
+        setEvents(timeline)
+      }
+    })
     return () => { active = false }
   }, [examinationId])
 
@@ -401,8 +529,14 @@ export function ProcedureRecordWorkspace({
     .filter((item, index, array) => array.findIndex((candidate) => candidate.code === item.code) === index)
     .slice(0, 7), [labs])
 
-  const medications = events.filter((event) => event.category === '약물 투여' && event.material)
-  const devices = events.filter((event) => ['혈관 접근', 'CAG', 'PCI 시작', 'Guidewire', 'Balloon', 'Stent'].includes(event.category) && event.material)
+  const medications = events.filter((event) => event.sourceType === 'MEDICATION_ADMINISTRATION')
+  const devices = events.filter((event) => event.sourceType === 'DEVICE_USAGE')
+  const legacyMedicationEvents = events.filter((event) => event.sourceType === 'LEGACY_EVENT' && (event.category === '약물 투여' || event.linkedPrescriptionItemId !== undefined))
+  const legacyDeviceEvents = events.filter((event) => event.sourceType === 'LEGACY_EVENT' && event.material && event.category !== '약물 투여' && event.linkedPrescriptionItemId === undefined)
+  const unmatchedLegacyMedications = legacyMedicationEvents.filter((event) => {
+    if (event.linkedPrescriptionItemId === undefined) return true
+    return !medications.some((item) => item.linkedPrescriptionItemId === event.linkedPrescriptionItemId)
+  })
   const procedureMedicationOptions = useMemo(() => {
     const ordered = orderedMedications
       .map((item) => item.medication?.name)
@@ -419,7 +553,7 @@ export function ProcedureRecordWorkspace({
   }
 
   const beginEdit = (event: ProcedureEvent) => {
-    if (recordLocked) return
+    if (recordLocked || event.sourceType === 'LEGACY_EVENT') return
     setEventDraft({ ...event, time: event.time || nowTime(), planned: false })
     setEditingId(event.id)
     setInsertIndex(null)
@@ -430,25 +564,39 @@ export function ProcedureRecordWorkspace({
     const linkedOrder = orderedMedications.find((item) => item.medication?.name === medicationName)
     setEventDraft((current) => ({
       ...current,
+      sourceType: 'MEDICATION_ADMINISTRATION',
       category: '약물 투여',
-      content: `${medicationName} 투여`,
+      content: medicationName,
       material: medicationName,
-      dose: linkedOrder ? prescriptionDose(linkedOrder) : '',
+      dose: linkedOrder?.doseValue !== undefined ? String(linkedOrder.doseValue) : '',
+      doseUnit: linkedOrder?.doseUnit ?? '',
+      route: linkedOrder?.route ?? '',
+      administered: false,
       linkedPrescriptionItemId: linkedOrder?.id,
+      medicationId: linkedOrder?.medicationId,
+      deviceId: undefined,
       materialSource: linkedOrder ? 'ORDER' : 'CATALOG',
     }))
     setMaterialPickerOpen(false)
   }
 
   const selectDevice = (device: (typeof quickDeviceOptions)[number]) => {
+    const match = findCatalogDevice(catalogDevices, device.material)
     setEventDraft((current) => ({
       ...current,
+      sourceType: 'DEVICE_USAGE',
       category: device.category,
       content: device.content,
-      material: device.material,
-      dose: '',
+      material: match?.productName || device.material,
+      dose: match?.specification ?? '',
+      doseUnit: '',
+      route: '',
+      administered: false,
       linkedPrescriptionItemId: undefined,
+      medicationId: undefined,
+      deviceId: match?.id,
       materialSource: 'CATALOG',
+      note: current.note || device.content,
     }))
     setMaterialPickerOpen(false)
   }
@@ -459,28 +607,94 @@ export function ProcedureRecordWorkspace({
     setMaterialPickerOpen(false)
   }
 
-  const saveEvent = async () => {
-    if (recordLocked) return
-    if (!eventDraft.time || !eventDraft.category || !eventDraft.content.trim()) return
-    let saved = { ...eventDraft, content: eventDraft.content.trim(), planned: false, author: clinicianName }
-    if (editingId && /^\d+$/.test(editingId) && examinationId) {
-      try {
-        const [hour = '00', minute = '00'] = saved.time.split(':')
-        const eventAt = new Date()
-        eventAt.setHours(Number(hour), Number(minute), 0, 0)
-        const corrected = await correctProcedureEvent(Number(editingId), {
-          correction_reason: '의료진 화면에서 시술 이벤트 수정',
-          event_category: saved.category,
-          event_text: saved.content,
-          medication_or_device: saved.material,
-          actual_dose_or_spec: saved.dose,
-          note: saved.note,
-          event_at: eventAt.toISOString(),
-          prescription_item_id: saved.linkedPrescriptionItemId ?? null,
+  const persistTimelineItem = async (item: ProcedureEvent, recordId?: number): Promise<ProcedureEvent> => {
+    if (!examinationId) throw new Error('연결할 검사 ID가 없습니다. 검사 실행 기록을 먼저 선택해주세요.')
+    const occurredAt = eventAtFromTime(item.time || nowTime())
+    if (item.sourceType === 'MEDICATION_ADMINISTRATION') {
+      if (!item.administered) throw new Error('실제 투여 여부, 시각, 용량, 경로를 확인한 뒤 저장해주세요.')
+      const saved = item.persisted && item.recordId
+        ? await correctMedicationAdministration(item.recordId, {
+          reason: '의료진 화면에서 투약 기록 수정',
+          administeredAt: occurredAt,
+          doseValue: item.dose,
+          doseUnit: item.doseUnit,
+          route: item.route,
+          note: item.note,
         })
-        saved = { ...saved, id: String(corrected.id), author: corrected.createdByName || clinicianName }
+        : await createMedicationAdministration(examinationId, {
+          sourceType: item.linkedPrescriptionItemId ? 'PRESCRIPTION' : 'AD_HOC',
+          administeredAt: occurredAt,
+          prescriptionItemId: item.linkedPrescriptionItemId,
+          medicationId: item.medicationId,
+          medicationName: item.material || item.content,
+          procedureRecordId: recordId,
+          doseValue: item.dose,
+          doseUnit: item.doseUnit,
+          route: item.route,
+          note: item.note,
+        })
+      return administrationItem(saved)
+    }
+    if (item.sourceType === 'DEVICE_USAGE') {
+      const deviceId = item.deviceId ?? findCatalogDevice(catalogDevices, item.material)?.id
+      if (!deviceId) throw new Error('등록된 시술 재료 목록에서 기구를 선택해야 합니다. 시술 이벤트로 저장하지 않았습니다.')
+      const saved = item.persisted && item.recordId
+        ? await correctProcedureDeviceUsage(item.recordId, {
+          reason: '의료진 화면에서 재료 사용 기록 수정',
+          usedAt: occurredAt,
+          note: item.note || item.content,
+        })
+        : await createProcedureDeviceUsage(examinationId, {
+          deviceId,
+          usedAt: occurredAt,
+          procedureRecordId: recordId,
+          quantity: 1,
+          note: item.note || item.content,
+        })
+      return deviceUsageItem(saved)
+    }
+    if (item.sourceType === 'LEGACY_EVENT') throw new Error('기존 시술 이벤트 기록은 수정할 수 없습니다.')
+    const saved = item.persisted && item.recordId
+      ? await correctProcedureEvent(item.recordId, {
+        correction_reason: '의료진 화면에서 시술 이벤트 수정',
+        reason: '의료진 화면에서 시술 이벤트 수정',
+        event_category: item.category,
+        event_text: item.content,
+        note: item.note,
+        event_at: occurredAt,
+      })
+      : await createProcedureEvent(examinationId, {
+        eventCode: item.category.replace(/\s+/g, '_').toUpperCase(),
+        eventCategory: item.category,
+        eventText: item.content,
+        note: item.note,
+        eventAt: occurredAt,
+        procedureRecordId: recordId,
+      })
+    return storedEventItem(saved)
+  }
+
+  const saveEvent = async () => {
+    if (recordLocked || eventDraft.sourceType === 'LEGACY_EVENT') return
+    if (!eventDraft.time || !eventDraft.category || !eventDraft.content.trim()) return
+    if (eventDraft.sourceType === 'MEDICATION_ADMINISTRATION' && !eventDraft.administered) {
+      setSaveNotice('실제 투여 여부, 시각, 용량, 경로를 확인한 뒤 저장해주세요.')
+      return
+    }
+    let saved: ProcedureEvent = { ...eventDraft, content: eventDraft.content.trim(), planned: false, author: clinicianName }
+    if (saved.sourceType === 'DEVICE_USAGE' && !saved.deviceId) {
+      const match = findCatalogDevice(catalogDevices, saved.material)
+      if (!match) {
+        setSaveNotice('등록된 시술 재료 목록에서 기구를 선택해야 합니다. 시술 이벤트로 저장하지 않았습니다.')
+        return
+      }
+      saved = { ...saved, deviceId: match.id, material: match.productName, dose: saved.dose || match.specification }
+    }
+    if (examinationId) {
+      try {
+        saved = await persistTimelineItem(saved, procedureRecordId)
       } catch (requestError) {
-        setSaveNotice(requestError instanceof Error ? requestError.message : '시술 이벤트를 정정하지 못했습니다.')
+        setSaveNotice(requestError instanceof Error ? requestError.message : '시술기록을 저장하지 못했습니다.')
         return
       }
     }
@@ -495,37 +709,51 @@ export function ProcedureRecordWorkspace({
     }
     setEditingId(null)
     setInsertIndex(null)
-    setSaveNotice('저장되지 않은 로컬 변경사항이 있습니다.')
+    setSaveNotice(saved.persisted ? '기록을 저장했습니다.' : '저장되지 않은 로컬 변경사항이 있습니다.')
   }
 
   const updateMaterial = (value: string) => {
     const linkedOrder = orderedMedications.find((item) => item.medication?.name.trim().toLowerCase() === value.trim().toLowerCase())
+    const catalogDevice = findCatalogDevice(catalogDevices, value)
     setEventDraft((current) => ({
       ...current,
       material: value,
+      sourceType: linkedOrder || current.category === '약물 투여'
+        ? 'MEDICATION_ADMINISTRATION'
+        : catalogDevice || current.sourceType === 'DEVICE_USAGE'
+          ? 'DEVICE_USAGE'
+          : current.sourceType === 'LEGACY_EVENT' ? 'LEGACY_EVENT' : 'PROCEDURE_EVENT',
       linkedPrescriptionItemId: linkedOrder?.id,
+      medicationId: linkedOrder?.medicationId,
+      deviceId: catalogDevice?.id,
+      administered: linkedOrder ? false : current.administered,
+      doseUnit: linkedOrder && !current.doseUnit ? (linkedOrder.doseUnit ?? '') : current.doseUnit,
+      route: linkedOrder && !current.route ? (linkedOrder.route ?? '') : current.route,
       materialSource: linkedOrder
         ? 'ORDER'
-        : materialOptions[current.category].some((option) => option.toLowerCase() === value.trim().toLowerCase())
+        : catalogDevice || materialOptions[current.category].some((option) => option.toLowerCase() === value.trim().toLowerCase())
           ? 'CATALOG'
           : value.trim() ? 'MANUAL' : undefined,
-      dose: linkedOrder && !current.dose ? prescriptionDose(linkedOrder) : current.dose,
+      dose: linkedOrder && !current.dose && linkedOrder.doseValue !== undefined ? String(linkedOrder.doseValue) : current.dose,
     }))
   }
 
   const deleteEvent = async (event: ProcedureEvent) => {
-    if (recordLocked) return
+    if (recordLocked || event.sourceType === 'LEGACY_EVENT') return
     if (!window.confirm('이 시술기록을 삭제하시겠습니까?')) return
-    if (/^\d+$/.test(event.id)) {
+    if (event.persisted && event.recordId) {
       try {
-        await cancelProcedureEvent(Number(event.id), '의료진 화면에서 시술 이벤트 취소')
+        const reason = '의료진 화면에서 기록 취소'
+        if (event.sourceType === 'MEDICATION_ADMINISTRATION') await cancelMedicationAdministration(event.recordId, reason)
+        else if (event.sourceType === 'DEVICE_USAGE') await cancelProcedureDeviceUsage(event.recordId, reason)
+        else await cancelProcedureEvent(event.recordId, reason)
       } catch (requestError) {
-        setSaveNotice(requestError instanceof Error ? requestError.message : '시술 이벤트를 취소하지 못했습니다.')
+        setSaveNotice(requestError instanceof Error ? requestError.message : '기록을 취소하지 못했습니다.')
         return
       }
     }
     setEvents((current) => current.filter((item) => item.id !== event.id))
-    setSaveNotice(/^\d+$/.test(event.id) ? '시술 이벤트를 취소했습니다.' : '저장되지 않은 로컬 변경사항이 있습니다.')
+    setSaveNotice(event.persisted ? '기록을 취소했습니다.' : '저장되지 않은 로컬 변경사항이 있습니다.')
   }
 
   const loadTemplate = (templateId: string) => {
@@ -589,32 +817,12 @@ export function ProcedureRecordWorkspace({
         }
         throw requestError
       }
+      setProcedureRecordId(record.id)
       const savedEvents = [...events]
       for (let index = 0; index < savedEvents.length; index += 1) {
         const item = savedEvents[index]
-        if (/^\d+$/.test(item.id) || !item.content.trim()) continue
-        const time = item.time || nowTime()
-        const [hour = '00', minute = '00'] = time.split(':')
-        const eventAt = new Date()
-        eventAt.setHours(Number(hour), Number(minute), 0, 0)
-        const saved = await createProcedureEvent(examinationId, {
-          eventCode: item.category.replace(/\s+/g, '_').toUpperCase(),
-          eventCategory: item.category,
-          eventText: item.content,
-          medicationOrDevice: item.material,
-          actualDoseOrSpec: item.dose,
-          note: item.note,
-          eventAt: eventAt.toISOString(),
-          prescriptionItemId: item.linkedPrescriptionItemId,
-          procedureRecordId: record.id,
-        })
-        savedEvents[index] = {
-          ...item,
-          id: String(saved.id),
-          time,
-          planned: false,
-          author: saved.createdByName || clinicianName,
-        }
+        if (item.persisted || item.sourceType === 'LEGACY_EVENT' || !item.content.trim() || item.planned) continue
+        savedEvents[index] = await persistTimelineItem(item, record.id)
       }
       setEvents(savedEvents)
       if (finalize) {
@@ -636,23 +844,45 @@ export function ProcedureRecordWorkspace({
     <div className="procedure-timeline-row editing">
       <span className="procedure-node"><i /></span>
       <ProcedureTimeEditor value={eventDraft.time} onChange={(time) => setEventDraft((current) => ({ ...current, time }))} />
-      <select aria-label="기록 구분" value={eventDraft.category} onChange={(event) => setEventDraft((current) => ({ ...current, category: event.target.value as ProcedureCategory, content: '', material: '', linkedPrescriptionItemId: undefined, materialSource: undefined }))}>{categories.map((category) => <option key={category}>{category}</option>)}</select>
-      <span className="procedure-combobox"><input aria-label="시술 또는 처치 내용" list="procedure-content-options" value={eventDraft.content} onChange={(event) => setEventDraft((current) => ({ ...current, content: event.target.value }))} placeholder="선택 또는 직접 입력" /><ChevronDown size={13} aria-hidden="true" /><datalist id="procedure-content-options">{contentOptions[eventDraft.category].map((option) => <option key={option} value={option} />)}</datalist></span>
+      <select aria-label="기록 구분" value={eventDraft.category} onChange={(event) => {
+        const category = event.target.value as ProcedureCategory
+        const sourceType: ProcedureTimelineSource = category === '약물 투여'
+          ? 'MEDICATION_ADMINISTRATION'
+          : isDeviceTimelineCategory(category)
+            ? 'DEVICE_USAGE'
+            : 'PROCEDURE_EVENT'
+        setEventDraft((current) => ({
+          ...current,
+          category,
+          sourceType,
+          content: '',
+          material: '',
+          dose: '',
+          doseUnit: '',
+          route: '',
+          administered: false,
+          linkedPrescriptionItemId: undefined,
+          medicationId: undefined,
+          deviceId: undefined,
+          materialSource: undefined,
+        }))
+      }}>{categories.map((category) => <option key={category}>{category}</option>)}</select>
+      <span className="procedure-combobox"><input aria-label="시술 또는 처치 내용" list="procedure-content-options" value={eventDraft.content} onChange={(event) => setEventDraft((current) => ({ ...current, content: event.target.value }))} placeholder="선택 또는 직접 입력" /><ChevronDown size={13} aria-hidden="true" /><datalist id="procedure-content-options">{contentOptions[eventDraft.category].map((option) => <option key={option} value={option} />)}</datalist>{eventDraft.sourceType === 'MEDICATION_ADMINISTRATION' && <label><input type="checkbox" checked={eventDraft.administered} onChange={(event) => setEventDraft((current) => ({ ...current, administered: event.target.checked }))} /> 실제 투여</label>}</span>
       <span className="procedure-combobox procedure-material-picker" ref={materialPickerRef} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMaterialPickerOpen(false) }}>
         <input aria-label="사용 약물 또는 기구" value={eventDraft.material} onChange={(event) => updateMaterial(event.target.value)} onFocus={() => setMaterialPickerOpen(true)} placeholder={materialPlaceholders[eventDraft.category] ?? '선택 또는 직접 입력'} />
         <button aria-label="약물 및 기구 선택 목록" aria-expanded={materialPickerOpen} onClick={() => setMaterialPickerOpen((current) => !current)} type="button"><ChevronDown size={13} aria-hidden="true" /></button>
         {materialPickerOpen && (
           <div className={`procedure-material-menu${materialMenuFlip ? ' flip-up' : ''}`}>
             <section><header><strong>약물</strong><small>처방 약물 및 시술실 기본 약물</small></header><div>{procedureMedicationOptions.map((medication) => { const ordered = orderedMedications.some((item) => item.medication?.name === medication); return <button className={ordered ? 'ordered' : ''} key={medication} onClick={() => selectMedication(medication)} type="button"><span>{medication}</span>{ordered && <small>처방</small>}</button> })}</div></section>
-            <section><header><strong>기구</strong><small>카테터·와이어·벌룬·스텐트·지혈기구</small></header><div>{quickDeviceOptions.map((device) => <button key={`${device.category}-${device.material}`} onClick={() => selectDevice(device)} title={device.material} type="button"><span>{device.label}</span><small>{device.category}</small></button>)}</div></section>
+            <section><header><strong>기구</strong><small>등록된 시술 재료</small></header><div>{catalogDevices.map((device) => <button key={device.id} onClick={() => selectDevice({ label: device.productName, category: deviceCategoryLabel(device.category) as ProcedureCategory, content: device.productName, material: device.productName })} title={device.specification} type="button"><span>{device.productName}</span><small>{deviceCategoryLabel(device.category)}</small></button>)}{quickDeviceOptions.map((device) => <button key={`${device.category}-${device.material}`} onClick={() => selectDevice(device)} title={device.material} type="button"><span>{device.label}</span><small>{device.category}</small></button>)}</div></section>
             <footer>목록에 없는 항목은 입력란에 직접 작성할 수 있습니다.</footer>
           </div>
         )}
       </span>
-      <input aria-label="용량 또는 규격" value={eventDraft.dose} onChange={(event) => setEventDraft((current) => ({ ...current, dose: event.target.value }))} placeholder="용량 / 규격" />
+      <span>{eventDraft.sourceType === 'MEDICATION_ADMINISTRATION' ? <><input aria-label="실제 용량" value={eventDraft.dose} onChange={(event) => setEventDraft((current) => ({ ...current, dose: event.target.value }))} placeholder="용량" /><input aria-label="용량 단위" value={eventDraft.doseUnit} onChange={(event) => setEventDraft((current) => ({ ...current, doseUnit: event.target.value }))} placeholder="단위" /><input aria-label="투여 경로" value={eventDraft.route} onChange={(event) => setEventDraft((current) => ({ ...current, route: event.target.value }))} placeholder="경로" /></> : <input aria-label="용량 또는 규격" value={eventDraft.dose} onChange={(event) => setEventDraft((current) => ({ ...current, dose: event.target.value }))} placeholder="용량 / 규격" />}</span>
       <input aria-label="비고" value={eventDraft.note} onChange={(event) => setEventDraft((current) => ({ ...current, note: event.target.value }))} placeholder="비고" />
       <span className="procedure-row-author">{clinicianName}</span>
-      <span className="procedure-row-actions"><button className="save" onClick={() => void saveEvent()} disabled={!eventDraft.time || !eventDraft.content.trim()} title="기록 저장" type="button"><Check size={15} /></button><button onClick={cancelEventEdit} title="입력 취소" type="button"><X size={15} /></button></span>
+      <span className="procedure-row-actions"><button className="save" onClick={() => void saveEvent()} disabled={!eventDraft.time || !eventDraft.content.trim() || (eventDraft.sourceType === 'MEDICATION_ADMINISTRATION' && !eventDraft.administered)} title="기록 저장" type="button"><Check size={15} /></button><button onClick={cancelEventEdit} title="입력 취소" type="button"><X size={15} /></button></span>
     </div>
   )
 
@@ -709,7 +939,7 @@ export function ProcedureRecordWorkspace({
                     {insertIndex === index && renderEventEditor()}
                     {editingId === event.id ? renderEventEditor() : (
                       <div className={`procedure-timeline-row ${event.planned ? 'planned' : ''}`}>
-                        <span className="procedure-node"><i /></span><button className={`procedure-time-display ${event.time ? '' : 'empty'}`} onClick={() => beginEdit(event)} title={event.time ? '시간 수정' : '현재 시간으로 기록'} type="button">{event.time || '미기록'}</button><b>{event.category}</b><span>{event.content || '-'}</span><span className="procedure-material-cell">{event.material || '-'}{event.linkedPrescriptionItemId && <small>처방 연동</small>}</span><span>{event.dose || '-'}</span><span>{event.note || '-'}</span><span className="procedure-row-author">{event.author}</span><span className="procedure-row-actions">{!recordLocked && <><button onClick={() => beginEdit(event)} title="수정" type="button"><Pencil size={14} /></button><button className="delete" onClick={() => deleteEvent(event)} title="삭제" type="button"><Trash2 size={14} /></button></>}</span>
+                        <span className="procedure-node"><i /></span><button className={`procedure-time-display ${event.time ? '' : 'empty'}`} onClick={() => beginEdit(event)} disabled={recordLocked || event.sourceType === 'LEGACY_EVENT'} title={event.sourceType === 'LEGACY_EVENT' ? '기존 기록은 수정할 수 없습니다' : event.time ? '시간 수정' : '현재 시간으로 기록'} type="button">{event.time || '미기록'}</button><b>{event.category}</b><span>{event.content || '-'}</span><span className="procedure-material-cell">{event.material || '-'}{event.linkedPrescriptionItemId && event.sourceType !== 'LEGACY_EVENT' && <small>처방 연동</small>}{event.sourceType === 'LEGACY_EVENT' && <small>기존 기록</small>}{event.route && <small>{event.route}</small>}</span><span>{[event.dose, event.doseUnit].filter(Boolean).join(' ') || '-'}</span><span>{event.note || '-'}</span><span className="procedure-row-author">{event.author}</span><span className="procedure-row-actions">{!recordLocked && event.sourceType !== 'LEGACY_EVENT' && <><button onClick={() => beginEdit(event)} title="수정" type="button"><Pencil size={14} /></button><button className="delete" onClick={() => deleteEvent(event)} title="삭제" type="button"><Trash2 size={14} /></button></>}</span>
                       </div>
                     )}
                   </div>
@@ -721,7 +951,7 @@ export function ProcedureRecordWorkspace({
           )}
 
           {activeTab === 'MATERIALS' && (
-            <section className="feature-card procedure-summary-card"><header><div><h2>사용 약물 / 기구</h2><p>처방 오더와 실제 시술 사용 기록을 구분해 표시합니다.</p></div><span className="procedure-order-count">처방 오더 {orderedMedications.length}건</span></header><div className="procedure-order-reference"><h3>현재 진료 처방 오더</h3>{prescriptionLoading ? <p>처방 오더를 불러오는 중…</p> : prescriptionError ? <p className="error">{prescriptionError}</p> : orderedMedications.length ? orderedMedications.map((item) => <div key={item.id}><strong>{item.medication?.name ?? `약품 #${item.medicationId}`}</strong><span>{prescriptionDose(item) || '-'}</span><small>{item.route || '경로 미지정'}</small></div>) : <p>현재 진료 건에 연결된 처방 오더가 없습니다.</p>}</div><div className="procedure-material-grid"><section><h3>실제 사용 약물</h3>{medications.map((item) => <div key={item.id}><strong>{item.material}{item.linkedPrescriptionItemId && <small className="linked">처방 연동</small>}</strong><span>{item.dose || '-'}</span><small>{item.time}</small></div>)}{!medications.length && <p>타임라인에 기록된 약물이 없습니다.</p>}</section><section><h3>실제 사용 기구</h3>{devices.map((item) => <div key={item.id}><strong>{item.material}</strong><span>{item.dose || '-'}</span><small>{item.category}</small></div>)}{!devices.length && <p>타임라인에 기록된 기구가 없습니다.</p>}</section></div></section>
+            <section className="feature-card procedure-summary-card"><header><div><h2>사용 약물 / 기구</h2><p>처방은 투여 계획이고, 실제 투약과 재료 사용은 각각 따로 저장된 기록입니다.</p></div><span className="procedure-order-count">처방 오더 {orderedMedications.length}건</span></header><div className="procedure-order-reference"><h3>현재 진료 처방 오더</h3>{prescriptionLoading ? <p>처방 오더를 불러오는 중…</p> : prescriptionError ? <p className="error">{prescriptionError}</p> : orderedMedications.length ? orderedMedications.map((item) => <div key={item.id}><strong>{item.medication?.name ?? `약품 #${item.medicationId}`}</strong><span>{prescriptionDose(item) || '-'}</span><small>{item.route || '경로 미지정'}</small></div>) : <p>현재 진료 건에 연결된 처방 오더가 없습니다.</p>}</div>{unmatchedLegacyMedications.length > 0 && <p>기존 시술 이벤트에 남은 약물 기록 {unmatchedLegacyMedications.length}건은 읽기 전용입니다. 같은 검사의 투약 기록이 없어 옮기지 않았습니다.</p>}<div className="procedure-material-grid"><section><h3>실제 사용 약물</h3>{medications.map((item) => <div key={item.id}><strong>{item.material}{item.linkedPrescriptionItemId && <small className="linked">처방 연동</small>}</strong><span>{[item.dose, item.doseUnit].filter(Boolean).join(' ') || '-'}</span><small>{item.time}{item.route ? ` · ${item.route}` : ''}</small></div>)}{!medications.length && <p>확인 후 저장된 투약 기록이 없습니다.</p>}{legacyMedicationEvents.length > 0 && <h3>기존 시술 이벤트 약물</h3>}{legacyMedicationEvents.map((item) => <div key={item.id}><strong>{item.material || item.content}<small>기존 기록</small></strong><span>{item.dose || '-'}</span><small>{item.time}</small></div>)}</section><section><h3>실제 사용 기구</h3>{devices.map((item) => <div key={item.id}><strong>{item.material}</strong><span>{item.dose || '-'}</span><small>{item.category}</small></div>)}{!devices.length && <p>저장된 재료 사용 기록이 없습니다.</p>}{legacyDeviceEvents.length > 0 && <h3>기존 시술 이벤트 재료</h3>}{legacyDeviceEvents.map((item) => <div key={item.id}><strong>{item.material}<small>기존 기록</small></strong><span>{item.dose || '-'}</span><small>{item.category}</small></div>)}</section></div></section>
           )}
 
           {activeTab === 'VITALS' && (

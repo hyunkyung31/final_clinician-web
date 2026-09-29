@@ -24,6 +24,7 @@ import { ConsultationWorkspace } from "./components/ConsultationWorkspace";
 import { ScheduleWorkspace } from "./components/ScheduleWorkspace";
 import { AppointmentWorkspace } from "./components/AppointmentWorkspace";
 import { ProcedureRecordWorkspace } from "./components/ProcedureRecordWorkspace";
+import { OrderWorkspace } from "./components/OrderWorkspace";
 import {
   ModuleWorkspace,
   type ModuleSection,
@@ -62,6 +63,7 @@ import {
   MonitorPlay,
   PanelLeftClose,
   PanelLeftOpen,
+  Pill,
   ClipboardPenLine,
   Plus,
   Search,
@@ -168,6 +170,7 @@ const navItems: NavItem[] = [
   { icon: CalendarDays, label: "일정" },
   { icon: CalendarCheck2, label: "예약" },
   { icon: Users, label: "환자 관리" },
+  { icon: Pill, label: "처방 오더" },
   { icon: MonitorPlay, label: "검사·영상" },
   { icon: BrainCircuit, label: "AI 분석" },
   { icon: ClipboardPenLine, label: "시술기록" },
@@ -189,6 +192,7 @@ const connectedSections = new Set<GlobalSection>([
   "일정",
   "예약",
   "환자 관리",
+  "처방 오더",
   "검사·영상",
   "AI 분석",
   "시술기록",
@@ -204,6 +208,7 @@ const nurseSections = new Set<GlobalSection>([
   "일정",
   "예약",
   "환자 관리",
+  "처방 오더",
   "검사·영상",
   "시술기록",
   "채팅",
@@ -1088,6 +1093,7 @@ function App() {
                     setChatDockOpen((current) => !current);
                     return;
                   }
+                  if (item.label === "검사·영상") setImagingLaunchFocus(null);
                   if (connected) setActiveSection(item.label as GlobalSection);
                 }}
                 disabled={!connected}
@@ -1191,6 +1197,19 @@ function App() {
       {activeSection === "일정" && <ScheduleWorkspace />}
 
       {activeSection === "예약" && <AppointmentWorkspace roles={staffIdentity?.roles ?? []} doctorId={staffDoctor?.id} />}
+
+      {activeSection === "처방 오더" && (
+        <OrderWorkspace
+          patients={patientList}
+          selectedPatient={selectedPatient}
+          encounterId={currentEncounterId}
+          onSelectPatient={(patient) => {
+            setPatientList((current) => [patient, ...current.filter((item) => item.id !== patient.id)])
+            setSelectedId(patient.id)
+            resetPatientData()
+          }}
+        />
+      )}
 
       {activeSection === "시술기록" && (
         <ProcedureRecordWorkspace
@@ -1463,6 +1482,7 @@ function App() {
             aiStatus={aiStatus}
             staffIdentity={staffIdentity}
             staffDoctor={staffDoctor}
+            onOpenPrescriptions={() => setActiveSection('처방 오더')}
             onOpenReports={() => setActiveSection('결과보고서')}
             onOpenExamImaging={() => {
               setImagingLaunchFocus('imaging')

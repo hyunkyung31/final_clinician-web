@@ -10,6 +10,7 @@
     "test:lab": "node --test scripts/lab-reference-status.test.mjs",
     "test:angiography": "node --test scripts/angiography.test.mjs",
     "test:xca": "node --test scripts/xca-analysis.test.mjs scripts/xca-details.test.mjs scripts/xca-report.test.mjs scripts/xca-pdf.test.mjs",
+    "test:demo": "node --test scripts/app-shell.test.mjs scripts/workstation-hub.test.mjs scripts/clinical-exam-guidance.test.mjs scripts/clinical-shap-presentation.test.mjs scripts/clinical-ai-report.test.mjs scripts/prescription-workspace.test.mjs scripts/procedure-record.test.mjs scripts/procedure-timeline.test.mjs",
     "typecheck:consultation": "tsc --project tsconfig.consultation.json --noEmit"
   },
   "dependencies": {

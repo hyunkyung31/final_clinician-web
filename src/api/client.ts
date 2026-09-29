@@ -44,6 +44,8 @@ import type {
   MedicalResultDetail,
   ReportAiSummary,
   PrescriptionDetail,
+  PrescriptionDURCheck,
+  PrescriptionDURResult,
   PrescriptionItemInput,
   PrescriptionItemSummary,
   PrescriptionSummary,
@@ -3090,15 +3092,59 @@ export async function deletePrescriptionItem(
   )
 }
 
+function mapPrescriptionDURResult(value: unknown): PrescriptionDURResult | null {
+  if (!isRecord(value)) return null
+  const id = readNumber(value, 'id')
+  if (id === undefined) return null
+  const rule = nestedRecord(value, 'rule_detail')
+  return {
+    id,
+    severity: readString(value, 'severity').toUpperCase() || 'INFO',
+    warningMessage: readString(value, 'warning_message') || 'DUR 확인 항목',
+    action: readString(value, 'action').toUpperCase(),
+    overrideReason: readString(value, 'override_reason'),
+    prescriptionItemId: readNumber(value, 'prescription_item'),
+    relatedItemId: readNumber(value, 'related_item'),
+    ruleName: rule ? readString(rule, 'rule_name') : '',
+    ruleType: rule ? readString(rule, 'rule_type') : '',
+  }
+}
+
+function mapPrescriptionDURCheck(payload: unknown): PrescriptionDURCheck {
+  if (!isRecord(payload)) throw new ApiError('DUR 검사 응답을 확인하지 못했습니다.', 500)
+  const check = nestedRecord(payload, 'dur_check') ?? payload
+  const id = readNumber(check, 'id')
+  if (id === undefined) throw new ApiError('DUR 검사 ID를 확인하지 못했습니다.', 500)
+  return {
+    id,
+    status: readString(check, 'status').toUpperCase() || 'UNKNOWN',
+    checkedAt: readString(check, 'checked_at'),
+    results: extractList(payload.results).map(mapPrescriptionDURResult).filter((item): item is PrescriptionDURResult => item !== null),
+  }
+}
+
 export async function runPrescriptionDurCheck(
   prescriptionId: number,
-): Promise<unknown> {
-  return request<unknown>(
+): Promise<PrescriptionDURCheck> {
+  return mapPrescriptionDURCheck(await request<unknown>(
     `/api/prescriptions/${prescriptionId}/dur-check/`,
     {
       method: 'POST',
     },
-  )
+  ))
+}
+
+export async function signPrescription(
+  prescriptionId: number,
+  reauthToken: string,
+): Promise<PrescriptionDetail> {
+  const payload = await request<unknown>(`/api/prescriptions/${prescriptionId}/sign/`, {
+    method: 'POST',
+    body: JSON.stringify({ reauth_token: reauthToken }),
+  })
+  const detail = mapPrescriptionDetail(payload)
+  if (!detail) throw new ApiError('확정된 처방 정보를 확인하지 못했습니다.', 500)
+  return detail
 }
 
 export async function updateDurCheckResultAction(
@@ -3777,8 +3823,8 @@ export async function createProcedureEvent(examinationId: number, input: {
       entry_method: 'MANUAL',
       event_category: input.eventCategory,
       event_text: input.eventText,
-      medication_or_device: input.medicationOrDevice || '',
-      actual_dose_or_spec: input.actualDoseOrSpec || '',
+      ...(input.medicationOrDevice ? { medication_or_device: input.medicationOrDevice } : {}),
+      ...(input.actualDoseOrSpec ? { actual_dose_or_spec: input.actualDoseOrSpec } : {}),
       note: input.note || '',
       event_at: input.eventAt,
       ...(input.prescriptionItemId ? { prescription_item_id: input.prescriptionItemId } : {}),
@@ -3828,45 +3874,280 @@ export async function getProcedurePrescriptionItems(examinationId: number): Prom
   return extractList(payload)
 }
 
-export async function getProcedureDevices(filters: { category?: string; search?: string; active?: boolean } = {}): Promise<unknown[]> {
+export type ProcedureRecordItemStatus = 'ACTIVE' | 'CORRECTED' | 'CANCELED'
+export type MedicationAdministrationSourceType = 'PRESCRIPTION' | 'AD_HOC'
+export type ProcedureDeviceCategory = 'SHEATH' | 'CATHETER' | 'GUIDEWIRE' | 'BALLOON' | 'STENT' | 'IVUS_OCT' | 'HEMOSTASIS' | 'OTHER'
+
+const PROCEDURE_DEVICE_CATEGORIES = new Set<ProcedureDeviceCategory>([
+  'SHEATH', 'CATHETER', 'GUIDEWIRE', 'BALLOON', 'STENT', 'IVUS_OCT', 'HEMOSTASIS', 'OTHER',
+])
+
+export interface ProcedureDevice {
+  id: number
+  code: string
+  category: ProcedureDeviceCategory
+  productName: string
+  manufacturer: string
+  specification: string
+  isActive: boolean
+}
+
+export interface ProcedureDeviceUsage {
+  id: number
+  examinationId?: number
+  procedureRecordId?: number
+  deviceId: number
+  device?: ProcedureDevice
+  productName: string
+  manufacturer: string
+  specification: string
+  quantity?: number
+  lotNumber: string
+  serialNumber: string
+  udi: string
+  usedAt: string
+  usedBy?: number
+  status: ProcedureRecordItemStatus
+  note: string
+}
+
+export interface ProcedureDeviceUsageInput {
+  deviceId: number
+  usedAt: string
+  procedureRecordId?: number
+  quantity?: number
+  lotNumber?: string
+  serialNumber?: string
+  udi?: string
+  note?: string
+}
+
+export interface ProcedureDeviceUsageCorrection {
+  reason: string
+  quantity?: number
+  lotNumber?: string
+  serialNumber?: string
+  udi?: string
+  usedAt?: string
+  note?: string
+}
+
+export interface MedicationAdministration {
+  id: number
+  examinationId?: number
+  procedureRecordId?: number
+  prescriptionItemId?: number
+  medicationId?: number
+  medicationName: string
+  sourceType: MedicationAdministrationSourceType
+  status: ProcedureRecordItemStatus
+  administeredAt: string
+  doseValue: string
+  doseUnit: string
+  route: string
+  note: string
+  administeredBy?: number
+}
+
+export interface MedicationAdministrationInput {
+  sourceType: MedicationAdministrationSourceType
+  administeredAt: string
+  prescriptionItemId?: number
+  medicationId?: number
+  medicationName?: string
+  procedureRecordId?: number
+  doseValue?: string
+  doseUnit?: string
+  route?: string
+  note?: string
+}
+
+export interface MedicationAdministrationCorrection {
+  reason: string
+  administeredAt?: string
+  doseValue?: string
+  doseUnit?: string
+  route?: string
+  note?: string
+}
+
+function procedureItemStatus(value: string): ProcedureRecordItemStatus | null {
+  if (value === 'ACTIVE' || value === 'CORRECTED' || value === 'CANCELED') return value
+  return value ? null : 'ACTIVE'
+}
+
+function mapProcedureDevice(payload: UnknownRecord): ProcedureDevice | null {
+  const id = readNumber(payload, 'id')
+  const categoryValue = readString(payload, 'category')
+  if (id === undefined || !PROCEDURE_DEVICE_CATEGORIES.has(categoryValue as ProcedureDeviceCategory)) return null
+  return {
+    id,
+    code: readString(payload, 'code'),
+    category: categoryValue as ProcedureDeviceCategory,
+    productName: readString(payload, 'product_name'),
+    manufacturer: readString(payload, 'manufacturer'),
+    specification: readString(payload, 'specification'),
+    isActive: payload.is_active !== false,
+  }
+}
+
+function mapProcedureDeviceUsage(payload: UnknownRecord): ProcedureDeviceUsage | null {
+  const id = readNumber(payload, 'id')
+  const deviceId = readNumber(payload, 'device')
+  const status = procedureItemStatus(readString(payload, 'status').toUpperCase())
+  if (id === undefined || deviceId === undefined || status !== 'ACTIVE') return null
+  const deviceValue = isRecord(payload.device_detail) ? mapProcedureDevice(payload.device_detail) ?? undefined : undefined
+  return {
+    id,
+    examinationId: readNumber(payload, 'examination'),
+    procedureRecordId: readNumber(payload, 'procedure_record'),
+    deviceId,
+    device: deviceValue,
+    productName: readString(payload, 'product_name') || deviceValue?.productName || '',
+    manufacturer: readString(payload, 'manufacturer'),
+    specification: readString(payload, 'specification'),
+    quantity: readNumber(payload, 'quantity'),
+    lotNumber: readString(payload, 'lot_number'),
+    serialNumber: readString(payload, 'serial_number'),
+    udi: readString(payload, 'udi'),
+    usedAt: readString(payload, 'used_at'),
+    usedBy: readNumber(payload, 'used_by'),
+    status,
+    note: readString(payload, 'note'),
+  }
+}
+
+function mapMedicationAdministration(payload: UnknownRecord): MedicationAdministration | null {
+  const id = readNumber(payload, 'id')
+  const sourceType = readString(payload, 'source_type')
+  const status = procedureItemStatus(readString(payload, 'status').toUpperCase())
+  if (id === undefined || (sourceType !== 'PRESCRIPTION' && sourceType !== 'AD_HOC') || status !== 'ACTIVE') return null
+  return {
+    id,
+    examinationId: readNumber(payload, 'examination'),
+    procedureRecordId: readNumber(payload, 'procedure_record'),
+    prescriptionItemId: readNumber(payload, 'prescription_item'),
+    medicationId: readNumber(payload, 'medication'),
+    medicationName: readString(payload, 'medication_name'),
+    sourceType,
+    status,
+    administeredAt: readString(payload, 'administered_at'),
+    doseValue: readString(payload, 'dose_value'),
+    doseUnit: readString(payload, 'dose_unit'),
+    route: readString(payload, 'route'),
+    note: readString(payload, 'note'),
+    administeredBy: readNumber(payload, 'administered_by'),
+  }
+}
+
+export async function getProcedureDevices(filters: { category?: string; search?: string; active?: boolean } = {}): Promise<ProcedureDevice[]> {
   const params = new URLSearchParams()
   if (filters.category) params.set('category', filters.category)
   if (filters.search) params.set('search', filters.search)
   if (filters.active !== undefined) params.set('active', String(filters.active))
   const query = params.size ? `?${params}` : ''
   return extractList(await request<unknown>(`/api/staff/procedure-devices/${query}`))
+    .map(mapProcedureDevice)
+    .filter((item): item is ProcedureDevice => item !== null)
 }
 
-export async function getProcedureDeviceUsages(examinationId: number): Promise<unknown[]> {
-  return extractList(await request<unknown>(`/api/staff/examinations/${examinationId}/procedure-device-usages/`))
+export async function getProcedureDeviceUsages(examinationId: number): Promise<ProcedureDeviceUsage[]> {
+  const payload = await request<unknown>(`/api/staff/examinations/${examinationId}/procedure-device-usages/`)
+  return extractList(payload).map(mapProcedureDeviceUsage).filter((item): item is ProcedureDeviceUsage => item !== null)
 }
 
-export async function createProcedureDeviceUsage(examinationId: number, input: Record<string, unknown>): Promise<unknown> {
-  return request<unknown>(`/api/staff/examinations/${examinationId}/procedure-device-usages/`, { method: 'POST', body: JSON.stringify(input) })
+export async function createProcedureDeviceUsage(examinationId: number, input: ProcedureDeviceUsageInput): Promise<ProcedureDeviceUsage> {
+  const payload = await request<unknown>(`/api/staff/examinations/${examinationId}/procedure-device-usages/`, {
+    method: 'POST',
+    body: JSON.stringify({
+      device_id: input.deviceId,
+      used_at: input.usedAt,
+      ...(input.procedureRecordId ? { procedure_record_id: input.procedureRecordId } : {}),
+      ...(input.quantity !== undefined ? { quantity: input.quantity } : {}),
+      ...(input.lotNumber ? { lot_number: input.lotNumber } : {}),
+      ...(input.serialNumber ? { serial_number: input.serialNumber } : {}),
+      ...(input.udi ? { udi: input.udi } : {}),
+      ...(input.note ? { note: input.note } : {}),
+    }),
+  })
+  const mapped = isRecord(payload) ? mapProcedureDeviceUsage(payload) : null
+  if (!mapped) throw new ApiError('저장된 시술 재료 사용 기록을 확인하지 못했습니다.', 500)
+  return mapped
 }
 
-export async function correctProcedureDeviceUsage(usageId: number, input: Record<string, unknown>): Promise<unknown> {
-  return request<unknown>(`/api/staff/procedure-device-usages/${usageId}/correct/`, { method: 'POST', body: JSON.stringify(input) })
+export async function correctProcedureDeviceUsage(usageId: number, input: ProcedureDeviceUsageCorrection): Promise<ProcedureDeviceUsage> {
+  const payload = await request<unknown>(`/api/staff/procedure-device-usages/${usageId}/correct/`, {
+    method: 'POST',
+    body: JSON.stringify({
+      reason: input.reason,
+      ...(input.quantity !== undefined ? { quantity: input.quantity } : {}),
+      ...(input.lotNumber !== undefined ? { lot_number: input.lotNumber } : {}),
+      ...(input.serialNumber !== undefined ? { serial_number: input.serialNumber } : {}),
+      ...(input.udi !== undefined ? { udi: input.udi } : {}),
+      ...(input.usedAt ? { used_at: input.usedAt } : {}),
+      ...(input.note !== undefined ? { note: input.note } : {}),
+    }),
+  })
+  const mapped = isRecord(payload) ? mapProcedureDeviceUsage(payload) : null
+  if (!mapped) throw new ApiError('정정된 시술 재료 사용 기록을 확인하지 못했습니다.', 500)
+  return mapped
 }
 
-export async function cancelProcedureDeviceUsage(usageId: number, reason: string): Promise<unknown> {
-  return request<unknown>(`/api/staff/procedure-device-usages/${usageId}/cancel/`, { method: 'POST', body: JSON.stringify({ reason, cancel_reason: reason }) })
+export async function cancelProcedureDeviceUsage(usageId: number, reason: string): Promise<void> {
+  await request<unknown>(`/api/staff/procedure-device-usages/${usageId}/cancel/`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  })
 }
 
-export async function getMedicationAdministrations(examinationId: number): Promise<unknown[]> {
-  return extractList(await request<unknown>(`/api/staff/examinations/${examinationId}/medication-administrations/`))
+export async function getMedicationAdministrations(examinationId: number): Promise<MedicationAdministration[]> {
+  const payload = await request<unknown>(`/api/staff/examinations/${examinationId}/medication-administrations/`)
+  return extractList(payload).map(mapMedicationAdministration).filter((item): item is MedicationAdministration => item !== null)
 }
 
-export async function createMedicationAdministration(examinationId: number, input: Record<string, unknown>): Promise<unknown> {
-  return request<unknown>(`/api/staff/examinations/${examinationId}/medication-administrations/`, { method: 'POST', body: JSON.stringify(input) })
+export async function createMedicationAdministration(examinationId: number, input: MedicationAdministrationInput): Promise<MedicationAdministration> {
+  const payload = await request<unknown>(`/api/staff/examinations/${examinationId}/medication-administrations/`, {
+    method: 'POST',
+    body: JSON.stringify({
+      source_type: input.sourceType,
+      administered_at: input.administeredAt,
+      ...(input.prescriptionItemId ? { prescription_item_id: input.prescriptionItemId } : {}),
+      ...(input.medicationId ? { medication_id: input.medicationId } : {}),
+      ...(input.medicationName ? { medication_name: input.medicationName } : {}),
+      ...(input.procedureRecordId ? { procedure_record_id: input.procedureRecordId } : {}),
+      ...(input.doseValue ? { dose_value: input.doseValue } : {}),
+      ...(input.doseUnit ? { dose_unit: input.doseUnit } : {}),
+      ...(input.route ? { route: input.route } : {}),
+      ...(input.note ? { note: input.note } : {}),
+    }),
+  })
+  const mapped = isRecord(payload) ? mapMedicationAdministration(payload) : null
+  if (!mapped) throw new ApiError('저장된 투약 기록을 확인하지 못했습니다.', 500)
+  return mapped
 }
 
-export async function correctMedicationAdministration(administrationId: number, input: Record<string, unknown>): Promise<unknown> {
-  return request<unknown>(`/api/staff/medication-administrations/${administrationId}/correct/`, { method: 'POST', body: JSON.stringify(input) })
+export async function correctMedicationAdministration(administrationId: number, input: MedicationAdministrationCorrection): Promise<MedicationAdministration> {
+  const payload = await request<unknown>(`/api/staff/medication-administrations/${administrationId}/correct/`, {
+    method: 'POST',
+    body: JSON.stringify({
+      reason: input.reason,
+      ...(input.administeredAt ? { administered_at: input.administeredAt } : {}),
+      ...(input.doseValue !== undefined ? { dose_value: input.doseValue } : {}),
+      ...(input.doseUnit !== undefined ? { dose_unit: input.doseUnit } : {}),
+      ...(input.route !== undefined ? { route: input.route } : {}),
+      ...(input.note !== undefined ? { note: input.note } : {}),
+    }),
+  })
+  const mapped = isRecord(payload) ? mapMedicationAdministration(payload) : null
+  if (!mapped) throw new ApiError('정정된 투약 기록을 확인하지 못했습니다.', 500)
+  return mapped
 }
 
-export async function cancelMedicationAdministration(administrationId: number, reason: string): Promise<unknown> {
-  return request<unknown>(`/api/staff/medication-administrations/${administrationId}/cancel/`, { method: 'POST', body: JSON.stringify({ reason, cancel_reason: reason }) })
+export async function cancelMedicationAdministration(administrationId: number, reason: string): Promise<void> {
+  await request<unknown>(`/api/staff/medication-administrations/${administrationId}/cancel/`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  })
 }
 
 export async function getPatientFollowUpRecords(patientId: number): Promise<PatientFollowUpRecords> {
@@ -4032,6 +4313,15 @@ export interface ClinicalAIAnalysis {
   results?: ClinicalAIResult[]
 }
 
+export interface ClinicalAIAnalysisListItem {
+  id: number
+  examination: number
+  analysis_type: 'CLINICAL'
+  status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED'
+  requested_at?: string | null
+  completed_at?: string | null
+}
+
 const CLINICAL_MODEL_VERSION_ID = Number(
   import.meta.env.VITE_CLINICAL_MODEL_VERSION_ID ?? '2',
 )
@@ -4064,6 +4354,22 @@ export async function getClinicalAIAnalysis(
   return request<ClinicalAIAnalysis>(
     `/api/ai-analyses/${analysisId}/`,
   )
+}
+
+export async function getPatientClinicalAnalyses(
+  patientId: number,
+): Promise<ClinicalAIAnalysisListItem[]> {
+  const listed = await request<ClinicalAIAnalysisListItem[]>(
+    `/api/ai-analyses/?patient_id=${patientId}&type=CLINICAL&status=SUCCEEDED`,
+  )
+
+  return (Array.isArray(listed) ? listed : [])
+    .filter((item) => item.analysis_type === 'CLINICAL' && item.status === 'SUCCEEDED')
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.completed_at || left.requested_at || '') || left.id
+      const rightTime = Date.parse(right.completed_at || right.requested_at || '') || right.id
+      return rightTime - leftTime
+    })
 }
 
 export async function loadLatestClinicalAnalysis(

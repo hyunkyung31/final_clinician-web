@@ -11,9 +11,16 @@ export function rankClinicalShapFeatures(
   features: ClinicalShapFeature[],
   limit = 8,
 ): RankedClinicalShapFeature[] {
+  const seen = new Set<string>()
   const selected = features
     .filter((feature) => Number.isFinite(Number(feature.shap_value)))
     .sort((left, right) => Math.abs(right.shap_value) - Math.abs(left.shap_value))
+    .filter((feature) => {
+      const key = feature.feature.trim()
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
     .slice(0, limit)
 
   const maximum = Math.max(0, ...selected.map((feature) => Math.abs(feature.shap_value)))

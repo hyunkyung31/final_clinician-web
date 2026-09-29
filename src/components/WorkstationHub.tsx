@@ -96,6 +96,7 @@ interface WorkstationHubProps {
   aiStatus: DashboardAIStatus | null
   staffIdentity: StaffIdentity | null
   staffDoctor: StaffDoctor | null
+  onOpenPrescriptions: () => void
   onOpenReports: () => void
   onOpenExamImaging: () => void
   onOpenXcaDetail: () => void
@@ -397,6 +398,7 @@ export function WorkstationHub({
   aiStatus,
   staffIdentity,
   staffDoctor,
+  onOpenPrescriptions,
   onOpenReports,
   onOpenExamImaging,
   onOpenXcaDetail,
@@ -754,124 +756,67 @@ const handleSaveMed = async (itemId: number) => {
 }
 
   const handleDurCheck = async () => {
-  if (!prescription?.prescription.id) return
+    if (!prescription?.prescription.id) return
 
-  setBusyAction('dur')
-  setHubError('')
-  setOverrideTargetId(null)
-  setOverrideReason('')
-  setDurActionError('')
+    setBusyAction('dur')
+    setHubError('')
+    setOverrideTargetId(null)
+    setOverrideReason('')
+    setDurActionError('')
 
-  try {
-    const payload = await runPrescriptionDurCheck(
-      prescription.prescription.id,
-    )
+    try {
+      const payload = await runPrescriptionDurCheck(
+        prescription.prescription.id,
+      )
+      const status = payload.status.toUpperCase()
+      const mapped: DurResultItem[] = payload.results.map((item) => ({
+        id: item.id,
+        severity: item.severity,
+        warning_message: item.warningMessage,
+        action: item.action,
+        override_reason: item.overrideReason,
+        acknowledged_at: '',
+      }))
 
-    const record =
-      payload && typeof payload === 'object'
-        ? payload as Record<string, unknown>
-        : {}
+      setDurStatus(status)
+      setDurCheckedAt(payload.checkedAt)
+      setDurResults(mapped)
 
-    const rawDurCheck =
-      record.dur_check &&
-      typeof record.dur_check === 'object'
-        ? record.dur_check as Record<string, unknown>
-        : {}
+      const firstUnresolvedCritical = mapped.find((item) => {
+        if (item.severity.toUpperCase() !== 'CRITICAL') return false
+        return ![
+          'OVERRIDE',
+          'OVERRIDDEN',
+          'EXCEPTION',
+          'EXCEPTION_APPROVED',
+        ].includes(item.action.toUpperCase())
+      })
 
-    const status = String(
-      rawDurCheck.status || '',
-    ).toUpperCase()
-
-    const checkedAt = String(
-      rawDurCheck.checked_at || '',
-    )
-
-    const results = Array.isArray(record.results)
-      ? record.results.filter(
-          (item): item is Record<string, unknown> =>
-            Boolean(item) &&
-            typeof item === 'object',
-        )
-      : []
-
-    const mapped: DurResultItem[] = results.map(
-  (item) => ({
-    id:
-      typeof item.id === 'number'
-        ? item.id
-        : Number(item.id) || 0,
-
-    severity: String(item.severity || ''),
-
-    warning_message: String(
-      item.warning_message || '',
-    ),
-
-    action: item.action
-      ? String(item.action)
-      : '',
-
-    override_reason: item.override_reason
-      ? String(item.override_reason)
-      : '',
-
-    acknowledged_at: item.acknowledged_at
-      ? String(item.acknowledged_at)
-      : '',
-  }),
-)
-
-    setDurStatus(status)
-    setDurCheckedAt(checkedAt)
-    setDurResults(mapped)
-
-    const firstUnresolvedCritical = mapped.find((item) => {
-      if (item.severity.toUpperCase() !== 'CRITICAL') {
-        return false
+      if (firstUnresolvedCritical) {
+        setOverrideTargetId(firstUnresolvedCritical.id)
       }
 
-      const action = item.action.toUpperCase()
-
-      return ![
-        'OVERRIDE',
-        'OVERRIDDEN',
-        'EXCEPTION',
-        'EXCEPTION_APPROVED',
-      ].includes(action)
-    })
-
-    if (firstUnresolvedCritical) {
-      setOverrideTargetId(firstUnresolvedCritical.id)
-      setOverrideReason('')
-    } else {
-      setOverrideTargetId(null)
-      setOverrideReason('')
-    }
-
-    if (status === 'FAILED') {
+      if (status === 'FAILED') {
+        setDurTone('alert')
+      } else if (status === 'PASSED' && mapped.length === 0) {
+        setDurTone('ok')
+      } else {
+        setDurTone(durToneFromResults(mapped))
+      }
+    } catch (error) {
+      setDurStatus('FAILED')
       setDurTone('alert')
-    } else if (
-      status === 'PASSED' &&
-      mapped.length === 0
-    ) {
-      setDurTone('ok')
-    } else {
-      setDurTone(durToneFromResults(mapped))
-    }
-  } catch (error) {
-    setDurStatus('FAILED')
-    setDurTone('alert')
 
-    setHubError(
-      clinicianErrorMessage(
-        error,
-        'DUR 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
-      ),
-    )
-  } finally {
-    setBusyAction('')
+      setHubError(
+        clinicianErrorMessage(
+          error,
+          'DUR 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
+        ),
+      )
+    } finally {
+      setBusyAction('')
+    }
   }
-}
 
 const handleAcknowledgeDur = async (
   resultId: number,
@@ -1337,19 +1282,24 @@ const handleOverrideDur = async (
       <header>
         <h3>약물 처방</h3>
 
-        {prescription && (
-          <span
-            className={`ws-badge ${
-              prescription.prescription.status === 'DRAFT'
-                ? 'warn'
-                : 'ok'
-            }`}
-          >
-            {prescription.prescription.status === 'DRAFT'
-              ? '작성 중'
-              : prescription.prescription.status}
-          </span>
-        )}
+        <div className="ws-rx-header-actions">
+          {prescription && (
+            <span
+              className={`ws-badge ${
+                prescription.prescription.status === 'DRAFT'
+                  ? 'warn'
+                  : 'ok'
+              }`}
+            >
+              {prescription.prescription.status === 'DRAFT'
+                ? '작성 중'
+                : prescription.prescription.status}
+            </span>
+          )}
+          <button type="button" onClick={onOpenPrescriptions}>
+            전체 처방 오더
+          </button>
+        </div>
       </header>
 
       {!prescription ? (

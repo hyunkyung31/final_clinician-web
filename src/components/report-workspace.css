@@ -70,6 +70,87 @@
 .status-report-reviewing { color: #8a5b12; background: #fff3d8; }
 .status-report-signed { color: #1f6b4a; background: #def7ea; }
 .status-report-released { color: #1d4f9c; background: #dce9ff; }
+.status-report-clinical { color: #244f91; background: #e8f0ff; }
+
+.clinical-report-readonly {
+  padding: 6px 10px;
+  border-radius: 999px;
+  color: #315d98;
+  background: #eaf2ff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.clinical-report-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.clinical-report-metrics > div {
+  display: grid;
+  gap: 3px;
+  padding: 13px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface-subtle);
+}
+
+.clinical-report-metrics span { color: var(--color-text-subtle); font-size: 11px; }
+.clinical-report-metrics strong { font-size: 19px; }
+.clinical-report-metrics.high > div:last-child strong { color: var(--color-danger); }
+.clinical-report-summary { margin: 12px 0 0; }
+
+.clinical-report-limitation {
+  display: flex;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: 1px solid #cad8ec;
+  border-radius: 9px;
+  color: #315d98;
+  background: #f5f9ff;
+}
+
+.clinical-report-limitation svg { flex: 0 0 auto; }
+.clinical-report-limitation p { margin: 2px 0 0; color: #5d718c; font-size: 11px; }
+
+.clinical-report-shap-table { margin-top: 10px; overflow-x: auto; }
+.clinical-report-shap-head,
+.clinical-report-shap-row {
+  display: grid;
+  grid-template-columns: 52px minmax(140px, 1.5fr) minmax(90px, .8fr) minmax(120px, 1fr) 90px;
+  gap: 10px;
+  align-items: center;
+  min-width: 650px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.clinical-report-shap-head {
+  color: var(--color-text-subtle);
+  background: var(--color-surface-subtle);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.clinical-report-shap-row { font-size: 12px; }
+.clinical-report-shap-row b.increase { color: #a13c36; }
+.clinical-report-shap-row b.decrease { color: #247052; }
+.clinical-report-warnings { margin: 8px 0 0; color: #8a5a11; }
+
+.clinical-report-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.clinical-report-footer p { margin: 0; color: var(--color-text-subtle); font-size: 11px; }
+.clinical-report-footer button { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; margin-top: 0; }
 
 .report-detail-card {
   margin: 0 24px 24px;
@@ -279,6 +360,8 @@
 }
 
 @media (max-width: 900px) {
+  .clinical-report-metrics { grid-template-columns: 1fr; }
+  .clinical-report-footer { align-items: flex-start; flex-direction: column; }
   .report-approval-summary {
     grid-template-columns: 1fr;
   }
