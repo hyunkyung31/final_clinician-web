@@ -1381,8 +1381,8 @@ async function getFhirObservationBundle(patientId: number): Promise<UnknownRecor
     const next = Array.isArray(payload.link) ? payload.link.filter(isRecord).find((link) => link.relation === 'next') : undefined
     const nextUrl = next ? readString(next, 'url') : ''
     if (!nextUrl) break
-    const resolved = new URL(nextUrl, 'https://api.34-50-57-207.sslip.io')
-    if (resolved.pathname !== '/api/fhir/Observation/' || !['api.34-50-57-207.sslip.io', '127.0.0.1', 'localhost'].includes(resolved.hostname)) {
+    const resolved = new URL(nextUrl, 'https://api.34-22-111-104.sslip.io')
+    if (resolved.pathname !== '/api/fhir/Observation/' || !['api.34-22-111-104.sslip.io', '127.0.0.1', 'localhost'].includes(resolved.hostname)) {
       throw new Error('FHIR 페이지 주소가 허용된 검사 API 경로와 다릅니다.')
     }
     if (resolved.searchParams.get('patient') && resolved.searchParams.get('patient') !== String(patientId)) throw new Error('FHIR 페이지의 환자가 일치하지 않습니다.')

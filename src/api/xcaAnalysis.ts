@@ -1,5 +1,7 @@
 /** GPU-PC demo only. Never automatically replay a POST. */
-const BRIDGE = 'https://xca.34-50-57-207.sslip.io'
+const BRIDGE = (
+  import.meta.env.VITE_XCA_BRIDGE_URL ?? 'https://xca.34-22-111-104.sslip.io'
+).replace(/\/$/, '')
 export interface XCABridgeHealth { bridgeReady: boolean; modelReady: boolean; busy: boolean }
 export interface XCAScore { aiScore: number; prediction: 0 | 1 }
 export interface XCASideResult {
