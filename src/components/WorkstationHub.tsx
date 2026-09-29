@@ -10,7 +10,6 @@ import {
 import {
   createExaminationOrder,
   createPatientMemo,
-  createPatientMedicalResult,
   createPrescriptionDraft,
   createPrescriptionItem,
   deletePatientMemo,
@@ -254,21 +253,7 @@ export function WorkstationHub({
     }
   }
 
-  const handleCreateReport = async () => {
-    if (!patientId) return
-    setBusyAction('create')
-    setHubError('')
-    try {
-      const created = await createPatientMedicalResult(patientId)
-      setDetail(created)
-      setReports(await getPatientReports(patientId))
-      setView('report')
-    } catch (error) {
-      setHubError(clinicianErrorMessage(error, HUB_COPY.noReport))
-    } finally {
-      setBusyAction('')
-    }
-  }
+  const handleCreateReport = () => onOpenReports()
 
   const handleSubmitOrders = async () => {
     if (!encounterId || selectedTypeIds.length === 0) return

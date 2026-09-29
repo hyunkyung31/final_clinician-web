@@ -1789,14 +1789,18 @@ export async function releaseMedicalResult(resultId: number): Promise<MedicalRes
   }))
 }
 
-export async function createPatientMedicalResult(patientId: number): Promise<MedicalResultDetail> {
-  const encounters = await request<unknown>(`/api/encounters/?patient_id=${patientId}`)
-  const latest = Array.isArray(encounters) ? encounters.find(isRecord) : null
-  const encounterId = latest ? readNumber(latest, 'id') : undefined
-  if (!encounterId) throw new ApiError('이 환자의 진료 기록이 없어 결과보고서를 만들 수 없습니다.', 404)
-  const created = await request<unknown>(`/api/encounters/${encounterId}/medical-results/`, {
+export async function createPatientMedicalResult(
+  patientId: number,
+  xcaMedicalResultId: number,
+  cctaMedicalResultId: number,
+): Promise<MedicalResultDetail> {
+  if (![patientId, xcaMedicalResultId, cctaMedicalResultId].every((value) => Number.isSafeInteger(value) && value > 0)) {
+    throw new ApiError('통합할 환자 및 2D·3D 보고서 정보가 올바르지 않습니다.', 400)
+  }
+  const created = await request<unknown>(`/api/patients/${patientId}/medical-results/`, {
     method: 'POST',
-    body: JSON.stringify({ patient_id: patientId }),
+    body: JSON.stringify({ patient_id: patientId, report_type: 'INTEGRATED',
+      xca_medical_result_id: xcaMedicalResultId, ccta_medical_result_id: cctaMedicalResultId }),
   })
   const medical = isRecord(created) ? created : {}
   const resultId = readNumber(medical, 'id')
