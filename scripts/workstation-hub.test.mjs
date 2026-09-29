@@ -166,3 +166,10 @@ test('workstation hub adapts to available container width without horizontal cli
   assert.equal(summaryBlock.includes('StudyDicomViewer'), false)
   assert.equal(summaryBlock.includes('onOpenReports()}>상세'), false)
 })
+
+test('desktop workstation summary uses the available vertical canvas', () => {
+  assert.match(css, /@container\s*\(min-width:\s*1081px\)/)
+  assert.match(css, /\.ws-hub-grid-clean\s*\{[\s\S]*min-height:\s*min\(650px,\s*calc\(100vh\s*-\s*150px\)\)/)
+  assert.match(css, /\.ws-hub-grid-clean \.ws-card-recommend\s*\{[\s\S]*min-height:\s*140px/)
+  assert.match(css, /\.ws-hub-grid-clean \.ws-col-left \.ws-card-exams\s*\{[\s\S]*flex:\s*1\s+1\s+auto/)
+})
