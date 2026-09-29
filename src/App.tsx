@@ -1460,6 +1460,7 @@ function App() {
 
         {selectedPatient && (
           <WorkstationHub
+            active={activeSection === "워크스테이션"}
             patient={selectedPatient}
             patientDetail={currentPatientDetail}
             patientDetailLoading={patientDetailLoading}
