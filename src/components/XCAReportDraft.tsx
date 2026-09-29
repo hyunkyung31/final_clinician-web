@@ -49,7 +49,7 @@ export function XCAReportDraft({ detail, selected, onBusyChange, disabled }: { d
   }
   return <section className="xca-report-draft">
     <h3>선택 프레임을 보고서 초안에 첨부</h3>
-    <p>전체 좌·우 분석, 시리즈별 탐색용 점수, 선택한 보존 프레임·마스크 참조와 의료진 의견을 새 보고서 버전에 기록합니다. 자동 서명·공개하지 않습니다.</p>
+    <p>전체 좌·우 분석, 시리즈별 탐색용 점수와 선택한 보존 프레임·마스크 참조를 새 보고서 버전에 기록합니다. 입력한 최종 소견은 결과보고서의 의료진 최종 소견에 저장됩니다.</p>
     <p>검사 #{detail.summary.examinationId} · AI 결과 #{detail.summary.resultId}를 2D XCA 보고서에 연결합니다.</p>
     <button type="button" disabled={busy || disabled || !!target} onClick={() => void prepare()}>2D XCA 보고서 초안 생성/기존 초안 열기</button>
     {target && <><p>의료 결과 #{target.id} · 현재 {target.status} · {target.baseVersionId ? `보고서 v${target.versionNo} (#${target.baseVersionId})` : '첫 보고서 버전 생성 예정'}</p>
@@ -72,6 +72,6 @@ export function XCAReportDraft({ detail, selected, onBusyChange, disabled }: { d
 
 function StoredEvidence({ target, detail }: { target: XCAReportTarget; detail: XCADetailResult }) {
   try {
-    return <>{storedXCAAttachments(target, detail).map((attachment, index) => <details key={`${target.baseVersionId}:${index}`}><summary>기존 보고서의 이 상세 분석 첨부 {index + 1} · {attachment.frameIds.length}프레임</summary><p>의료진 의견: {attachment.note}</p><XCAReportEvidence detail={detail} frameIds={attachment.frameIds} /></details>)}</>
+    return <>{storedXCAAttachments(target, detail).map((attachment, index) => <details key={`${target.baseVersionId}:${index}`}><summary>기존 보고서의 이 상세 분석 첨부 {index + 1} · {attachment.frameIds.length}프레임</summary><XCAReportEvidence detail={detail} frameIds={attachment.frameIds} /></details>)}</>
   } catch { return <p className="api-inline-error" role="alert">기존 첨부 참조를 확인하지 못했습니다. 보고서 기록을 확인하세요.</p> }
 }

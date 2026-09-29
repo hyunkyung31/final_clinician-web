@@ -208,7 +208,6 @@ function AiBlock({ title, summary, kind, attachments = [] }: { title: string; su
       {kind === 'xca' && (attachments.length ? attachments.map((attachment, index) => (
         <section key={index}>
           <h4>XCA 선택 첨부 {index + 1}</h4>
-          {attachment.note && <p>의료진 의견: {attachment.note}</p>}
           {attachment.frames.map(frame => (
             <div key={frame.id}>
               <p>촬영 {frame.sequenceNo} · frame_index {frame.frameIndex}</p>
