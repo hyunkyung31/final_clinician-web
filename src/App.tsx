@@ -168,14 +168,14 @@ const navItems: NavItem[] = [
   { icon: House, label: "홈" },
   { icon: LayoutDashboard, label: "워크스테이션" },
   { icon: CalendarDays, label: "일정" },
-  { icon: CalendarCheck2, label: "예약" },
   { icon: Users, label: "환자 관리" },
-  { icon: Pill, label: "처방 오더" },
+  { icon: Pill, label: "오더·처방" },
   { icon: MonitorPlay, label: "검사·영상" },
   { icon: BrainCircuit, label: "AI 분석" },
-  { icon: ClipboardPenLine, label: "시술기록" },
   { icon: Stethoscope, label: "협진" },
   { icon: FileText, label: "결과보고서" },
+  { icon: CalendarCheck2, label: "예약" },
+  { icon: ClipboardPenLine, label: "시술기록" },
   { icon: Settings, label: "설정" },
 ];
 
@@ -192,7 +192,7 @@ const connectedSections = new Set<GlobalSection>([
   "일정",
   "예약",
   "환자 관리",
-  "처방 오더",
+  "오더·처방",
   "검사·영상",
   "AI 분석",
   "시술기록",
@@ -208,7 +208,7 @@ const nurseSections = new Set<GlobalSection>([
   "일정",
   "예약",
   "환자 관리",
-  "처방 오더",
+  "오더·처방",
   "검사·영상",
   "시술기록",
   "채팅",
@@ -1198,7 +1198,7 @@ function App() {
 
       {activeSection === "예약" && <AppointmentWorkspace roles={staffIdentity?.roles ?? []} doctorId={staffDoctor?.id} />}
 
-      {activeSection === "처방 오더" && (
+      {activeSection === "오더·처방" && (
         <OrderWorkspace
           patients={patientList}
           selectedPatient={selectedPatient}
@@ -1482,7 +1482,7 @@ function App() {
             aiStatus={aiStatus}
             staffIdentity={staffIdentity}
             staffDoctor={staffDoctor}
-            onOpenPrescriptions={() => setActiveSection('처방 오더')}
+            onOpenPrescriptions={() => setActiveSection('오더·처방')}
             onOpenReports={() => setActiveSection('결과보고서')}
             onOpenExamImaging={() => {
               setImagingLaunchFocus('imaging')
