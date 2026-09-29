@@ -3008,8 +3008,7 @@ export async function createPrescriptionItem(
         medication_id: input.medicationId,
         dose_value: input.doseValue,
         dose_unit: input.doseUnit,
-        frequency_per_day:
-          input.frequencyPerDay,
+        frequency_per_day: input.frequencyPerDay,
         duration_days: input.durationDays,
         route: input.route,
         instructions: input.instructions,
@@ -3027,8 +3026,7 @@ export async function createPrescriptionItem(
     )
   }
 
-  const item =
-    mapPrescriptionItem(payload)
+  const item = mapPrescriptionItem(payload)
 
   if (!item) {
     throw new ApiError(
@@ -3051,8 +3049,7 @@ export async function updatePrescriptionItem(
       body: JSON.stringify({
         dose_value: input.doseValue,
         dose_unit: input.doseUnit,
-        frequency_per_day:
-          input.frequencyPerDay,
+        frequency_per_day: input.frequencyPerDay,
         duration_days: input.durationDays,
         route: input.route,
         instructions: input.instructions,
@@ -3070,8 +3067,7 @@ export async function updatePrescriptionItem(
     )
   }
 
-  const item =
-    mapPrescriptionItem(payload)
+  const item = mapPrescriptionItem(payload)
 
   if (!item) {
     throw new ApiError(
@@ -3101,6 +3097,23 @@ export async function runPrescriptionDurCheck(
     `/api/prescriptions/${prescriptionId}/dur-check/`,
     {
       method: 'POST',
+    },
+  )
+}
+
+export async function updateDurCheckResultAction(
+  resultId: number,
+  action: 'ACKNOWLEDGED' | 'OVERRIDE',
+  overrideReason?: string | null,
+): Promise<unknown> {
+  return request<unknown>(
+    `/api/dur-check-results/${resultId}/action/`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        action,
+        override_reason: overrideReason ?? null,
+      }),
     },
   )
 }

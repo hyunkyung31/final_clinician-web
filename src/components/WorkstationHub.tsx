@@ -23,7 +23,9 @@ import {
   releaseMedicalResult,
   runPrescriptionDurCheck,
   signoffMedicalResult,
+  updateDurCheckResultAction,
   updatePatientMemo,
+  updatePrescriptionItem,
 } from '../api/client'
 import { ClinicalAIAnalysisPanel } from './ClinicalAIAnalysisPanel'
 import { StudyDicomViewer } from './StudyDicomViewer'
@@ -37,6 +39,8 @@ import type {
   PatientReportSummary,
   PatientSummary,
   PrescriptionDetail,
+  PrescriptionItemInput,
+  PrescriptionItemSummary,
   StaffDoctor,
   StaffIdentity,
   TimelineItem,
@@ -100,7 +104,276 @@ interface WorkstationHubProps {
 
 type ExamFilter = 'ALL' | 'CT' | 'XCA' | 'US'
 type OrderTab = 'exam' | 'procedure' | 'other'
-type ActionTab = 'order' | 'rx' | 'dur'
+type ActionTab = 'order' | 'rx'
+type RxFormState = {
+  doseValue: string
+  doseUnit: string
+  frequencyPerDay: string
+  durationDays: string
+  route: string
+  instructions: string
+  note: string
+  startDate: string
+  endDate: string
+}
+
+type DurResultItem = {
+  id: number
+  severity: string
+  warning_message: string
+  action: string
+  override_reason: string
+  acknowledged_at: string
+}
+
+function createEmptyRxForm(
+  medication?: MedicationSummary | null,
+): RxFormState {
+  return {
+    doseValue: '',
+    doseUnit: medication?.defaultUnit || '',
+    frequencyPerDay: '',
+    durationDays: '',
+    route: '',
+    instructions: '',
+    note: '',
+    startDate: '',
+    endDate: '',
+  }
+}
+
+function createRxFormFromItem(
+  item: PrescriptionItemSummary,
+): RxFormState {
+  return {
+    doseValue:
+      item.doseValue != null
+        ? String(item.doseValue)
+        : '',
+    doseUnit: item.doseUnit || '',
+    frequencyPerDay:
+      item.frequencyPerDay != null
+        ? String(item.frequencyPerDay)
+        : '',
+    durationDays:
+      item.durationDays != null
+        ? String(item.durationDays)
+        : '',
+    route: item.route || 'PO',
+    instructions: item.instructions || '',
+    note: item.note || '',
+    startDate: item.startDate || '',
+    endDate: item.endDate || '',
+  }
+}
+
+function validateRxForm(form: RxFormState): string {
+  const doseValue = Number(form.doseValue)
+  const frequencyPerDay = Number(form.frequencyPerDay)
+  const durationDays = Number(form.durationDays)
+
+  if (!Number.isFinite(doseValue) || doseValue <= 0) {
+    return '1회 용량을 올바르게 입력해 주세요.'
+  }
+
+  if (!form.doseUnit.trim()) {
+    return '용량 단위를 입력해 주세요.'
+  }
+
+  if (
+    !Number.isInteger(frequencyPerDay) ||
+    frequencyPerDay <= 0
+  ) {
+    return '1일 투여 횟수를 올바르게 입력해 주세요.'
+  }
+
+  if (
+    !Number.isInteger(durationDays) ||
+    durationDays <= 0
+  ) {
+    return '투여 기간을 올바르게 입력해 주세요.'
+  }
+
+  if (!form.route.trim()) {
+    return '투여 경로를 입력해 주세요.'
+  }
+
+  return ''
+}
+
+function toPrescriptionItemInput(
+  form: RxFormState,
+): PrescriptionItemInput {
+  return {
+    doseValue: Number(form.doseValue),
+    doseUnit: form.doseUnit.trim(),
+    frequencyPerDay: Number(form.frequencyPerDay),
+    durationDays: Number(form.durationDays),
+    route: form.route.trim(),
+    instructions: form.instructions.trim(),
+    note: form.note.trim(),
+    startDate: form.startDate,
+    endDate: form.endDate,
+  }
+}
+
+interface RxFieldsProps {
+  value: RxFormState
+  disabled?: boolean
+  onChange: (value: RxFormState) => void
+}
+
+function RxFields({
+  value,
+  disabled = false,
+  onChange,
+}: RxFieldsProps) {
+  const change = (
+    key: keyof RxFormState,
+    nextValue: string,
+  ) => {
+    onChange({
+      ...value,
+      [key]: nextValue,
+    })
+  }
+
+  return (
+    <div className="ws-rx-fields">
+      <label className="ws-rx-field">
+        <span>1회 용량</span>
+        <input
+          disabled={disabled}
+          min="0"
+          step="0.001"
+          type="number"
+          value={value.doseValue}
+          onChange={(event) =>
+            change('doseValue', event.target.value)
+          }
+          placeholder="1"
+        />
+      </label>
+
+      <label className="ws-rx-field">
+        <span>단위</span>
+        <input
+          disabled={disabled}
+          type="text"
+          value={value.doseUnit}
+          onChange={(event) =>
+            change('doseUnit', event.target.value)
+          }
+          placeholder="예: 정, mg, mL"
+        />
+      </label>
+
+      <label className="ws-rx-field">
+        <span>1일 횟수</span>
+        <input
+          disabled={disabled}
+          min="1"
+          step="1"
+          type="number"
+          value={value.frequencyPerDay}
+          onChange={(event) =>
+            change('frequencyPerDay', event.target.value)
+          }
+          placeholder="1"
+        />
+      </label>
+
+      <label className="ws-rx-field">
+        <span>투여 기간</span>
+        <div className="ws-rx-input-with-unit">
+          <input
+            disabled={disabled}
+            min="1"
+            step="1"
+            type="number"
+            value={value.durationDays}
+            onChange={(event) =>
+              change('durationDays', event.target.value)
+            }
+            placeholder="7"
+          />
+          <small>일</small>
+        </div>
+      </label>
+
+      <label className="ws-rx-field">
+        <span>투여 경로</span>
+
+        <select
+          disabled={disabled}
+          value={value.route}
+          onChange={(event) =>
+            change('route', event.target.value)
+          }
+        >
+          <option value="">선택</option>
+          <option value="PO">경구 (PO)</option>
+          <option value="IV">정맥주사 (IV)</option>
+          <option value="IM">근육주사 (IM)</option>
+          <option value="SC">피하주사 (SC)</option>
+          <option value="SL">설하 (SL)</option>
+          <option value="TOPICAL">외용 (Topical)</option>
+          <option value="INH">흡입 (INH)</option>
+        </select>
+      </label>
+
+      <label className="ws-rx-field">
+        <span>시작일</span>
+        <input
+          disabled={disabled}
+          type="date"
+          value={value.startDate}
+          onChange={(event) =>
+            change('startDate', event.target.value)
+          }
+        />
+      </label>
+
+      <label className="ws-rx-field ws-rx-field-full">
+        <span>복약 지시</span>
+        <input
+          disabled={disabled}
+          type="text"
+          value={value.instructions}
+          onChange={(event) =>
+            change('instructions', event.target.value)
+          }
+          placeholder="예: 아침 식후 복용"
+        />
+      </label>
+
+      <label className="ws-rx-field ws-rx-field-full">
+        <span>처방 메모</span>
+        <input
+          disabled={disabled}
+          type="text"
+          value={value.note}
+          onChange={(event) =>
+            change('note', event.target.value)
+          }
+          placeholder="필요 시 입력"
+        />
+      </label>
+
+      <label className="ws-rx-field ws-rx-field-full">
+        <span>종료일</span>
+        <input
+          disabled={disabled}
+          type="date"
+          value={value.endDate}
+          onChange={(event) =>
+            change('endDate', event.target.value)
+          }
+        />
+      </label>
+    </div>
+  )
+}
 type ConfirmKind = 'signoff' | 'release' | 'memo-delete' | null
 
 export function WorkstationHub({
@@ -140,11 +413,21 @@ export function WorkstationHub({
   const [actionTab, setActionTab] = useState<ActionTab>('order')
   const [medQuery, setMedQuery] = useState('')
   const [medResults, setMedResults] = useState<MedicationSummary[]>([])
+  const [rxFormError, setRxFormError] = useState('')
   const [orderQuery, setOrderQuery] = useState('')
   const [selectedTypeIds, setSelectedTypeIds] = useState<number[]>([])
   const [prescription, setPrescription] = useState<PrescriptionDetail | null>(null)
-  const [durResults, setDurResults] = useState<Array<{ severity?: string; warning_message?: string }>>([])
+  const [selectedMedication, setSelectedMedication] = useState<MedicationSummary | null>(null)
+  const [newRxForm, setNewRxForm] = useState<RxFormState>(() => createEmptyRxForm())
+  const [editingRxItemId, setEditingRxItemId] = useState<number | null>(null)
+  const [editingRxForm, setEditingRxForm] = useState<RxFormState>(() => createEmptyRxForm())
+  const [durResults, setDurResults] = useState<DurResultItem[]>([])
   const [durTone, setDurTone] = useState<DurTone>('muted')
+  const [durStatus, setDurStatus] = useState('')
+  const [durCheckedAt, setDurCheckedAt] = useState('')
+  const [overrideTargetId, setOverrideTargetId] = useState<number | null>(null)
+  const [overrideReason, setOverrideReason] = useState('')
+  const [durActionError, setDurActionError] = useState('')
   const [memoDraft, setMemoDraft] = useState('')
   const [editingMemoId, setEditingMemoId] = useState<number | null>(null)
   const [editingMemoContent, setEditingMemoContent] = useState('')
@@ -166,8 +449,20 @@ export function WorkstationHub({
     setDetail(null)
     setReports([])
     setPrescription(null)
+
+    setSelectedMedication(null)
+    setNewRxForm(createEmptyRxForm())
+    setEditingRxItemId(null)
+    setEditingRxForm(createEmptyRxForm())
+
     setDurResults([])
     setDurTone('muted')
+    setDurStatus('')
+    setDurCheckedAt('')
+
+    setOverrideTargetId(null)
+    setOverrideReason('')
+    setDurActionError('')
   }, [patientId])
 
   useEffect(() => {
@@ -304,81 +599,380 @@ export function WorkstationHub({
     }
   }
 
+  const clearDurState = () => {
+    setDurResults([])
+    setDurTone('muted')
+    setDurStatus('')
+    setDurCheckedAt('')
+
+    setOverrideTargetId(null)
+    setOverrideReason('')
+    setDurActionError('')
+  }
+
   const handleSearchMeds = async (value: string) => {
     setMedQuery(value)
+
     if (!value.trim()) {
       setMedResults([])
       return
     }
+
     try {
-      setMedResults((await getMedications(value.trim())).slice(0, 5))
+      setMedResults(
+        (await getMedications(value.trim())).slice(0, 5),
+      )
     } catch {
       setMedResults([])
     }
   }
 
-  const handleAddMed = async (medication: MedicationSummary) => {
-    if (!prescription?.prescription.id) return
-    setBusyAction('rx')
+  const handleSelectMedication = (
+    medication: MedicationSummary,
+  ) => {
+    setSelectedMedication(medication)
+    setNewRxForm(createEmptyRxForm(medication))
+    setMedQuery('')
+    setMedResults([])
     setHubError('')
-    try {
-      await createPrescriptionItem(prescription.prescription.id, {
-        medicationId: medication.id,
-        doseValue: undefined,
-        doseUnit: medication.defaultUnit || '',
-        frequencyPerDay: undefined,
-        durationDays: undefined,
-        route: 'PO',
-        instructions: '',
-        note: '',
-        startDate: '',
-        endDate: '',
-      })
-      setMedQuery('')
-      setMedResults([])
-      await reloadPrescription()
-    } catch (error) {
-      setHubError(clinicianErrorMessage(error, '약품을 추가하지 못했습니다.'))
-    } finally {
-      setBusyAction('')
-    }
   }
+
+  const handleAddMed = async () => {
+  if (
+    !prescription?.prescription.id ||
+    !selectedMedication
+  ) {
+    return
+  }
+
+  const validationMessage = validateRxForm(newRxForm)
+
+  if (validationMessage) {
+    setRxFormError(validationMessage)
+    return
+  }
+
+  setBusyAction('rx')
+  setHubError('')
+  setRxFormError('')
+
+  try {
+    await createPrescriptionItem(
+      prescription.prescription.id,
+      {
+        medicationId: selectedMedication.id,
+        ...toPrescriptionItemInput(newRxForm),
+      },
+    )
+
+    setSelectedMedication(null)
+    setNewRxForm(createEmptyRxForm())
+
+    clearDurState()
+    await reloadPrescription()
+  } catch (error) {
+    setRxFormError(
+      clinicianErrorMessage(
+        error,
+        '약품을 추가하지 못했습니다.',
+      ),
+    )
+  } finally {
+    setBusyAction('')
+  }
+}
+
+const handleStartEditMed = (
+  item: PrescriptionItemSummary,
+) => {
+  setEditingRxItemId(item.id)
+  setEditingRxForm(createRxFormFromItem(item))
+  setHubError('')
+  setRxFormError('')
+}
+
+const handleSaveMed = async (itemId: number) => {
+  const validationMessage =
+    validateRxForm(editingRxForm)
+
+  if (validationMessage) {
+    setRxFormError(validationMessage)
+    return
+  }
+
+  setBusyAction('rx')
+  setHubError('')
+  setRxFormError('')
+
+  try {
+    await updatePrescriptionItem(
+      itemId,
+      toPrescriptionItemInput(editingRxForm),
+    )
+
+    setEditingRxItemId(null)
+    setEditingRxForm(createEmptyRxForm())
+
+    clearDurState()
+    await reloadPrescription()
+  } catch (error) {
+    setRxFormError(
+      clinicianErrorMessage(
+        error,
+        '처방 약품을 수정하지 못했습니다.',
+      ),
+    )
+  } finally {
+    setBusyAction('')
+  }
+}
 
   const handleDeleteMed = async (itemId: number) => {
-    setBusyAction('rx')
-    setHubError('')
-    try {
-      await deletePrescriptionItem(itemId)
-      await reloadPrescription()
-    } catch (error) {
-      setHubError(clinicianErrorMessage(error, '약품을 삭제하지 못했습니다.'))
-    } finally {
-      setBusyAction('')
+  setBusyAction('rx')
+  setHubError('')
+
+  try {
+    await deletePrescriptionItem(itemId)
+
+    if (editingRxItemId === itemId) {
+      setEditingRxItemId(null)
+      setEditingRxForm(createEmptyRxForm())
     }
+
+    clearDurState()
+    await reloadPrescription()
+  } catch (error) {
+    setHubError(
+      clinicianErrorMessage(
+        error,
+        '약품을 삭제하지 못했습니다.',
+      ),
+    )
+  } finally {
+    setBusyAction('')
   }
+}
 
   const handleDurCheck = async () => {
-    if (!prescription?.prescription.id) return
-    setBusyAction('dur')
-    setHubError('')
-    try {
-      const payload = await runPrescriptionDurCheck(prescription.prescription.id)
-      const record = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {}
-      const results = Array.isArray(record.results)
-        ? record.results.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
-        : []
-      const mapped = results.map((item) => ({
-        severity: String(item.severity || ''),
-        warning_message: String(item.warning_message || item.action || ''),
-      }))
-      setDurResults(mapped)
-      setDurTone(durToneFromResults(mapped))
-    } catch (error) {
-      setHubError(clinicianErrorMessage(error, 'DUR 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'))
-    } finally {
-      setBusyAction('')
+  if (!prescription?.prescription.id) return
+
+  setBusyAction('dur')
+  setHubError('')
+  setOverrideTargetId(null)
+  setOverrideReason('')
+  setDurActionError('')
+
+  try {
+    const payload = await runPrescriptionDurCheck(
+      prescription.prescription.id,
+    )
+
+    const record =
+      payload && typeof payload === 'object'
+        ? payload as Record<string, unknown>
+        : {}
+
+    const rawDurCheck =
+      record.dur_check &&
+      typeof record.dur_check === 'object'
+        ? record.dur_check as Record<string, unknown>
+        : {}
+
+    const status = String(
+      rawDurCheck.status || '',
+    ).toUpperCase()
+
+    const checkedAt = String(
+      rawDurCheck.checked_at || '',
+    )
+
+    const results = Array.isArray(record.results)
+      ? record.results.filter(
+          (item): item is Record<string, unknown> =>
+            Boolean(item) &&
+            typeof item === 'object',
+        )
+      : []
+
+    const mapped: DurResultItem[] = results.map(
+  (item) => ({
+    id:
+      typeof item.id === 'number'
+        ? item.id
+        : Number(item.id) || 0,
+
+    severity: String(item.severity || ''),
+
+    warning_message: String(
+      item.warning_message || '',
+    ),
+
+    action: item.action
+      ? String(item.action)
+      : '',
+
+    override_reason: item.override_reason
+      ? String(item.override_reason)
+      : '',
+
+    acknowledged_at: item.acknowledged_at
+      ? String(item.acknowledged_at)
+      : '',
+  }),
+)
+
+    setDurStatus(status)
+    setDurCheckedAt(checkedAt)
+    setDurResults(mapped)
+
+    const firstUnresolvedCritical = mapped.find((item) => {
+      if (item.severity.toUpperCase() !== 'CRITICAL') {
+        return false
+      }
+
+      const action = item.action.toUpperCase()
+
+      return ![
+        'OVERRIDE',
+        'OVERRIDDEN',
+        'EXCEPTION',
+        'EXCEPTION_APPROVED',
+      ].includes(action)
+    })
+
+    if (firstUnresolvedCritical) {
+      setOverrideTargetId(firstUnresolvedCritical.id)
+      setOverrideReason('')
+    } else {
+      setOverrideTargetId(null)
+      setOverrideReason('')
     }
+
+    if (status === 'FAILED') {
+      setDurTone('alert')
+    } else if (
+      status === 'PASSED' &&
+      mapped.length === 0
+    ) {
+      setDurTone('ok')
+    } else {
+      setDurTone(durToneFromResults(mapped))
+    }
+  } catch (error) {
+    setDurStatus('FAILED')
+    setDurTone('alert')
+
+    setHubError(
+      clinicianErrorMessage(
+        error,
+        'DUR 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
+      ),
+    )
+  } finally {
+    setBusyAction('')
   }
+}
+
+const handleAcknowledgeDur = async (
+  resultId: number,
+) => {
+  const target = durResults.find(
+    (item) => item.id === resultId,
+  )
+
+  if (
+    target?.severity.toUpperCase() === 'CRITICAL'
+  ) {
+    setDurActionError(
+      'CRITICAL 경고는 단순 확인으로 처리할 수 없습니다. 예외 승인 사유를 입력해 주세요.',
+    )
+    return
+  }
+
+  setBusyAction('dur-action')
+  setDurActionError('')
+
+  try {
+    await updateDurCheckResultAction(
+      resultId,
+      'ACKNOWLEDGED',
+      null,
+    )
+
+    setDurResults((current) =>
+      current.map((item) =>
+        item.id === resultId
+          ? {
+              ...item,
+              action: 'ACKNOWLEDGED',
+              override_reason: '',
+              acknowledged_at:
+                new Date().toISOString(),
+            }
+          : item,
+      ),
+    )
+  } catch (error) {
+    setDurActionError(
+      clinicianErrorMessage(
+        error,
+        'DUR 경고 확인 처리에 실패했습니다.',
+      ),
+    )
+  } finally {
+    setBusyAction('')
+  }
+}
+
+const handleOverrideDur = async (
+  resultId: number,
+) => {
+  const reason = overrideReason.trim()
+
+  if (!reason) {
+    setDurActionError(
+      '예외 승인 사유를 입력해 주세요.',
+    )
+    return
+  }
+
+  setBusyAction('dur-action')
+  setDurActionError('')
+
+  try {
+    await updateDurCheckResultAction(
+      resultId,
+      'OVERRIDE',
+      reason,
+    )
+
+    setDurResults((current) =>
+      current.map((item) =>
+        item.id === resultId
+          ? {
+              ...item,
+              action: 'OVERRIDE',
+              override_reason: reason,
+              acknowledged_at:
+                new Date().toISOString(),
+            }
+          : item,
+      ),
+    )
+
+    setOverrideTargetId(null)
+    setOverrideReason('')
+  } catch (error) {
+    setDurActionError(
+      clinicianErrorMessage(
+        error,
+        'DUR 예외 승인 처리에 실패했습니다.',
+      ),
+    )
+  } finally {
+    setBusyAction('')
+  }
+}
 
   const saveMemo = async () => {
     if (!patientId || !memoDraft.trim()) return
@@ -615,87 +1209,615 @@ export function WorkstationHub({
 
             <div className="ws-col ws-col-right">
               <section className="ws-card ws-action-card">
-                <div className="ws-action-tabs" role="tablist" aria-label="실행 패널">
-                  <button className={actionTab === 'order' ? 'active' : ''} onClick={() => setActionTab('order')} type="button">오더</button>
-                  <button className={actionTab === 'rx' ? 'active' : ''} onClick={() => setActionTab('rx')} type="button">처방</button>
-                  <button className={actionTab === 'dur' ? 'active' : ''} onClick={() => setActionTab('dur')} type="button">DUR</button>
-                </div>
+  <div
+    className="ws-action-tabs"
+    role="tablist"
+    aria-label="실행 패널"
+  >
+    <button
+      className={actionTab === 'order' ? 'active' : ''}
+      onClick={() => setActionTab('order')}
+      type="button"
+    >
+      오더
+    </button>
 
-                {actionTab === 'order' && (
-                  <>
-                    <header><h3>오더 입력</h3><small>{selectedTypeIds.length}개 선택</small></header>
-                    <div className="ws-filters">
-                      <button className={orderTab === 'exam' ? 'active' : ''} onClick={() => setOrderTab('exam')} type="button">검사</button>
-                      <button className={orderTab === 'procedure' ? 'active' : ''} onClick={() => setOrderTab('procedure')} type="button">시술</button>
-                      <button className={orderTab === 'other' ? 'active' : ''} onClick={() => setOrderTab('other')} type="button">기타</button>
+    <button
+      className={actionTab === 'rx' ? 'active' : ''}
+      onClick={() => setActionTab('rx')}
+      type="button"
+    >
+      약물 처방
+    </button>
+  </div>
+
+  {actionTab === 'order' && (
+    <>
+      <header>
+        <h3>오더 입력</h3>
+        <small>{selectedTypeIds.length}개 선택</small>
+      </header>
+
+      <div className="ws-filters">
+        <button
+          className={orderTab === 'exam' ? 'active' : ''}
+          onClick={() => setOrderTab('exam')}
+          type="button"
+        >
+          검사
+        </button>
+
+        <button
+          className={
+            orderTab === 'procedure' ? 'active' : ''
+          }
+          onClick={() => setOrderTab('procedure')}
+          type="button"
+        >
+          시술
+        </button>
+
+        <button
+          className={orderTab === 'other' ? 'active' : ''}
+          onClick={() => setOrderTab('other')}
+          type="button"
+        >
+          기타
+        </button>
+      </div>
+
+      <label className="ws-order-item">
+        <Search size={13} />
+
+        <input
+          type="text"
+          value={orderQuery}
+          onChange={(event) =>
+            setOrderQuery(event.target.value)
+          }
+          placeholder="검사명 또는 코드 검색"
+        />
+      </label>
+
+      <div className="ws-order-list">
+        {visibleTypes.slice(0, 6).map((type) => (
+          <label className="ws-order-item" key={type.id}>
+            <input
+              checked={selectedTypeIds.includes(type.id)}
+              onChange={() =>
+                setSelectedTypeIds((current) =>
+                  current.includes(type.id)
+                    ? current.filter(
+                        (id) => id !== type.id,
+                      )
+                    : [...current, type.id],
+                )
+              }
+              type="checkbox"
+            />
+
+            <span>{type.name}</span>
+          </label>
+        ))}
+
+        {visibleTypes.length === 0 && (
+          <p className="ws-empty">
+            {HUB_COPY.noOrder}
+          </p>
+        )}
+      </div>
+
+      {!encounterId && (
+        <p className="ws-note">
+          연결된 진료가 없어 오더를 입력할 수 없습니다.
+        </p>
+      )}
+
+      <div className="ws-card-actions">
+        <button
+          className="primary"
+          disabled={
+            !encounterId ||
+            selectedTypeIds.length === 0 ||
+            busyAction === 'order'
+          }
+          onClick={() => void handleSubmitOrders()}
+          type="button"
+        >
+          {selectedTypeIds.length
+            ? `선택 항목으로 오더 입력 (${selectedTypeIds.length})`
+            : '선택 항목으로 오더 입력'}
+        </button>
+      </div>
+    </>
+  )}
+
+  {actionTab === 'rx' && (
+    <>
+      <header>
+        <h3>약물 처방</h3>
+
+        {prescription && (
+          <span
+            className={`ws-badge ${
+              prescription.prescription.status === 'DRAFT'
+                ? 'warn'
+                : 'ok'
+            }`}
+          >
+            {prescription.prescription.status === 'DRAFT'
+              ? '작성 중'
+              : prescription.prescription.status}
+          </span>
+        )}
+      </header>
+
+      {!prescription ? (
+        <>
+          <p className="ws-empty">
+            작성 중인 처방 초안이 없습니다.
+          </p>
+
+          <div className="ws-card-actions">
+            <button
+              className="primary"
+              disabled={
+                !encounterId ||
+                busyAction === 'rx'
+              }
+              onClick={() =>
+                void handleCreateDraftRx()
+              }
+              type="button"
+            >
+              처방 초안 만들기
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="ws-rx-panel">
+          {prescription.prescription.status !== 'DRAFT' && (
+            <p className="ws-note">
+              확정된 처방은 워크스테이션에서 수정할 수
+              없습니다.
+            </p>
+          )}
+
+          {prescription.prescription.status === 'DRAFT' && (
+            <>
+              <label className="ws-order-item">
+                <Search size={13} />
+
+                <input
+                  type="text"
+                  value={medQuery}
+                  onChange={(event) =>
+                    void handleSearchMeds(
+                      event.target.value,
+                    )
+                  }
+                  placeholder="약품명 또는 성분명 검색"
+                />
+              </label>
+
+              {medResults.length > 0 && (
+                <div className="ws-rx-search-results">
+                  {medResults.map((med) => (
+                    <button
+                      className="ws-rx-search-result"
+                      key={med.id}
+                      onClick={() =>
+                        handleSelectMedication(med)
+                      }
+                      type="button"
+                    >
+                      <strong>{med.name}</strong>
+
+                      <small>
+                        {med.ingredient || med.code}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {selectedMedication && (
+                <div className="ws-rx-editor">
+                  <div className="ws-rx-editor-title">
+                    <div>
+                      <strong>
+                        {selectedMedication.name}
+                      </strong>
+
+                      <small>
+                        {selectedMedication.ingredient ||
+                          selectedMedication.code}
+                      </small>
                     </div>
-                    <label className="ws-order-item"><Search size={13} /><input type="text" value={orderQuery} onChange={(event) => setOrderQuery(event.target.value)} placeholder="검사명 또는 코드 검색" /></label>
-                    <div className="ws-order-list">
-                      {visibleTypes.slice(0, 6).map((type) => (
-                        <label className="ws-order-item" key={type.id}>
-                          <input
-                            checked={selectedTypeIds.includes(type.id)}
-                            onChange={() => setSelectedTypeIds((current) => current.includes(type.id) ? current.filter((id) => id !== type.id) : [...current, type.id])}
-                            type="checkbox"
-                          />
-                          <span>{type.name}</span>
-                        </label>
-                      ))}
-                      {visibleTypes.length === 0 && <p className="ws-empty">{HUB_COPY.noOrder}</p>}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedMedication(null)
+                        setNewRxForm(
+                          createEmptyRxForm(),
+                        )
+                      }}
+                    >
+                      취소
+                    </button>
+                  </div>
+
+                  <RxFields
+                    value={newRxForm}
+                    disabled={busyAction === 'rx'}
+                    onChange={setNewRxForm}
+                  />
+
+                  <div className="ws-card-actions">
+                    <button
+                      className="primary"
+                      disabled={busyAction === 'rx'}
+                      onClick={() =>
+                        void handleAddMed()
+                      }
+                      type="button"
+                    >
+                      처방에 추가
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="ws-rx-item-list">
+            {prescription.items.length === 0 && (
+              <p className="ws-empty">
+                처방에 추가된 약품이 없습니다.
+              </p>
+            )}
+
+            {prescription.items.map((item) => {
+              const isEditing =
+                editingRxItemId === item.id
+
+              const hasDoseSchedule =
+                item.doseValue != null ||
+                Boolean(item.doseUnit) ||
+                item.frequencyPerDay != null ||
+                item.durationDays != null
+
+              const summary = hasDoseSchedule
+                ? [
+                    item.doseValue != null
+                      ? `${item.doseValue}${item.doseUnit ? ` ${item.doseUnit}` : ''}`
+                      : '',
+                    item.frequencyPerDay
+                      ? `1일 ${item.frequencyPerDay}회`
+                      : '',
+                    item.durationDays
+                      ? `${item.durationDays}일`
+                      : '',
+                    item.route || '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')
+                : '용량 · 횟수 · 기간 미입력'
+
+              return (
+                <article
+                  className="ws-rx-item-card"
+                  key={item.id}
+                >
+                  <div className="ws-rx-item-top">
+                    <div>
+                      <strong>
+                        {item.medication?.name ||
+                          `약품 ${item.medicationId}`}
+                      </strong>
+
+                      <small>
+                        {summary ||
+                          '세부 용법 미입력'}
+                      </small>
                     </div>
-                    {!encounterId && <p className="ws-note">연결된 진료가 없어 오더를 입력할 수 없습니다.</p>}
-                    <div className="ws-card-actions">
-                      <button className="primary" disabled={!encounterId || selectedTypeIds.length === 0 || busyAction === 'order'} onClick={() => void handleSubmitOrders()} type="button">
-                        {selectedTypeIds.length ? `선택 항목으로 오더 입력 (${selectedTypeIds.length})` : '선택 항목으로 오더 입력'}
+
+                    {prescription.prescription.status === 'DRAFT' && !isEditing && (
+                      <div className="ws-rx-item-actions">
+                        <button
+                          disabled={busyAction === 'rx'}
+                          type="button"
+                          onClick={() => handleStartEditMed(item)}
+                        >
+                          수정
+                        </button>
+
+                        <button
+                          className="danger"
+                          disabled={busyAction === 'rx'}
+                          onClick={() => void handleDeleteMed(item.id)}
+                          type="button"
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {isEditing && (
+                    <div className="ws-rx-item-editor">
+                      <RxFields
+                        value={editingRxForm}
+                        disabled={busyAction === 'rx'}
+                        onChange={setEditingRxForm}
+                      />
+
+                    {rxFormError && (
+                      <p className="ws-rx-form-error" role="alert">
+                        {rxFormError}
+                      </p>
+                    )}
+
+                      <div className="ws-card-actions">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingRxItemId(null)
+                            setEditingRxForm(
+                              createEmptyRxForm(),
+                            )
+                          }}
+                        >
+                          취소
+                        </button>
+
+                        <button
+                          className="primary"
+                          disabled={
+                            busyAction === 'rx'
+                          }
+                          onClick={() =>
+                            void handleSaveMed(
+                              item.id,
+                            )
+                          }
+                          type="button"
+                        >
+                          변경 저장
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </article>
+              )
+            })}
+          </div>
+
+          <div
+            className={`ws-dur ws-dur-inline ${durTone}`}
+          >
+            <header>
+              <div>
+                <h3>DUR 안전성 검사</h3>
+
+                {durCheckedAt && (
+                  <small>
+                    {formatHubDateTime(
+                      durCheckedAt,
+                    )}
+                  </small>
+                )}
+              </div>
+
+              <span
+                className={`ws-badge ${
+                  durTone === 'alert'
+                    ? 'alert'
+                    : durTone === 'warn'
+                      ? 'warn'
+                      : durTone === 'ok'
+                        ? 'ok'
+                        : 'muted'
+                }`}
+              >
+                {!durStatus
+                  ? '검사 전'
+                  : durTone === 'alert'
+                    ? '경고'
+                    : durTone === 'warn'
+                      ? '주의'
+                      : '확인 완료'}
+              </span>
+            </header>
+
+            {!durStatus && (
+              <p className="ws-empty">
+                처방 내용을 저장한 뒤 DUR 검사를
+                실행하세요.
+              </p>
+            )}
+
+            {durStatus === 'PASSED' &&
+              durResults.length === 0 && (
+                <p className="ws-dur-success">
+                  확인된 DUR 경고가 없습니다.
+                </p>
+              )}
+
+            {durResults.length > 0 && (
+  <div className="ws-dur-results">
+    {durResults.map((item) => {
+      const action =
+        item.action.toUpperCase()
+
+      const isAcknowledged =
+        action === 'ACKNOWLEDGED'
+
+      const isOverride = [
+        'OVERRIDE',
+        'OVERRIDDEN',
+        'EXCEPTION',
+        'EXCEPTION_APPROVED',
+      ].includes(action)
+
+      const isCritical = item.severity.toUpperCase() === 'CRITICAL'
+
+      const isHandled = isCritical
+        ? isOverride
+        : isAcknowledged || isOverride
+
+      const isOverrideEditing =
+        overrideTargetId === item.id
+
+      return (
+        <div
+          className="ws-dur-result"
+          key={item.id}
+        >
+          <div className="ws-dur-result-message">
+            <span className="ws-dur-dot">
+              •
+            </span>
+
+            <span>
+              {item.warning_message ||
+                item.severity}
+            </span>
+          </div>
+
+          {isHandled ? (
+            <div
+              className={`ws-dur-action-status ${
+                isOverride
+                  ? 'override'
+                  : 'acknowledged'
+              }`}
+            >
+              <strong>
+                {isOverride
+                  ? '예외 승인 완료'
+                  : '경고 확인 완료'}
+              </strong>
+
+              {isOverride &&
+                item.override_reason && (
+                  <small>
+                    사유:{' '}
+                    {item.override_reason}
+                  </small>
+                )}
+            </div>
+          ) : (
+            <>
+              {isCritical ? (
+                <div className="ws-dur-critical-panel">
+                  <div className="ws-dur-critical-notice">
+                    <strong>CRITICAL</strong>
+
+                    <span>
+                      처방을 유지하려면 예외 승인 사유가
+                      필요합니다.
+                    </span>
+                  </div>
+
+                  <div className="ws-dur-override">
+                    <label>
+                      <span>예외 승인 사유</span>
+
+                      <textarea
+                        rows={3}
+                        value={
+                          overrideTargetId === item.id
+                            ? overrideReason
+                            : ''
+                        }
+                        onFocus={() => {
+                          setOverrideTargetId(item.id)
+                          setDurActionError('')
+                        }}
+                        onChange={(event) => {
+                          setOverrideTargetId(item.id)
+                          setOverrideReason(
+                            event.target.value,
+                          )
+                        }}
+                        placeholder="처방을 유지해야 하는 임상적 사유를 입력하세요."
+                      />
+                    </label>
+
+                    <div className="ws-dur-override-actions">
+                      <button
+                        className="primary"
+                        type="button"
+                        disabled={
+                          busyAction === 'dur-action'
+                        }
+                        onClick={() =>
+                          void handleOverrideDur(item.id)
+                        }
+                      >
+                        예외 승인
                       </button>
                     </div>
-                  </>
-                )}
-
-                {actionTab === 'rx' && (
-                  <>
-                    <header><h3>{prescription?.prescription.status === 'DRAFT' ? '처방 초안' : '현재 처방'}</h3></header>
-                    {prescription?.items.length ? prescription.items.slice(0, 4).map((item) => (
-                      <div className="ws-rx-row" key={item.id}>
-                        <span>{item.medication?.name || `약품 ${item.medicationId}`}</span>
-                        <small>{[item.doseValue, item.doseUnit].filter(Boolean).join(' ')}</small>
-                        <button className="danger" disabled={busyAction === 'rx'} onClick={() => void handleDeleteMed(item.id)} type="button">삭제</button>
-                      </div>
-                    )) : <p className="ws-empty">{HUB_COPY.noPrescription}</p>}
-                    {prescription ? (
-                      <>
-                        <label className="ws-order-item"><Search size={13} /><input type="text" value={medQuery} onChange={(event) => void handleSearchMeds(event.target.value)} placeholder="약품 검색 후 추가" /></label>
-                        {medResults.map((med) => (
-                          <button className="ws-exam-row" key={med.id} onClick={() => void handleAddMed(med)} type="button">
-                            <span><strong>{med.name}</strong><small>{med.ingredient || med.code}</small></span>
-                          </button>
-                        ))}
-                      </>
-                    ) : (
-                      <div className="ws-card-actions">
-                        <button className="primary" disabled={!encounterId || busyAction === 'rx'} onClick={() => void handleCreateDraftRx()} type="button">초안 만들기</button>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {actionTab === 'dur' && (
-                  <div className={`ws-dur ${durTone}`}>
-                    <header>
-                      <h3>DUR</h3>
-                      <span className={`ws-badge ${durTone === 'alert' ? 'alert' : durTone === 'warn' ? 'warn' : durTone === 'ok' ? 'ok' : 'muted'}`}>
-                        {durTone === 'alert' ? '경고' : durTone === 'warn' ? '주의' : durTone === 'ok' ? '확인 완료' : '미확인'}
-                      </span>
-                    </header>
-                    {durResults.length === 0 ? <p className="ws-empty">{HUB_COPY.noDur}</p> : (
-                      <ul className="ws-list">{durResults.slice(0, 3).map((item, index) => <li key={`${item.warning_message}-${index}`}>{item.warning_message || item.severity}</li>)}</ul>
-                    )}
-                    <div className="ws-card-actions">
-                      <button className="primary" disabled={!prescription || busyAction === 'dur'} onClick={() => void handleDurCheck()} type="button">상세 확인하기</button>
-                    </div>
                   </div>
-                )}
-              </section>
+                </div>
+              ) : (
+                <div className="ws-dur-action-buttons">
+                  <button
+                    type="button"
+                    disabled={
+                      busyAction === 'dur-action'
+                    }
+                    onClick={() =>
+                      void handleAcknowledgeDur(item.id)
+                    }
+                  >
+                    경고 확인
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )
+    })}
+  </div>
+)}
+
+{durActionError && (
+  <p
+    className="ws-dur-action-error"
+    role="alert"
+  >
+    {durActionError}
+  </p>
+)}
+
+            <div className="ws-dur-footer">
+              <button
+                className="primary"
+                disabled={
+                  !prescription ||
+                  busyAction === 'dur' ||
+                  busyAction === 'dur-action'
+                }
+                onClick={() => void handleDurCheck()}
+                type="button"
+              >
+                {busyAction === 'dur'
+                  ? '검사 중...'
+                  : durStatus
+                    ? 'DUR 다시 검사'
+                    : 'DUR 검사'}
+              </button>
+            </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
 
               <section className="ws-card ws-card-sign">
                 <header><h3>최종 승인 / 환자 공개</h3></header>
@@ -708,7 +1830,13 @@ export function WorkstationHub({
                     </span>
                   ))}
                 </div>
-                <p className="ws-sign-meta">{reportStatusCopy(reportStatus)} · 서명 미등록</p>
+                <p className="ws-sign-meta">
+                  {reportStatusCopy(reportStatus)}
+                  {' · '}
+                  {reportStatus === 'SIGNED' || reportStatus === 'RELEASED'
+                    ? '서명 완료'
+                    : '서명 미등록'}
+                </p>
                 <div className="ws-card-actions">
                   <button type="button" onClick={onOpenReports}>보고서 열기</button>
                   {(reportStatus === 'DRAFT' || reportStatus === 'REVIEWING' || reportStatus === 'NONE') && (
