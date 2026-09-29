@@ -3137,11 +3137,10 @@ export async function runPrescriptionDurCheck(
 
 export async function signPrescription(
   prescriptionId: number,
-  reauthToken: string,
 ): Promise<PrescriptionDetail> {
   const payload = await request<unknown>(`/api/prescriptions/${prescriptionId}/sign/`, {
     method: 'POST',
-    body: JSON.stringify({ reauth_token: reauthToken }),
+    body: JSON.stringify({ confirm_signature: true }),
   })
   const detail = mapPrescriptionDetail(payload)
   if (!detail) throw new ApiError('확정된 처방 정보를 확인하지 못했습니다.', 500)
