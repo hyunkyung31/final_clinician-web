@@ -46,7 +46,7 @@ import {
 } from '../api/client'
 import type { LabObservation, PatientAllergySummary, PatientDetail, PatientDiagnosisSummary, PatientMedicalHistorySummary, PatientSummary, PrescriptionItemSummary } from '../types'
 import { labReferenceStatus, labReferenceStatusClass, labReferenceStatusLabel } from '../labReferenceStatus'
-import { compareTimelineItems, deviceCategoryLabel, isDeviceTimelineCategory, procedureEventSource, type ProcedureTimelineSource } from '../procedureTimeline'
+import { compareTimelineItems, deviceCategoryLabel, isDeviceTimelineCategory, procedureEventSource, resolvedTimelineContent, syncedDeviceContent, type ProcedureTimelineSource } from '../procedureTimeline'
 
 type ProcedureTab = 'TIMELINE' | 'MATERIALS' | 'VITALS' | 'LAB' | 'REPORT'
 type ProcedureCategory =
@@ -676,12 +676,13 @@ export function ProcedureRecordWorkspace({
 
   const saveEvent = async () => {
     if (recordLocked || eventDraft.sourceType === 'LEGACY_EVENT') return
-    if (!eventDraft.time || !eventDraft.category || !eventDraft.content.trim()) return
+    const resolvedContent = resolvedTimelineContent(eventDraft.sourceType, eventDraft.content, eventDraft.material)
+    if (!eventDraft.time || !eventDraft.category || !resolvedContent) return
     if (eventDraft.sourceType === 'MEDICATION_ADMINISTRATION' && !eventDraft.administered) {
       setSaveNotice('실제 투여 여부, 시각, 용량, 경로를 확인한 뒤 저장해주세요.')
       return
     }
-    let saved: ProcedureEvent = { ...eventDraft, content: eventDraft.content.trim(), planned: false, author: clinicianName }
+    let saved: ProcedureEvent = { ...eventDraft, content: resolvedContent, planned: false, author: clinicianName }
     if (saved.sourceType === 'DEVICE_USAGE' && !saved.deviceId) {
       const match = findCatalogDevice(catalogDevices, saved.material)
       if (!match) {
@@ -715,27 +716,31 @@ export function ProcedureRecordWorkspace({
   const updateMaterial = (value: string) => {
     const linkedOrder = orderedMedications.find((item) => item.medication?.name.trim().toLowerCase() === value.trim().toLowerCase())
     const catalogDevice = findCatalogDevice(catalogDevices, value)
-    setEventDraft((current) => ({
-      ...current,
-      material: value,
-      sourceType: linkedOrder || current.category === '약물 투여'
+    setEventDraft((current) => {
+      const sourceType: ProcedureTimelineSource = linkedOrder || current.category === '약물 투여'
         ? 'MEDICATION_ADMINISTRATION'
         : catalogDevice || current.sourceType === 'DEVICE_USAGE'
           ? 'DEVICE_USAGE'
-          : current.sourceType === 'LEGACY_EVENT' ? 'LEGACY_EVENT' : 'PROCEDURE_EVENT',
-      linkedPrescriptionItemId: linkedOrder?.id,
-      medicationId: linkedOrder?.medicationId,
-      deviceId: catalogDevice?.id,
-      administered: linkedOrder ? false : current.administered,
-      doseUnit: linkedOrder && !current.doseUnit ? (linkedOrder.doseUnit ?? '') : current.doseUnit,
-      route: linkedOrder && !current.route ? (linkedOrder.route ?? '') : current.route,
-      materialSource: linkedOrder
-        ? 'ORDER'
-        : catalogDevice || materialOptions[current.category].some((option) => option.toLowerCase() === value.trim().toLowerCase())
-          ? 'CATALOG'
-          : value.trim() ? 'MANUAL' : undefined,
-      dose: linkedOrder && !current.dose && linkedOrder.doseValue !== undefined ? String(linkedOrder.doseValue) : current.dose,
-    }))
+          : current.sourceType === 'LEGACY_EVENT' ? 'LEGACY_EVENT' : 'PROCEDURE_EVENT'
+      return {
+        ...current,
+        material: value,
+        content: syncedDeviceContent(sourceType, current.content, current.material, value),
+        sourceType,
+        linkedPrescriptionItemId: linkedOrder?.id,
+        medicationId: linkedOrder?.medicationId,
+        deviceId: catalogDevice?.id,
+        administered: linkedOrder ? false : current.administered,
+        doseUnit: linkedOrder && !current.doseUnit ? (linkedOrder.doseUnit ?? '') : current.doseUnit,
+        route: linkedOrder && !current.route ? (linkedOrder.route ?? '') : current.route,
+        materialSource: linkedOrder
+          ? 'ORDER'
+          : catalogDevice || materialOptions[current.category].some((option) => option.toLowerCase() === value.trim().toLowerCase())
+            ? 'CATALOG'
+            : value.trim() ? 'MANUAL' : undefined,
+        dose: linkedOrder && !current.dose && linkedOrder.doseValue !== undefined ? String(linkedOrder.doseValue) : current.dose,
+      }
+    })
   }
 
   const deleteEvent = async (event: ProcedureEvent) => {
@@ -821,8 +826,11 @@ export function ProcedureRecordWorkspace({
       const savedEvents = [...events]
       for (let index = 0; index < savedEvents.length; index += 1) {
         const item = savedEvents[index]
-        if (item.persisted || item.sourceType === 'LEGACY_EVENT' || !item.content.trim() || item.planned) continue
-        savedEvents[index] = await persistTimelineItem(item, record.id)
+        if (item.persisted || item.sourceType === 'LEGACY_EVENT' || !resolvedTimelineContent(item.sourceType, item.content, item.material) || item.planned) continue
+        const itemToSave = !item.content.trim() && item.sourceType === 'DEVICE_USAGE'
+          ? { ...item, content: item.material.trim() }
+          : item
+        savedEvents[index] = await persistTimelineItem(itemToSave, record.id)
       }
       setEvents(savedEvents)
       if (finalize) {
@@ -882,7 +890,7 @@ export function ProcedureRecordWorkspace({
       <span>{eventDraft.sourceType === 'MEDICATION_ADMINISTRATION' ? <><input aria-label="실제 용량" value={eventDraft.dose} onChange={(event) => setEventDraft((current) => ({ ...current, dose: event.target.value }))} placeholder="용량" /><input aria-label="용량 단위" value={eventDraft.doseUnit} onChange={(event) => setEventDraft((current) => ({ ...current, doseUnit: event.target.value }))} placeholder="단위" /><input aria-label="투여 경로" value={eventDraft.route} onChange={(event) => setEventDraft((current) => ({ ...current, route: event.target.value }))} placeholder="경로" /></> : <input aria-label="용량 또는 규격" value={eventDraft.dose} onChange={(event) => setEventDraft((current) => ({ ...current, dose: event.target.value }))} placeholder="용량 / 규격" />}</span>
       <input aria-label="비고" value={eventDraft.note} onChange={(event) => setEventDraft((current) => ({ ...current, note: event.target.value }))} placeholder="비고" />
       <span className="procedure-row-author">{clinicianName}</span>
-      <span className="procedure-row-actions"><button className="save" onClick={() => void saveEvent()} disabled={!eventDraft.time || !eventDraft.content.trim() || (eventDraft.sourceType === 'MEDICATION_ADMINISTRATION' && !eventDraft.administered)} title="기록 저장" type="button"><Check size={15} /></button><button onClick={cancelEventEdit} title="입력 취소" type="button"><X size={15} /></button></span>
+      <span className="procedure-row-actions"><button className="save" onClick={() => void saveEvent()} disabled={!eventDraft.time || !resolvedTimelineContent(eventDraft.sourceType, eventDraft.content, eventDraft.material) || (eventDraft.sourceType === 'MEDICATION_ADMINISTRATION' && !eventDraft.administered)} title="기록 저장" type="button"><Check size={15} /></button><button onClick={cancelEventEdit} title="입력 취소" type="button"><X size={15} /></button></span>
     </div>
   )
 

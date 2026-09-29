@@ -30,3 +30,11 @@ test('timeline rows from separate records sort by time without merging their ids
   ].sort(timeline.compareTimelineItems)
   assert.deepEqual(sorted.map((item) => item.id), ['medication:1', 'device:4', 'event:2'])
 })
+
+test('device material fills empty procedure content and keeps later clinician edits', () => {
+  assert.equal(timeline.syncedDeviceContent('DEVICE_USAGE', '', '', 'Sion Blue'), 'Sion Blue')
+  assert.equal(timeline.syncedDeviceContent('DEVICE_USAGE', 'Sion Blue', 'Sion Blue', 'Runthrough NS'), 'Runthrough NS')
+  assert.equal(timeline.syncedDeviceContent('DEVICE_USAGE', 'LAD wiring 완료', 'Sion Blue', 'Runthrough NS'), 'LAD wiring 완료')
+  assert.equal(timeline.resolvedTimelineContent('DEVICE_USAGE', '', 'Sion Blue'), 'Sion Blue')
+  assert.equal(timeline.resolvedTimelineContent('PROCEDURE_EVENT', '', 'Sion Blue'), '')
+})
