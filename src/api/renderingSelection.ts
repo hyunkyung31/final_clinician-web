@@ -61,6 +61,16 @@ export function preferredRendering(items: Rendering3DSummary[], kind: string) {
   return items.filter((item) => item.renderingType === kind).sort((a, b) => priority(a.status) - priority(b.status) || b.version - a.version || b.id - a.id)[0]
 }
 
+/** 새 환자·검사를 열 때 환자별 전체 해부학 GLB를 우선하고, 없으면 현재 종류를 유지한다. */
+export function preferredInitialRendering(items: Rendering3DSummary[], currentKind: string) {
+  return preferredRendering(items, 'VESSEL_CALCIFICATION')
+    ?? preferredRendering(items, currentKind)
+    ?? [...items].sort((a, b) => {
+      const priority = (status: string) => status === 'COMPLETED' ? 0 : status === 'PROCESSING' ? 1 : status === 'PENDING' ? 2 : 3
+      return priority(a.status) - priority(b.status) || b.version - a.version || b.id - a.id
+    })[0]
+}
+
 export function isCctaGeneration(input: { modality?: string; generationType?: string }) {
   if (input.generationType === 'CCTA') return true
   if (input.generationType === 'ANGIO_2D_TO_3D') return false
