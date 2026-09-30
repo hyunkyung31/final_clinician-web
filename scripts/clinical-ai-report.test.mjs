@@ -21,6 +21,7 @@ test('report workspace lists completed CCTA analyses before a medical report dra
   assert.match(workspace, /보고서 작성 전/)
   assert.match(workspace, /<CCTAReportDraft/)
   assert.match(client, /patient_id=\$\{patientId\}&type=CCTA&status=SUCCEEDED/)
+  assert.match(client, /candidate\.results\?\.some\(\(result\) => result\.status !== 'INVALID'\)/)
 })
 
 test('CCTA analysis completion automatically opens the report draft and conclusion editor', () => {
@@ -28,6 +29,8 @@ test('CCTA analysis completion automatically opens the report draft and conclusi
   assert.match(cctaDraft, /prepare\(\)/)
   assert.match(cctaDraft, /결과지와 의료진 최종 소견 입력 화면을 준비하고 있습니다/)
   assert.match(cctaDraft, /의료진 최종 소견/)
+  assert.match(cctaDraft, /이 버전의 결과 이미지와 의료진 최종 소견을 확인했고 최종 승인에 동의합니다/)
+  assert.match(cctaDraft, /검토 승인 · 최종 서명 · PDF 생성/)
 })
 
 test('report workspace preserves the signed 2D and 3D integrated approval workflow', () => {

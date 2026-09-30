@@ -136,14 +136,25 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
         // The existing status-refresh action remains available if this short
         // completion-boundary retry cannot reach the API.
       }
-      if (live && attempts < 8) timer = window.setTimeout(reloadUntilResultExists, 1500)
+      if (live && attempts < 8) {
+        timer = window.setTimeout(reloadUntilResultExists, 1500)
+      } else if (live && patientId && study.examinationId) {
+        // If the most recent completed row never received a result, recover
+        // the latest completed analysis for this examination that does.
+        try {
+          const fallback = await loadLatestCTAIAnalysis(patientId, study.examinationId)
+          if (live && fallback) setAnalysis(fallback)
+        } catch {
+          // Keep the completion-boundary message and the manual status action.
+        }
+      }
     }
     void reloadUntilResultExists()
     return () => {
       live = false
       if (timer !== undefined) window.clearTimeout(timer)
     }
-  }, [analysis?.analysis.id, reportResult, status])
+  }, [analysis?.analysis.id, patientId, reportResult, status, study.examinationId])
   useEffect(() => {
     if (status === 'SUCCEEDED' && reportResult && patientId && study.examinationId) {
       setShowReport(true)
