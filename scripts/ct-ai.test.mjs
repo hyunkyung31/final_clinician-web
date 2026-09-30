@@ -50,6 +50,36 @@ test('patient report lookup returns the latest successful CCTA analysis per exam
   assert.deepEqual(rows.map((item) => item.id), [103, 102])
 })
 
+test('latest CCTA lookup falls back to the linked source examination for demo patients', async () => {
+  const { loadLatestCTAIAnalysis } = await loadApiTestModule()
+  const calls = []
+  globalThis.fetch = async (url) => {
+    calls.push(url)
+    if (url === '/api/ai-analyses/?patient_id=52&type=CCTA&status=SUCCEEDED') {
+      return Response.json([])
+    }
+    if (url === '/api/ai-analyses/?examination_id=534&type=CCTA&status=SUCCEEDED') {
+      return Response.json([
+        { id: 201, examination: 534, analysis_type: 'CCTA', status: 'SUCCEEDED', completed_at: '2026-09-29T10:00:00Z' },
+        { id: 202, examination: 534, analysis_type: 'CCTA', status: 'SUCCEEDED', completed_at: '2026-09-29T12:00:00Z' },
+        { id: 203, examination: 999, analysis_type: 'CCTA', status: 'SUCCEEDED', completed_at: '2026-09-29T13:00:00Z' },
+      ])
+    }
+    if (url === '/api/ai-analyses/202/') {
+      return Response.json({ analysis: { id: 202, examination: 534, analysis_type: 'CCTA', status: 'SUCCEEDED' }, jobs: [], results: [] })
+    }
+    throw new Error(`unexpected URL: ${url}`)
+  }
+
+  const result = await loadLatestCTAIAnalysis(52, 534)
+  assert.equal(result.analysis.id, 202)
+  assert.deepEqual(calls, [
+    '/api/ai-analyses/?patient_id=52&type=CCTA&status=SUCCEEDED',
+    '/api/ai-analyses/?examination_id=534&type=CCTA&status=SUCCEEDED',
+    '/api/ai-analyses/202/',
+  ])
+})
+
 test('an invalid source cannot send an analysis request', async () => {
   const { createCTAIAnalysis } = await loadApiTestModule({ VITE_CT_AI_PIPELINE_READY: 'true', VITE_CT_AI_MODEL_VERSION_ID: '7' })
   let calls = 0
