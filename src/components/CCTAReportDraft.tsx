@@ -54,6 +54,7 @@ export function CCTAReportDraft({ patientId, examinationId, analysisResultId, di
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const lock = useRef(false)
+  const preparedResultId = useRef<number | null>(null)
 
   useEffect(() => () => onBusyChange(false), [onBusyChange])
 
@@ -83,6 +84,15 @@ export function CCTAReportDraft({ patientId, examinationId, analysisResultId, di
       setConfirmed(false); setSignatureShown(false); setDownloadUrl('')
     })
   }
+
+  // 분석이 끝나면 별도 "초안 생성" 버튼을 한 번 더 누르지 않아도
+  // 분석 요약과 최종 소견 입력 화면을 바로 보여준다. API는 기존 초안도
+  // 반환하므로 이미 작성 중인 보고서는 새로 만들지 않는다.
+  useEffect(() => {
+    if (disabled || preparedResultId.current === analysisResultId) return
+    preparedResultId.current = analysisResultId
+    prepare()
+  }, [analysisResultId, disabled])
 
   function save() {
     if (!detail || !conclusion.trim()) return
@@ -116,7 +126,8 @@ export function CCTAReportDraft({ patientId, examinationId, analysisResultId, di
     <h3>3D CCTA 결과보고서 작성</h3>
     <p>검사 #{examinationId} · AI 결과 #{analysisResultId}를 연결해 초안을 작성하고, 의료진 검토 후 서명 PDF를 생성합니다.</p>
 
-    {!detail && <button className="primary" type="button" disabled={busy || disabled} onClick={prepare}>{busy ? '초안 준비 중…' : '보고서 초안 생성/기존 초안 열기'}</button>}
+    {!detail && !error && <p role="status">결과지와 의료진 최종 소견 입력 화면을 준비하고 있습니다.</p>}
+    {!detail && error && <button className="primary" type="button" disabled={busy || disabled} onClick={prepare}>결과지 생성 다시 시도</button>}
 
     {detail && <>
       <p>의료 결과 #{detail.medicalResultId} · 현재 {detail.workflow.status}</p>
