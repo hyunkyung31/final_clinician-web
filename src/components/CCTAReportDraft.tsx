@@ -138,7 +138,7 @@ export function CCTAReportDraft({ patientId, examinationId, analysisResultId, di
       </div>
 
       <label>의료진 최종 소견<textarea maxLength={4000} rows={5} disabled={busy || Boolean(finalized)} value={conclusion} onChange={(event) => { setConclusion(event.target.value); setSaved(false); setConfirmed(false) }} placeholder="3D CCTA 분석 결과에 대한 최종 소견을 입력하세요." /></label>
-      {!finalized && <button type="button" disabled={busy || !conclusion.trim()} onClick={save}>{busy ? '저장 중…' : saved ? '의료진 소견 저장 완료' : '의료진 소견을 초안에 저장'}</button>}
+      {!finalized && <button className="primary" type="button" disabled={busy || !conclusion.trim()} onClick={save}>{busy ? '저장 중…' : saved ? '의료진 소견 저장 완료' : '최종 소견을 보고서 초안에 저장'}</button>}
 
       {!finalized && saved && <div className="ccta-report-finalize">
         <h3>최종 PDF · 의료진 서명</h3>

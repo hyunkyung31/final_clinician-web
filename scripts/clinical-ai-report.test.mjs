@@ -29,6 +29,8 @@ test('CCTA analysis completion automatically opens the report draft and conclusi
   assert.match(cctaDraft, /prepare\(\)/)
   assert.match(cctaDraft, /결과지와 의료진 최종 소견 입력 화면을 준비하고 있습니다/)
   assert.match(cctaDraft, /의료진 최종 소견/)
+  assert.match(cctaDraft, /최종 소견을 보고서 초안에 저장/)
+  assert.match(cctaDraft, /<button className="primary" type="button" disabled=\{busy \|\| !conclusion\.trim\(\)\}/)
   assert.match(cctaDraft, /이 버전의 결과 이미지와 의료진 최종 소견을 확인했고 최종 승인에 동의합니다/)
   assert.match(cctaDraft, /검토 승인 · 최종 서명 · PDF 생성/)
 })
