@@ -99,6 +99,14 @@ export function CCTAReportDraft({ patientId, examinationId, analysisResultId, an
             return await createExaminationMedicalResult(examinationId, 'CCTA_3D', candidateId, patientId)
           } catch (failure) {
             if (failure instanceof ApiError && failure.status === 409) {
+              // Some backend versions return 409 (rather than 404) when the
+              // supplied result row is not the completed CCTA analysis row.
+              // In that case try the parent analysis ID before treating this
+              // as an existing-report conflict.
+              if (/찾을 수 없습니다|not found/i.test(failure.message)) {
+                lastFailure = failure
+                continue
+              }
               // A conflicting draft is exceptional.  Do not make the first
               // report wait on this list request before its initial POST.
               const currentReports = await getPatientReports(patientId, 'CCTA_3D')

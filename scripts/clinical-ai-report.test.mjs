@@ -32,6 +32,7 @@ test('CCTA analysis completion automatically opens the report draft and conclusi
   assert.match(cctaDraft, /for \(const candidateId of candidateIds\)/)
   assert.match(cctaDraft, /failure instanceof ApiError && failure\.status === 409[\s\S]*getPatientReports\(patientId, 'CCTA_3D'\)/)
   assert.match(cctaDraft, /failure instanceof ApiError && failure\.status === 409/)
+  assert.match(cctaDraft, /찾을 수 없습니다\|not found/i)
   assert.match(cctaPanel, /analysisId=\{analysis\?\.analysis\.id\}/)
   assert.match(cctaDraft, /결과지와 의료진 최종 소견 입력 화면을 준비하고 있습니다/)
   assert.match(cctaDraft, /의료진 최종 소견/)
