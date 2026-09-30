@@ -236,9 +236,6 @@ export function XCAAnalysisPanel({ open, patient, examinationId, sequences, onCl
             />
           </div>
 
-          <p className="ct-ai-progress-description">
-            이전 분석 결과를 불러오고 있습니다.
-          </p>
         </div>
       )}
 
