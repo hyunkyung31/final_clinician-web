@@ -8856,6 +8856,39 @@ button.feature-primary:disabled,
   cursor: text;
 }
 
+.anatomy-legend {
+  position: absolute;
+  z-index: 3;
+  right: 14px;
+  bottom: 14px;
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgb(97 127 158 / 56%);
+  border-radius: 8px;
+  background: rgb(5 13 27 / 86%);
+  color: #dce8f6;
+  font-size: calc(9px + var(--font-size-adjust));
+  pointer-events: none;
+}
+
+.anatomy-legend span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.anatomy-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.anatomy-legend i.aorta { background: #b22222; }
+.anatomy-legend i.heart { background: #e9a6af; }
+.anatomy-legend i.coronary { background: #4169e1; }
+.anatomy-legend i.calcification { background: #ffa500; }
+
 .image-annotation-layer {
   position: absolute;
   inset: 0;

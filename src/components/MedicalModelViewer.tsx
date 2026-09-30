@@ -174,13 +174,13 @@ function applyAnatomyViewMode(root: THREE.Object3D, viewMode: AnatomyViewMode) {
       return
     }
 
-    const vesselVisible = viewMode === 'VESSEL' || viewMode === 'VESSEL_CALCIFICATION'
-    const calcVisible = viewMode === 'CALCIFICATION' || viewMode === 'VESSEL_CALCIFICATION'
-    const heartVisible = viewMode !== 'CALCIFICATION'
+    const fullAnatomyVisible = viewMode === 'FULL_ANATOMY'
+    const coronaryVisible = fullAnatomyVisible || viewMode === 'CORONARY_CALCIFICATION'
+    const calcVisible = viewMode !== 'FULL_ANATOMY' || fullAnatomyVisible
 
-    if (role === 'coronary' || role === 'aorta') node.visible = vesselVisible
+    if (role === 'aorta' || role === 'heart') node.visible = fullAnatomyVisible
+    else if (role === 'coronary') node.visible = coronaryVisible
     else if (role === 'calcification') node.visible = calcVisible
-    else if (role === 'heart') node.visible = heartVisible
     else node.visible = node.userData.originalVisible !== false
 
     eachMaterial(node, (material) => {
@@ -201,7 +201,7 @@ export function MedicalModelViewer({
   sourceUrl,
   format,
   color = '#ef5d63',
-  viewMode = 'VESSEL_CALCIFICATION',
+  viewMode = 'FULL_ANATOMY',
   dumpScene = true,
   onStatus,
   onError,

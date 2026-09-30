@@ -411,7 +411,7 @@ export function ExaminationImagingWorkspace({
   const [restoreCamera, setRestoreCamera] = useState<Record<string, unknown> | null>(null)
   const handleCameraChange = useCallback((state: Record<string, unknown>) => setModelCamera(state), [])
   const localAnatomyTest = isLocalAnatomyGlbTest()
-  const [anatomyViewMode, setAnatomyViewMode] = useState<AnatomyViewMode>('VESSEL_CALCIFICATION')
+  const [anatomyViewMode, setAnatomyViewMode] = useState<AnatomyViewMode>('FULL_ANATOMY')
   const [active3DPane, setActive3DPane] = useState<ThreeDPane>('ORIGINAL')
   const [tool, setTool] = useState<AnnotationTool>('POINTER')
   const [annotationColor, setAnnotationColor] = useState('#ff5a64')
@@ -750,12 +750,6 @@ export function ExaminationImagingWorkspace({
   const selectedRendering = renderings3D.find(
     (item) => item.id === selectedRenderingId,
   ) ?? null
-  const hasCompleteAnatomyRendering = renderings3D.some(
-    (item) => item.status === 'COMPLETED'
-      && item.renderingType === 'VESSEL_CALCIFICATION'
-      && isAnatomyGlbFormat(item.fileFormat),
-  )
-
   const renderingKinds = useMemo(
     () => visibleRenderingKinds({
       modality: selectedStudy?.modality,
@@ -1585,6 +1579,12 @@ export function ExaminationImagingWorkspace({
                           </div>
                         )}
                         {renderAnnotationLayer(rendered3DAnnotationKey, Boolean(modelUrl))}
+                        {anatomyCapable && <div className="anatomy-legend" aria-label="3D 해부학 구조 색상 범례">
+                          <span><i className="aorta" />대동맥</span>
+                          <span><i className="heart" />심장</span>
+                          <span><i className="coronary" />관상동맥</span>
+                          <span><i className="calcification" />석회화</span>
+                        </div>}
                       </div>
                       {hasAuxImages && (
                         <aside className="ccta-result-panel" aria-label="석회화 AI 분석 보조 시각화">
@@ -1731,7 +1731,7 @@ export function ExaminationImagingWorkspace({
           </section>
         </div>
       )}
-      {ctAiOpen && selectedStudy && <CTAIAnalysisPanel key={`${patient?.backendId ?? 'none'}-${selectedStudy.id}-${selectedSeriesId}`} patientId={patient?.backendId ?? null} study={selectedStudy} seriesId={selectedSeriesId} hasCompleteAnatomyRendering={hasCompleteAnatomyRendering} onClose={() => setCtAiOpen(false)} onRefresh={() => { setRenderingType('VESSEL_CALCIFICATION'); setSelectedRenderingId(null); setActive3DPane('RENDERED'); setRenderingRevision((value) => value + 1) }} />}
+      {ctAiOpen && selectedStudy && <CTAIAnalysisPanel key={`${patient?.backendId ?? 'none'}-${selectedStudy.id}-${selectedSeriesId}`} patientId={patient?.backendId ?? null} study={selectedStudy} seriesId={selectedSeriesId} onClose={() => setCtAiOpen(false)} onRefresh={() => { setRenderingType('VESSEL_CALCIFICATION'); setSelectedRenderingId(null); setActive3DPane('RENDERED'); setRenderingRevision((value) => value + 1) }} />}
       {createRenderingOpen && selectedStudy && <div className="feature-modal-backdrop"><form className="feature-modal" onSubmit={(event) => { event.preventDefault(); void requestRendering() }}><header><h2>3D 렌더링 생성</h2><button type="button" disabled={renderingSaving} onClick={() => setCreateRenderingOpen(false)}><X size={18} /></button></header><p>선택된 Series의 원본 데이터를 사용합니다. 실제 생성에는 모델·렌더링 처리 파이프라인 연결이 필요합니다.</p><label>렌더링 종류<select value={renderingType} onChange={(e) => selectRenderingKind(e.target.value)}>{renderingKinds.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}</select></label><label>파일 형식<select value={requestedFormat} onChange={(e) => setRequestedFormat(e.target.value)}><option>GLB</option><option>STL</option><option>VTK</option></select></label>{renderingError && <p className="api-inline-error">{renderingError}</p>}<footer><button type="submit" disabled={renderingSaving || !selectedSeriesId}>생성 요청</button></footer></form></div>}
       <XCAAnalysisPanel open={xcaAiOpen} patient={patient} examinationId={xcaExaminationId} sequences={xcaSequences}
         onClose={closeXcaAi} onBusyChange={setXcaAiBusy} />
