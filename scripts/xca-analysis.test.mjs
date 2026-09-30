@@ -1,8 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { xcaModuleUrl, loadApiTestModule } from './load-api-test-module.mjs'
 const { parseXCAAnalysis, xcaContextKey } = await import(xcaModuleUrl)
 const { analyzeXCAExamination, getXCABridgeHealth } = await loadApiTestModule()
+
+test('production XCA traffic uses the clinician same-origin proxy', () => {
+  const productionEnv = readFileSync(new URL('../.env.production', import.meta.url), 'utf8')
+  assert.match(productionEnv, /^VITE_XCA_BRIDGE_URL=\/xca-bridge$/m)
+})
 
 function fixture() {
   const context = { backend_patient_id: 1614, source_subject_id: '241', examination_id: 1198,

@@ -33,6 +33,12 @@ export default defineConfig({
         changeOrigin: true,
         secure: true,
       },
+      '/xca-bridge': {
+        target: 'https://xca.34-22-111-104.sslip.io',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/xca-bridge/, ''),
+      },
     },
   },
 })
