@@ -75,9 +75,7 @@ export function XCAAnalysisPanel({ open, patient, examinationId, sequences, onCl
 
     setHealth(null)
 
-    if (!AI_DEMO_PLAYBACK) {
-      void checkHealth()
-    }
+    void checkHealth()
   }, [open, key, checkHealth])
   useEffect(() => {
     if (!open || !panelRef.current) return
@@ -108,14 +106,7 @@ export function XCAAnalysisPanel({ open, patient, examinationId, sequences, onCl
     const patientId = patient.backendId
     const examId = examinationId
 
-    if (AI_DEMO_PLAYBACK) {
-      if (!precomputedResult) {
-        setError({
-          key: captured,
-          message: '이 검사에 준비된 XCA 사전 분석 결과가 없습니다.',
-        })
-        return
-      }
+    if (AI_DEMO_PLAYBACK && precomputedResult) {
       inFlight.current = true
       setBusy(true)
       setError(null)
@@ -183,16 +174,15 @@ export function XCAAnalysisPanel({ open, patient, examinationId, sequences, onCl
     }
   }
   if (!open || !patient || !examinationId) return null
-  const ready = AI_DEMO_PLAYBACK
-    ? Boolean(precomputedResult)
-    : Boolean(health?.bridgeReady && health.modelReady && !health.busy)
+  const ready = Boolean(precomputedResult)
+    || Boolean(health?.bridgeReady && health.modelReady && !health.busy)
   return <div className="feature-modal-backdrop xca-modal-backdrop">
     <section className="xca-modal" role="dialog" aria-modal="true" aria-label="2D XCA AI 분석" tabIndex={-1} ref={panelRef}>
       <header><div><small>XCA · STENUNET + LOGISTIC REGRESSION</small><h2><BrainCircuit size={22} />2D 영상 AI 분석</h2><p>{patient.name} · 검사 #{examinationId}</p></div>
         <button type="button" disabled={busy || reportBusy} onClick={onClose} aria-label="닫기"><X size={20} /></button></header>
       <div className="xca-scope"><strong>선택한 Angio 검사의 LEFT·RIGHT 전체 시리즈</strong>
         <span>시리즈 {classified.length}개 · 프레임 {frameCount}장 · 미분류 제외 {unknownCount}개</span><small>현재 보고 있는 촬영 영상 하나만 분석하는 것이 아닙니다.</small></div>
-      {AI_DEMO_PLAYBACK ? (
+      {AI_DEMO_PLAYBACK && precomputedResult ? (
         <div className="xca-connection">
           <span>
             {precomputedResult
@@ -287,20 +277,20 @@ export function XCAAnalysisPanel({ open, patient, examinationId, sequences, onCl
         onSummary={handleSavedSummary}
         onReportBusy={setReportBusy}
         analysisBusy={busy}
-        revealed={!AI_DEMO_PLAYBACK || demoRevealed}
+        revealed={!precomputedResult || demoRevealed || Boolean(visibleResult)}
       />
       <footer>
         <span>전체 검사 분석은 원본·의심 영역 마스크도 VM에 보존합니다.</span>
         <button
           className="primary"
           type="button"
-          disabled={busy || reportBusy || (!AI_DEMO_PLAYBACK && checking) || !ready || !classified.length}
+          disabled={busy || reportBusy || checking || !ready || !classified.length}
           onClick={() => void analyze()}
         >
           {busy ? <LoaderCircle className="spin" size={16} /> : <BrainCircuit size={16} />}
           {busy
             ? 'AI 분석 중…'
-            : AI_DEMO_PLAYBACK
+            : AI_DEMO_PLAYBACK && precomputedResult
               ? visibleResult ? '분석 다시 보기' : 'AI 분석 시작'
               : visibleResult ? '새 분석 실행' : '전체 검사 분석 실행'}
         </button>
