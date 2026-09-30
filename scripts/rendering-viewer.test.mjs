@@ -39,11 +39,13 @@ test('CCTA empty and failed states start AI analysis instead of posting renderin
   assert.match(workspace, /selectedStudy\?\.modality\.toUpperCase\(\) === 'CT'/)
 })
 
-test('CCTA demo playback uses a saved analysis and keeps one analysis button', () => {
+test('CCTA demo playback requires saved analysis and completed anatomy rendering', () => {
   const panel = readFileSync(new URL('../src/components/CTAIAnalysisPanel.tsx', import.meta.url), 'utf8')
-  assert.match(panel, /if \(AI_DEMO_PLAYBACK\) \{\s*setPrecomputedAnalysis\(latest\)/)
-  assert.match(panel, /AI_DEMO_PLAYBACK && precomputedAnalysis/)
+  assert.match(panel, /if \(AI_DEMO_PLAYBACK\) \{\s*if \(hasCompleteAnatomyRendering\) setPrecomputedAnalysis\(latest\)/)
+  assert.match(panel, /AI_DEMO_PLAYBACK && precomputedAnalysis && hasCompleteAnatomyRendering/)
   assert.doesNotMatch(panel, /실제 재분석/)
+  assert.match(workspace, /item\.renderingType === 'VESSEL_CALCIFICATION'/)
+  assert.match(workspace, /isAnatomyGlbFormat\(item\.fileFormat\)/)
 })
 
 test('patient anatomy GLB opens in the frontal patient-coordinate view', () => {
