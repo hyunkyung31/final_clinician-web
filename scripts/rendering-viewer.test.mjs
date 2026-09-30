@@ -49,6 +49,12 @@ test('CCTA demo playback requires a completed patient anatomy GLB', () => {
   assert.match(workspace, /isAnatomyGlbFormat\(item\.fileFormat\)/)
 })
 
+test('patient anatomy GLB opens in the frontal patient-coordinate view', () => {
+  const viewer = readFileSync(new URL('../src/components/MedicalModelViewer.tsx', import.meta.url), 'utf8')
+  assert.match(viewer, /new THREE\.Vector3\(0, -1, 0\)/)
+  assert.match(viewer, /new THREE\.Vector3\(0, 0, 1\)/)
+})
+
 test('DICOM binary download accepts DRF negotiation while retaining staff authorization', async () => {
   globalThis.window = { location: { origin: 'http://localhost:5173' } }
   globalThis.sessionStorage = { getItem: () => 'test-token', removeItem: () => {} }
