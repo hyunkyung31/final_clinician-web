@@ -6,6 +6,7 @@ const workspace = readFileSync(new URL('../src/components/ReportWorkspace.tsx', 
 const detail = readFileSync(new URL('../src/components/ClinicalAiReportDetail.tsx', import.meta.url), 'utf8')
 const documentBuilder = readFileSync(new URL('../src/clinicalAiReportDocument.ts', import.meta.url), 'utf8')
 const client = readFileSync(new URL('../src/api/client.ts', import.meta.url), 'utf8')
+const cctaDraft = readFileSync(new URL('../src/components/CCTAReportDraft.tsx', import.meta.url), 'utf8')
 
 test('report workspace lists patient-scoped Clinical AI analyses', () => {
   assert.match(workspace, /getPatientClinicalAnalyses\(reportPatient\.backendId\)/)
@@ -20,6 +21,13 @@ test('report workspace lists completed CCTA analyses before a medical report dra
   assert.match(workspace, /보고서 작성 전/)
   assert.match(workspace, /<CCTAReportDraft/)
   assert.match(client, /patient_id=\$\{patientId\}&type=CCTA&status=SUCCEEDED/)
+})
+
+test('CCTA analysis completion automatically opens the report draft and conclusion editor', () => {
+  assert.match(cctaDraft, /preparedResultId\.current === analysisResultId/)
+  assert.match(cctaDraft, /prepare\(\)/)
+  assert.match(cctaDraft, /결과지와 의료진 최종 소견 입력 화면을 준비하고 있습니다/)
+  assert.match(cctaDraft, /의료진 최종 소견/)
 })
 
 test('report workspace preserves the signed 2D and 3D integrated approval workflow', () => {
