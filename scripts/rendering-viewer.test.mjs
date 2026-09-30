@@ -3,7 +3,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { compileTestModule, loadApiTestModule } from './load-api-test-module.mjs'
 
-const { preferredRendering, visibleRenderingKinds } = await import(compileTestModule(readFileSync(new URL('../src/api/renderingSelection.ts', import.meta.url), 'utf8')))
+const { preferredRendering, visibleRenderingKinds, SHOW_ANATOMY_GLB_ON_CCTA_3D } = await import(compileTestModule(readFileSync(new URL('../src/api/renderingSelection.ts', import.meta.url), 'utf8')))
+
+test('shared anatomy fixture is disabled in the normal CCTA workspace', () => {
+  assert.equal(SHOW_ANATOMY_GLB_ON_CCTA_3D, false)
+})
 const { getImagingDicomBlob, getFileContentBlob, getRendering3DViewerSource, postFormData } = await loadApiTestModule()
 
 test('kind shortcut never displays another kind and prefers latest completed result', () => {

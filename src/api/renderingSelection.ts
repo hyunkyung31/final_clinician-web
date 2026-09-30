@@ -17,8 +17,8 @@ export const ANATOMY_VIEW_MODES: Array<{ value: AnatomyViewMode; label: string }
 
 export const LOCAL_ANATOMY_GLB_URL = '/test/anatomy.glb?v=yup'
 
-/** CCTA 3D 화면에 anatomy.glb를 직접 연결. backend GLB가 오면 false로 되돌린다. */
-export const SHOW_ANATOMY_GLB_ON_CCTA_3D = true
+/** 공통 anatomy.glb는 명시적인 테스트 URL에서만 사용한다. */
+export const SHOW_ANATOMY_GLB_ON_CCTA_3D = false
 
 export const CCTA_SUPPORTED_RENDERING_TYPES = ['CALCIFICATION_ONLY'] as const
 
