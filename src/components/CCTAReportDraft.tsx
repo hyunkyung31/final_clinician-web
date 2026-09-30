@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { BrainCircuit } from 'lucide-react'
 import {
   createExaminationMedicalResult,
   getFileContentObjectUrl,
@@ -157,7 +158,7 @@ export function CCTAReportDraft({ patientId, examinationId, analysisResultId, di
     {error && <p className="api-inline-error" role="alert">{error}</p>}
     {onNewAnalysis && <footer className="ccta-report-footer">
       <span>새 분석은 선택한 CT 원본을 사용합니다.</span>
-      <button className="primary" type="button" disabled={busy || disabled} onClick={onNewAnalysis}>새 분석 실행</button>
+      <button className="primary" type="button" disabled={busy || disabled} onClick={onNewAnalysis}><BrainCircuit size={16} />분석 다시 보기</button>
     </footer>}
   </section>
 }

@@ -35,7 +35,8 @@ test('CCTA analysis completion automatically opens the report draft and conclusi
   assert.match(cctaDraft, /이 버전의 결과 이미지와 의료진 최종 소견을 확인했고 최종 승인에 동의합니다/)
   assert.match(cctaDraft, /label className="feature-check"/)
   assert.match(cctaDraft, /검토 승인 · 최종 서명 · PDF 생성/)
-  assert.match(cctaDraft, /새 분석 실행/)
+  assert.match(cctaDraft, /분석 다시 보기/)
+  assert.match(cctaDraft, /<BrainCircuit size=\{16\} \/>/)
   assert.match(cctaPanel, /onNewAnalysis=\{\(\) => \{ setShowReport\(false\); setAnalysis\(null\)/)
 })
 
