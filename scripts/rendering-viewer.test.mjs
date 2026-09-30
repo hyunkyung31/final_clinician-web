@@ -52,7 +52,8 @@ test('CCTA completion hydrates its result and automatically reveals report creat
   assert.match(panel, /status !== 'SUCCEEDED' \|\| reportResult \|\| !analysis/)
   assert.match(panel, /attempts < 8/)
   assert.match(panel, /결과지 생성 정보를 준비하고 있습니다/)
-  assert.match(panel, /reportDraftRef\.current\?\.scrollIntoView/)
+  assert.match(panel, /setShowReport\(true\)/)
+  assert.match(panel, /3D CCTA 결과지 작성/)
   assert.match(panel, /<CCTAReportDraft/)
 })
 

@@ -49,9 +49,9 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [reportBusy, setReportBusy] = useState(false)
+  const [showReport, setShowReport] = useState(false)
   const active = useRef(true)
   const refreshedAnalysisId = useRef<number | null>(null)
-  const reportDraftRef = useRef<HTMLDivElement | null>(null)
   const ready = CT_AI_READY && Number.isSafeInteger(CT_AI_VERSION_ID) && CT_AI_VERSION_ID > 0
   const analysisReady = Boolean(precomputedAnalysis) || ready
   useEffect(() => { active.current = true; return () => { active.current = false } }, [])
@@ -60,6 +60,7 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
     setPrecomputedAnalysis(null)
     setDemoProgress(0)
     setDemoStage('')
+    setShowReport(false)
     refreshedAnalysisId.current = null
 
     if (!patientId || !study.examinationId) return
@@ -144,10 +145,10 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
     }
   }, [analysis?.analysis.id, reportResult, status])
   useEffect(() => {
-    if (!reportResult) return
-    const timer = window.setTimeout(() => reportDraftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
-    return () => window.clearTimeout(timer)
-  }, [reportResult?.id])
+    if (status === 'SUCCEEDED' && reportResult && patientId && study.examinationId) {
+      setShowReport(true)
+    }
+  }, [patientId, reportResult?.id, status, study.examinationId])
   async function run() {
     if (!study.examinationId || !seriesId || busy) return
 
@@ -203,6 +204,12 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
     try { const next = await getCTAIAnalysis(analysis.analysis.id); if (active.current) { setAnalysis(next); setError('') } }
     catch (caught) { if (active.current) setError(caught instanceof Error ? caught.message : '상태 조회 실패') }
     finally { if (active.current) setBusy(false) }
+  }
+  if (showReport && patientId && reportResult && study.examinationId) {
+    return <div className="feature-modal-backdrop"><section className="feature-modal ct-ai-modal" role="dialog" aria-modal="true" aria-label="3D CCTA 결과지 작성">
+      <header><h2><BrainCircuit size={20} />3D CCTA 결과지 작성</h2><button type="button" onClick={onClose} aria-label="닫기" disabled={reportBusy}><X size={20} /></button></header>
+      <CCTAReportDraft patientId={patientId} examinationId={study.examinationId} analysisResultId={reportResult.id} disabled={false} onBusyChange={setReportBusy} />
+    </section></div>
   }
   return <div className="feature-modal-backdrop"><section className="feature-modal ct-ai-modal" role="dialog" aria-modal="true" aria-label="CT 석회화 AI 분석">
     <header><h2><BrainCircuit size={20} />CT 석회화 AI 분석</h2><button type="button" onClick={onClose} aria-label="닫기" disabled={busy || reportBusy}><X size={20} /></button></header>
@@ -268,7 +275,6 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
     {analysis?.jobs.map((job) => job.error_message && <p className="api-inline-error" key={job.id}>{job.error_message}</p>)}
     {analysis?.results?.map((result) => <div className="ct-ai-source" key={result.id}><strong>{result.summary_text || 'CT 분석 결과'}</strong><span>{result.result_type} · {result.status}</span></div>)}
     {status === 'SUCCEEDED' && !reportResult && <p className="ct-ai-connection" role="status">분석은 완료되었습니다. 결과지 생성 정보를 준비하고 있습니다.</p>}
-    {patientId && status === 'SUCCEEDED' && reportResult && study.examinationId && <div ref={reportDraftRef}><CCTAReportDraft patientId={patientId} examinationId={study.examinationId} analysisResultId={reportResult.id} disabled={busy} onBusyChange={setReportBusy} /></div>}
     {notice && <p role="status">{notice}</p>}{error && <p className="api-inline-error" role="alert">{error}</p>}
     <footer>{analysis ? <>
       <button type="button" onClick={refresh} disabled={busy}>상태 확인</button>
