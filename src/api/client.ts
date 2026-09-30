@@ -4318,11 +4318,21 @@ export async function loadLatestCTAIAnalysis(patientId: number, examinationId: n
       `/api/ai-analyses/?examination_id=${examinationId}&type=CCTA&status=SUCCEEDED`,
     ),
   ])
-  const candidates = [...(Array.isArray(patientMatches) ? patientMatches : []), ...(Array.isArray(examinationMatches) ? examinationMatches : [])]
+  const examinationRows = Array.isArray(examinationMatches) ? examinationMatches : []
+  const examinationAnalysisIds = new Set(examinationRows.map((item) => item.id))
+  const matchesExamination = (item: CCTAAnalysisListItem) => {
+    const raw = item as unknown as Record<string, unknown>
+    const rawExamination = raw.examination ?? raw.examination_id
+    const id = rawExamination && typeof rawExamination === 'object'
+      ? (rawExamination as Record<string, unknown>).id
+      : rawExamination
+    return Number(id) === examinationId
+  }
+  const candidates = [...(Array.isArray(patientMatches) ? patientMatches : []), ...examinationRows]
     .filter((item) => (
-      item.examination === examinationId
-      && item.analysis_type === 'CCTA'
+      item.analysis_type === 'CCTA'
       && item.status === 'SUCCEEDED'
+      && (matchesExamination(item) || examinationAnalysisIds.has(item.id))
     ))
     .filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index)
     .sort((left, right) => {
