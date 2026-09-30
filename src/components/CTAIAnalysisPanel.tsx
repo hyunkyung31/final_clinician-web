@@ -40,7 +40,7 @@ function ctaStageFor(progress: number) {
   return stage
 }
 
-export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefresh }: { patientId: number | null; study: ImagingStudySummary; seriesId: number | null; onClose: () => void; onRefresh: () => void }) {
+export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnatomyRendering, onClose, onRefresh }: { patientId: number | null; study: ImagingStudySummary; seriesId: number | null; hasCompleteAnatomyRendering: boolean; onClose: () => void; onRefresh: () => void }) {
   const [analysis, setAnalysis] = useState<CTAIAnalysis | null>(null)
   const [precomputedAnalysis, setPrecomputedAnalysis] = useState<CTAIAnalysis | null>(null)
   const [demoProgress, setDemoProgress] = useState(0)
@@ -72,7 +72,7 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
         if (!live || !latest) return
 
         if (AI_DEMO_PLAYBACK) {
-          setPrecomputedAnalysis(latest)
+          if (hasCompleteAnatomyRendering) setPrecomputedAnalysis(latest)
         } else {
           setAnalysis(latest)
         }
@@ -93,7 +93,7 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
     return () => {
       live = false
     }
-  }, [patientId, study.examinationId])
+  }, [patientId, study.examinationId, hasCompleteAnatomyRendering])
   useEffect(() => {
     if (!analysis || !['QUEUED', 'RUNNING'].includes(analysis.analysis.status)) return
     const started = Date.now()
@@ -117,7 +117,7 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
   async function run() {
     if (!study.examinationId || !seriesId || busy) return
 
-    if (AI_DEMO_PLAYBACK && precomputedAnalysis) {
+    if (AI_DEMO_PLAYBACK && precomputedAnalysis && hasCompleteAnatomyRendering) {
       setBusy(true)
       setError('')
       setDemoProgress(0)
@@ -182,9 +182,9 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
       </p>
     )}
 
-    {AI_DEMO_PLAYBACK && !busy && !precomputedAnalysis && ready && (
+    {AI_DEMO_PLAYBACK && !busy && !precomputedAnalysis && ready && !hasCompleteAnatomyRendering && (
       <p className="ct-ai-connection">
-        준비된 CCTA 결과가 없어 실제 AI 분석을 실행합니다.
+        환자별 전체 해부학 3D 결과가 없어 실제 AI 분석을 실행합니다.
       </p>
     )}
 
