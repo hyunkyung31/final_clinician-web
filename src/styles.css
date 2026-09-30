@@ -13045,6 +13045,9 @@ html[data-theme='dark'] .login-form input {
 .ccta-report-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:20px; padding-top:15px; border-top:1px solid var(--color-border); }
 .ccta-report-footer span { color:var(--color-text-subtle); font-size:11px; }
 .ccta-report-footer button.primary { display:inline-flex; align-items:center; gap:6px; min-height:36px; margin-left:auto; }
+.ct-ai-modal .ccta-report-finalize .doctor-signature-preview,.xca-modal .xca-report-finalize .doctor-signature-preview { display:grid !important; width:min(100%, 540px) !important; justify-items:end !important; margin-left:auto !important; text-align:right !important; }
+.ct-ai-modal .ccta-report-finalize .doctor-signature-shown,.xca-modal .xca-report-finalize .doctor-signature-shown { display:grid !important; justify-items:end !important; }
+.ct-ai-modal .ccta-report-finalize .doctor-signature-identity,.xca-modal .xca-report-finalize .doctor-signature-identity { display:flex !important; justify-content:flex-end !important; align-items:center !important; }
 html[data-theme='dark'] .ccta-report-draft :is(textarea,input[type='password']) { color:var(--color-text); border-color:var(--color-border-strong); background:var(--workstation-input); }
 html[data-theme='dark'] .ccta-report-summary,html[data-theme='dark'] .ccta-report-image { color:var(--color-text); border-color:var(--color-border); background:var(--workstation-panel); }
 html[data-theme='dark'] .xca-report-success { color:#9be2ca; border-color:#28634f; background:#102c27; }
