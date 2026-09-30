@@ -51,6 +51,7 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
   const [reportBusy, setReportBusy] = useState(false)
   const active = useRef(true)
   const refreshedAnalysisId = useRef<number | null>(null)
+  const reportDraftRef = useRef<HTMLDivElement | null>(null)
   const ready = CT_AI_READY && Number.isSafeInteger(CT_AI_VERSION_ID) && CT_AI_VERSION_ID > 0
   const analysisReady = Boolean(precomputedAnalysis) || ready
   useEffect(() => { active.current = true; return () => { active.current = false } }, [])
@@ -114,6 +115,39 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
     refreshedAnalysisId.current = analysis.analysis.id
     onRefresh()
   }, [analysis?.analysis.id, analysis?.analysis.status, onRefresh])
+  const status = analysis?.analysis.status
+  const reportResult = analysis?.results?.find((item) => item.status !== 'INVALID')
+  // The worker marks an analysis as successful just before its result row can be
+  // returned by the detail endpoint.  Keep loading that detail briefly so the
+  // report-creation panel is not lost at the completion boundary.
+  useEffect(() => {
+    if (status !== 'SUCCEEDED' || reportResult || !analysis) return
+
+    let live = true
+    let attempts = 0
+    let timer: number | undefined
+    const reloadUntilResultExists = async () => {
+      attempts += 1
+      try {
+        const next = await getCTAIAnalysis(analysis.analysis.id)
+        if (live) setAnalysis(next)
+      } catch {
+        // The existing status-refresh action remains available if this short
+        // completion-boundary retry cannot reach the API.
+      }
+      if (live && attempts < 8) timer = window.setTimeout(reloadUntilResultExists, 1500)
+    }
+    void reloadUntilResultExists()
+    return () => {
+      live = false
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [analysis?.analysis.id, reportResult, status])
+  useEffect(() => {
+    if (!reportResult) return
+    const timer = window.setTimeout(() => reportDraftRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
+    return () => window.clearTimeout(timer)
+  }, [reportResult?.id])
   async function run() {
     if (!study.examinationId || !seriesId || busy) return
 
@@ -170,8 +204,6 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
     catch (caught) { if (active.current) setError(caught instanceof Error ? caught.message : '상태 조회 실패') }
     finally { if (active.current) setBusy(false) }
   }
-  const status = analysis?.analysis.status
-  const reportResult = analysis?.results?.find((item) => item.status !== 'INVALID')
   return <div className="feature-modal-backdrop"><section className="feature-modal ct-ai-modal" role="dialog" aria-modal="true" aria-label="CT 석회화 AI 분석">
     <header><h2><BrainCircuit size={20} />CT 석회화 AI 분석</h2><button type="button" onClick={onClose} aria-label="닫기" disabled={busy || reportBusy}><X size={20} /></button></header>
     <p>선택한 CT 원본을 분석해 석회화 분할 결과를 생성합니다.</p>
@@ -235,7 +267,8 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
     {status === 'RUNNING' && <p className="ct-ai-connection">전체 분석은 검사 용량에 따라 수 분(최대 10분 이상)까지 걸릴 수 있습니다. 이 창을 열어둔 채 자동으로 상태를 확인합니다.</p>}
     {analysis?.jobs.map((job) => job.error_message && <p className="api-inline-error" key={job.id}>{job.error_message}</p>)}
     {analysis?.results?.map((result) => <div className="ct-ai-source" key={result.id}><strong>{result.summary_text || 'CT 분석 결과'}</strong><span>{result.result_type} · {result.status}</span></div>)}
-    {patientId && status === 'SUCCEEDED' && reportResult && study.examinationId && <CCTAReportDraft patientId={patientId} examinationId={study.examinationId} analysisResultId={reportResult.id} disabled={busy} onBusyChange={setReportBusy} />}
+    {status === 'SUCCEEDED' && !reportResult && <p className="ct-ai-connection" role="status">분석은 완료되었습니다. 결과지 생성 정보를 준비하고 있습니다.</p>}
+    {patientId && status === 'SUCCEEDED' && reportResult && study.examinationId && <div ref={reportDraftRef}><CCTAReportDraft patientId={patientId} examinationId={study.examinationId} analysisResultId={reportResult.id} disabled={busy} onBusyChange={setReportBusy} /></div>}
     {notice && <p role="status">{notice}</p>}{error && <p className="api-inline-error" role="alert">{error}</p>}
     <footer>{analysis ? <>
       <button type="button" onClick={refresh} disabled={busy}>상태 확인</button>
