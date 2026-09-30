@@ -143,7 +143,7 @@ export function CCTAReportDraft({ patientId, examinationId, analysisResultId, di
       {!finalized && saved && <div className="ccta-report-finalize">
         <h3>최종 PDF · 의료진 서명</h3>
         <p>새 검토용 초안의 결과 이미지와 의료진 소견을 확인한 뒤, 로그인한 의료진의 등록 서명으로 최종 승인합니다.</p>
-        <label><input type="checkbox" checked={confirmed} disabled={busy || disabled || Boolean(downloadUrl)} onChange={(event) => setConfirmed(event.target.checked)} /> 이 버전의 결과 이미지와 의료진 최종 소견을 확인했고 최종 승인에 동의합니다.</label>
+        <label className="feature-check"><input type="checkbox" checked={confirmed} disabled={busy || disabled || Boolean(downloadUrl)} onChange={(event) => setConfirmed(event.target.checked)} /> 이 버전의 결과 이미지와 의료진 최종 소견을 확인했고 최종 승인에 동의합니다.</label>
         {!downloadUrl && <DoctorSignaturePreview resetKey={`${detail.medicalResultId}:${saved}:${confirmed}`} disabled={busy || disabled || !confirmed} onShownChange={setSignatureShown} />}
         {!downloadUrl && <button className="primary" type="button" disabled={busy || disabled || !confirmed || !signatureShown} onClick={sign}>{busy ? '최종 승인 중…' : '검토 승인 · 최종 서명 · PDF 생성'}</button>}
       </div>}
