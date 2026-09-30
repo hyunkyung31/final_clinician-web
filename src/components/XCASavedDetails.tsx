@@ -4,8 +4,22 @@ import type { XCAAnalysisResult } from '../api/xcaAnalysis'
 import type { XCAArchivedFrame, XCADetailResult } from '../api/xcaDetails'
 import { XCAReportDraft } from './XCAReportDraft'
 
-export function XCASavedDetails({ patientId, examinationId, refreshKey, onSummary, onReportBusy, analysisBusy }: {
-  patientId: number; examinationId: number; refreshKey: number; onSummary: (result: XCAAnalysisResult) => void; onReportBusy: (busy: boolean) => void; analysisBusy: boolean
+export function XCASavedDetails({
+  patientId,
+  examinationId,
+  refreshKey,
+  onSummary,
+  onReportBusy,
+  analysisBusy,
+  revealed = true,
+}: {
+  patientId: number
+  examinationId: number
+  refreshKey: number
+  onSummary: (result: XCAAnalysisResult) => void
+  onReportBusy: (busy: boolean) => void
+  analysisBusy: boolean
+  revealed?: boolean
 }) {
   const [reportBusy, setReportBusy] = useState(false)
   const handleReportBusy = useCallback((value: boolean) => { setReportBusy(value); onReportBusy(value) }, [onReportBusy])
@@ -23,6 +37,16 @@ export function XCASavedDetails({ patientId, examinationId, refreshKey, onSummar
     return () => { alive = false }
   }, [patientId, examinationId, refreshKey, revision, onSummary])
   const detail = details.find(item => item.id === id)
+  if (!revealed) {
+    return (
+      <section className="xca-saved">
+        {!loading && !error && details.length > 0 && <p>시연용 사전 분석 결과가 준비되었습니다.</p>}
+        {loading && <p role="status">저장된 분석 결과 확인 중…</p>}
+        {!loading && !error && details.length === 0 && <p className="api-inline-error">이 검사에 준비된 XCA 분석 결과가 없습니다.</p>}
+        {error && <p className="api-inline-error" role="alert">{error}</p>}
+      </section>
+    )
+  }
   return <section className="xca-saved">
     <header><h3>VM에 보존된 상세 분석</h3><button type="button" disabled={loading || reportBusy || analysisBusy} onClick={() => setRevision(v => v + 1)}>이력 새로고침</button></header>
     <p>이 조회는 GPU 연결 없이 가능합니다. 최근 저장 이력 최대 20건을 표시합니다.</p>
