@@ -39,12 +39,12 @@ test('CCTA empty and failed states start AI analysis instead of posting renderin
   assert.match(workspace, /selectedStudy\?\.modality\.toUpperCase\(\) === 'CT'/)
 })
 
-test('CCTA demo playback requires saved analysis and completed anatomy rendering', () => {
+test('CCTA demo playback uses a saved analysis regardless of rendering label', () => {
   const panel = readFileSync(new URL('../src/components/CTAIAnalysisPanel.tsx', import.meta.url), 'utf8')
-  assert.match(panel, /if \(AI_DEMO_PLAYBACK\) \{\s*if \(hasCompleteAnatomyRendering\) setPrecomputedAnalysis\(latest\)/)
-  assert.match(panel, /AI_DEMO_PLAYBACK && precomputedAnalysis && hasCompleteAnatomyRendering/)
+  assert.match(panel, /if \(AI_DEMO_PLAYBACK\) \{\s*setPrecomputedAnalysis\(latest\)/)
+  assert.match(panel, /AI_DEMO_PLAYBACK && precomputedAnalysis\)/)
   assert.doesNotMatch(panel, /실제 재분석/)
-  assert.match(workspace, /hasAnatomyGlbCapability\(\{ rendering: item \}\)/)
+  assert.doesNotMatch(panel, /hasCompleteAnatomyRendering/)
 })
 
 test('CCTA completion hydrates its result and automatically reveals report creation', () => {
@@ -62,8 +62,8 @@ test('AI analysis panels use clinician-facing wording instead of demo implementa
   const cctaPanel = readFileSync(new URL('../src/components/CTAIAnalysisPanel.tsx', import.meta.url), 'utf8')
   assert.match(xcaPanel, /AI 분석 결과는 의료진 검토를 위한 보조 정보입니다/)
   assert.doesNotMatch(xcaPanel, /GPU PC에서 사용하는 데모 분석입니다/)
-  assert.match(cctaPanel, /저장된 분석 및 3D 결과가 없어 AI 분석을 시작합니다/)
-  assert.doesNotMatch(cctaPanel, /준비된 분석·전체 3D 결과가 없어 실제 AI 분석을 실행합니다/)
+  assert.match(cctaPanel, /3D CCTA AI 분석을 시작합니다/)
+  assert.doesNotMatch(cctaPanel, /저장된 분석 및 3D 결과가 없어 AI 분석을 시작합니다/)
 })
 
 test('patient anatomy GLB opens in the frontal patient-coordinate view', () => {
