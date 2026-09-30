@@ -56,6 +56,7 @@ function frameOverview(
   camera: THREE.PerspectiveCamera,
   controls: OrbitControls,
   direction: THREE.Vector3,
+  up: THREE.Vector3,
   padding = 1.65,
 ) {
   const box = new THREE.Box3().setFromObject(object)
@@ -69,7 +70,7 @@ function frameOverview(
   const distance = Math.max(fitByHeight, fitByWidth) * padding
   const offset = direction.clone().normalize().multiplyScalar(distance)
 
-  camera.up.set(0, 1, 0)
+  camera.up.copy(up)
   camera.position.copy(center).add(offset)
   camera.near = Math.max(distance / 120, 0.01)
   camera.far = Math.max(distance * 24, 100)
@@ -355,7 +356,10 @@ export function MedicalModelViewer({
             object,
             camera,
             controls,
-            new THREE.Vector3(0.52, 0.16, -1),
+            // CCTA GLB vertices use X, Y, Z patient coordinates. Looking
+            // along Y with Z upright yields the familiar frontal anatomy view.
+            new THREE.Vector3(0, -1, 0),
+            new THREE.Vector3(0, 0, 1),
             1.75,
           )
         } else {
