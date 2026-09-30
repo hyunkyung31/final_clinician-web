@@ -50,14 +50,16 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
   const [notice, setNotice] = useState('')
   const [reportBusy, setReportBusy] = useState(false)
   const active = useRef(true)
+  const refreshedAnalysisId = useRef<number | null>(null)
   const ready = CT_AI_READY && Number.isSafeInteger(CT_AI_VERSION_ID) && CT_AI_VERSION_ID > 0
-  const analysisReady = AI_DEMO_PLAYBACK ? Boolean(precomputedAnalysis) : ready
+  const analysisReady = Boolean(precomputedAnalysis) || ready
   useEffect(() => { active.current = true; return () => { active.current = false } }, [])
   useEffect(() => {
     setAnalysis(null)
     setPrecomputedAnalysis(null)
     setDemoProgress(0)
     setDemoStage('')
+    refreshedAnalysisId.current = null
 
     if (!patientId || !study.examinationId) return
 
@@ -106,15 +108,16 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
     }, POLL_INTERVAL_MS)
     return () => { live = false; window.clearInterval(timer) }
   }, [analysis?.analysis.id, analysis?.analysis.status])
+  useEffect(() => {
+    if (analysis?.analysis.status !== 'SUCCEEDED') return
+    if (refreshedAnalysisId.current === analysis.analysis.id) return
+    refreshedAnalysisId.current = analysis.analysis.id
+    onRefresh()
+  }, [analysis?.analysis.id, analysis?.analysis.status, onRefresh])
   async function run() {
     if (!study.examinationId || !seriesId || busy) return
 
-    if (AI_DEMO_PLAYBACK) {
-      if (!precomputedAnalysis) {
-        setError('이 검사에 준비된 CCTA 사전 분석 결과가 없습니다.')
-        return
-      }
-
+    if (AI_DEMO_PLAYBACK && precomputedAnalysis) {
       setBusy(true)
       setError('')
       setDemoProgress(0)
@@ -129,7 +132,6 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
 
         if (active.current) {
           setAnalysis(precomputedAnalysis)
-          onRefresh()
         }
       } finally {
         if (active.current) setBusy(false)
@@ -174,15 +176,15 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
     <header><h2><BrainCircuit size={20} />CT 석회화 AI 분석</h2><button type="button" onClick={onClose} aria-label="닫기" disabled={busy || reportBusy}><X size={20} /></button></header>
     <p>선택한 CT 원본을 분석해 석회화 분할 결과를 생성합니다.</p>
     <div className="ct-ai-source"><strong>{study.description}</strong><span>검사 #{study.examinationId ?? '미연결'} · Series #{seriesId ?? '미선택'}</span></div>
-    {!AI_DEMO_PLAYBACK && !ready && (
+    {!precomputedAnalysis && !ready && (
       <p className="ct-ai-connection">
         AI 분석 서버가 아직 연결되지 않았습니다. 서버 연결 후 이 버튼으로 선택한 CT를 바로 분석할 수 있습니다.
       </p>
     )}
 
-    {AI_DEMO_PLAYBACK && !busy && !precomputedAnalysis && (
+    {AI_DEMO_PLAYBACK && !busy && !precomputedAnalysis && ready && (
       <p className="ct-ai-connection">
-        이 검사에 준비된 CCTA 사전 분석 결과가 없습니다.
+        준비된 CCTA 결과가 없어 실제 AI 분석을 실행합니다.
       </p>
     )}
 
