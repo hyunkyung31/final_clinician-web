@@ -219,7 +219,7 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
   if (showReport && patientId && reportResult && study.examinationId) {
     return <div className="feature-modal-backdrop"><section className="feature-modal ct-ai-modal" role="dialog" aria-modal="true" aria-label="3D CCTA 결과지 작성">
       <header><h2><BrainCircuit size={20} />3D CCTA 결과지 작성</h2><button type="button" onClick={onClose} aria-label="닫기" disabled={reportBusy}><X size={20} /></button></header>
-      <CCTAReportDraft patientId={patientId} examinationId={study.examinationId} analysisResultId={reportResult.id} disabled={false} onBusyChange={setReportBusy} onNewAnalysis={() => { setShowReport(false); setAnalysis(null); setError(''); setNotice(''); void run() }} />
+      <CCTAReportDraft patientId={patientId} examinationId={study.examinationId} analysisResultId={reportResult.id} analysisId={analysis?.analysis.id} disabled={false} onBusyChange={setReportBusy} onNewAnalysis={() => { setShowReport(false); setAnalysis(null); setError(''); setNotice(''); void run() }} />
     </section></div>
   }
   return <div className="feature-modal-backdrop"><section className="feature-modal ct-ai-modal" role="dialog" aria-modal="true" aria-label="CT 석회화 AI 분석">
