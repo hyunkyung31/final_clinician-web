@@ -8860,7 +8860,7 @@ button.feature-primary:disabled,
   position: absolute;
   z-index: 3;
   right: 14px;
-  bottom: 14px;
+  top: 14px;
   display: grid;
   gap: 6px;
   padding: 10px 12px;
