@@ -750,6 +750,11 @@ export function ExaminationImagingWorkspace({
   const selectedRendering = renderings3D.find(
     (item) => item.id === selectedRenderingId,
   ) ?? null
+  const hasCompleteAnatomyRendering = renderings3D.some(
+    (item) => item.status === 'COMPLETED'
+      && item.renderingType === 'VESSEL_CALCIFICATION'
+      && isAnatomyGlbFormat(item.fileFormat),
+  )
 
   const renderingKinds = useMemo(
     () => visibleRenderingKinds({
@@ -1726,7 +1731,7 @@ export function ExaminationImagingWorkspace({
           </section>
         </div>
       )}
-      {ctAiOpen && selectedStudy && <CTAIAnalysisPanel key={`${patient?.backendId ?? 'none'}-${selectedStudy.id}-${selectedSeriesId}`} patientId={patient?.backendId ?? null} study={selectedStudy} seriesId={selectedSeriesId} onClose={() => setCtAiOpen(false)} onRefresh={() => { setRenderingType('VESSEL_CALCIFICATION'); setSelectedRenderingId(null); setActive3DPane('RENDERED'); setRenderingRevision((value) => value + 1) }} />}
+      {ctAiOpen && selectedStudy && <CTAIAnalysisPanel key={`${patient?.backendId ?? 'none'}-${selectedStudy.id}-${selectedSeriesId}`} patientId={patient?.backendId ?? null} study={selectedStudy} seriesId={selectedSeriesId} hasCompleteAnatomyRendering={hasCompleteAnatomyRendering} onClose={() => setCtAiOpen(false)} onRefresh={() => { setRenderingType('VESSEL_CALCIFICATION'); setSelectedRenderingId(null); setActive3DPane('RENDERED'); setRenderingRevision((value) => value + 1) }} />}
       {createRenderingOpen && selectedStudy && <div className="feature-modal-backdrop"><form className="feature-modal" onSubmit={(event) => { event.preventDefault(); void requestRendering() }}><header><h2>3D 렌더링 생성</h2><button type="button" disabled={renderingSaving} onClick={() => setCreateRenderingOpen(false)}><X size={18} /></button></header><p>선택된 Series의 원본 데이터를 사용합니다. 실제 생성에는 모델·렌더링 처리 파이프라인 연결이 필요합니다.</p><label>렌더링 종류<select value={renderingType} onChange={(e) => selectRenderingKind(e.target.value)}>{renderingKinds.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}</select></label><label>파일 형식<select value={requestedFormat} onChange={(e) => setRequestedFormat(e.target.value)}><option>GLB</option><option>STL</option><option>VTK</option></select></label>{renderingError && <p className="api-inline-error">{renderingError}</p>}<footer><button type="submit" disabled={renderingSaving || !selectedSeriesId}>생성 요청</button></footer></form></div>}
       <XCAAnalysisPanel open={xcaAiOpen} patient={patient} examinationId={xcaExaminationId} sequences={xcaSequences}
         onClose={closeXcaAi} onBusyChange={setXcaAiBusy} />

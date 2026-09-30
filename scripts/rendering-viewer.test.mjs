@@ -39,6 +39,14 @@ test('CCTA empty and failed states start AI analysis instead of posting renderin
   assert.match(workspace, /selectedStudy\?\.modality\.toUpperCase\(\) === 'CT'/)
 })
 
+test('CCTA demo playback requires a completed patient anatomy GLB', () => {
+  const panel = readFileSync(new URL('../src/components/CTAIAnalysisPanel.tsx', import.meta.url), 'utf8')
+  assert.match(panel, /if \(AI_DEMO_PLAYBACK\)[\s\S]*if \(hasCompleteAnatomyRendering\) setPrecomputedAnalysis\(latest\)/)
+  assert.match(panel, /precomputedAnalysis && hasCompleteAnatomyRendering/)
+  assert.match(workspace, /item\.renderingType === 'VESSEL_CALCIFICATION'/)
+  assert.match(workspace, /isAnatomyGlbFormat\(item\.fileFormat\)/)
+})
+
 test('DICOM binary download accepts DRF negotiation while retaining staff authorization', async () => {
   globalThis.window = { location: { origin: 'http://localhost:5173' } }
   globalThis.sessionStorage = { getItem: () => 'test-token', removeItem: () => {} }
