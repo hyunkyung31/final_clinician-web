@@ -65,6 +65,9 @@ test('latest CCTA lookup falls back to the linked source examination for demo pa
         { id: 203, examination: 999, analysis_type: 'CCTA', status: 'SUCCEEDED', completed_at: '2026-09-29T13:00:00Z' },
       ])
     }
+    if (url === '/api/ai-analyses/201/') {
+      return Response.json({ analysis: { id: 201, examination: 534, analysis_type: 'CCTA', status: 'SUCCEEDED' }, jobs: [], results: [] })
+    }
     if (url === '/api/ai-analyses/202/') {
       return Response.json({ analysis: { id: 202, examination: 534, analysis_type: 'CCTA', status: 'SUCCEEDED' }, jobs: [], results: [] })
     }
@@ -77,7 +80,21 @@ test('latest CCTA lookup falls back to the linked source examination for demo pa
     '/api/ai-analyses/?patient_id=52&type=CCTA&status=SUCCEEDED',
     '/api/ai-analyses/?examination_id=534&type=CCTA&status=SUCCEEDED',
     '/api/ai-analyses/202/',
+    '/api/ai-analyses/201/',
   ])
+})
+
+test('latest CCTA lookup never reuses another examination for demo playback', async () => {
+  const { loadLatestCTAIAnalysis } = await loadApiTestModule()
+  const calls = []
+  globalThis.fetch = async (url) => {
+    calls.push(url)
+    if (url.includes('patient_id=52')) return Response.json([{ id: 301, examination: 533, analysis_type: 'CCTA', status: 'SUCCEEDED' }])
+    if (url.includes('examination_id=534')) return Response.json([{ id: 302, examination: 533, analysis_type: 'CCTA', status: 'SUCCEEDED' }])
+    throw new Error(`another examination must not be loaded: ${url}`)
+  }
+  assert.equal(await loadLatestCTAIAnalysis(52, 534), null)
+  assert.equal(calls.some((url) => url.includes('/api/ai-analyses/30')), false)
 })
 
 test('an invalid source cannot send an analysis request', async () => {

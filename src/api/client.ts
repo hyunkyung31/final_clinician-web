@@ -4319,7 +4319,6 @@ export async function loadLatestCTAIAnalysis(patientId: number, examinationId: n
     ),
   ])
   const examinationRows = Array.isArray(examinationMatches) ? examinationMatches : []
-  const examinationAnalysisIds = new Set(examinationRows.map((item) => item.id))
   const matchesExamination = (item: CCTAAnalysisListItem) => {
     const raw = item as unknown as Record<string, unknown>
     const rawExamination = raw.examination ?? raw.examination_id
@@ -4332,7 +4331,9 @@ export async function loadLatestCTAIAnalysis(patientId: number, examinationId: n
     .filter((item) => (
       item.analysis_type === 'CCTA'
       && item.status === 'SUCCEEDED'
-      && (matchesExamination(item) || examinationAnalysisIds.has(item.id))
+      // The examination endpoint can return rows for a linked source study.
+      // Demo playback is valid only for the examination currently selected.
+      && matchesExamination(item)
     ))
     .filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index)
     .sort((left, right) => {
