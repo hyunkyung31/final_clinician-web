@@ -33,9 +33,11 @@ export function DoctorSignaturePreview({
     <p>{description}</p>
     {error ? <p role="alert">{error}</p> : !identity ? <p role="status">의료진 정보 조회 중…</p> : !signature ? <p>이 계정에 등록된 서명 이미지가 없습니다.</p> : <>
       <button type="button" className="primary" disabled={disabled || shown || imageFailed} onClick={() => { setShown(true); onShownChange?.(true) }}>{actionLabel}</button>
-      {shown && <div aria-live="polite">
-        <p>{identity.name || identity.username} 의사 서명 확인</p>
-        {!imageFailed && <img src={signature} alt={`${identity.name || identity.username} 의사 서명`} onError={() => setImageFailed(true)} style={{ display: 'block', width: 180, height: 90, objectFit: 'contain' }} />}
+      {shown && <div className="doctor-signature-shown" aria-live="polite">
+        <div className="doctor-signature-identity">
+          <p>{identity.name || identity.username} 의사 서명 확인</p>
+          {!imageFailed && <img src={signature} alt={`${identity.name || identity.username} 의사 서명`} onError={() => setImageFailed(true)} style={{ display: 'block', width: 180, height: 90, objectFit: 'contain' }} />}
+        </div>
         {imageFailed && <p role="alert">서명 이미지를 불러오지 못했습니다.</p>}
         <button type="button" disabled={disabled} onClick={() => { setShown(false); setImageFailed(false); onShownChange?.(false) }}>서명 확인 취소</button>
       </div>}

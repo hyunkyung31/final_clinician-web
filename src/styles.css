@@ -13036,7 +13036,9 @@ html[data-theme='dark'] .login-form input {
 .xca-report-finalize .doctor-signature-preview,.ccta-report-finalize .doctor-signature-preview { display:grid; justify-items:end; gap:8px; margin:14px 0; text-align:right; }
 .xca-report-finalize .doctor-signature-preview > :is(p,strong),.ccta-report-finalize .doctor-signature-preview > :is(p,strong) { margin:0; }
 .xca-report-finalize .doctor-signature-preview > button,.ccta-report-finalize .doctor-signature-preview > button { justify-self:end; }
-.xca-report-finalize .doctor-signature-preview > div,.ccta-report-finalize .doctor-signature-preview > div { display:grid; justify-items:end; gap:8px; }
+.xca-report-finalize .doctor-signature-preview > .doctor-signature-shown,.ccta-report-finalize .doctor-signature-preview > .doctor-signature-shown { display:grid; justify-items:end; gap:8px; }
+.xca-report-finalize .doctor-signature-identity,.ccta-report-finalize .doctor-signature-identity { display:flex; align-items:center; justify-content:flex-end; gap:10px; min-height:90px; }
+.xca-report-finalize .doctor-signature-identity p,.ccta-report-finalize .doctor-signature-identity p { margin:0; white-space:nowrap; }
 .xca-report-finalize .doctor-signature-preview > div button,.ccta-report-finalize .doctor-signature-preview > div button { justify-self:end; }
 .xca-report-finalize .doctor-signature-preview img,.ccta-report-finalize .doctor-signature-preview img { background:transparent !important; }
 .xca-report-draft > button.primary,.ccta-report-finalize > button.primary,.xca-report-finalize > button.primary { display:flex; width:fit-content; min-height:36px; margin-left:auto; padding:8px 12px; }

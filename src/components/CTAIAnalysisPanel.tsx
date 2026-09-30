@@ -261,9 +261,6 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
           />
         </div>
 
-        <p className="ct-ai-progress-description">
-          분석 결과를 불러오고 있습니다.
-        </p>
       </div>
     )}
     {status && !['QUEUED', 'RUNNING'].includes(status) && <p role="status">분석 상태: {({ SUCCEEDED: '분석 완료', FAILED: '분석 실패' } as Record<string, string>)[status] ?? status}</p>}
