@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { compileTestModule, loadApiTestModule } from './load-api-test-module.mjs'
 
 const { preferredRendering, preferredInitialRendering, visibleRenderingKinds, SHOW_ANATOMY_GLB_ON_CCTA_3D } = await import(compileTestModule(readFileSync(new URL('../src/api/renderingSelection.ts', import.meta.url), 'utf8')))
+const workspace = readFileSync(new URL('../src/components/ExaminationImagingWorkspace.tsx', import.meta.url), 'utf8')
 
 test('shared anatomy fixture is disabled in the normal CCTA workspace', () => {
   assert.equal(SHOW_ANATOMY_GLB_ON_CCTA_3D, false)
@@ -30,6 +31,12 @@ test('patient-specific full anatomy GLB is the initial rendering when available'
   ]
   assert.equal(preferredInitialRendering(items, 'CALCIFICATION_ONLY').id, 11)
   assert.equal(preferredInitialRendering(items.slice(0, 1), 'CALCIFICATION_ONLY').id, 10)
+})
+
+test('CCTA empty and failed states start AI analysis instead of posting rendering without an AI job', () => {
+  assert.match(workspace, /CCTA AI 분석 시작/)
+  assert.match(workspace, /CCTA AI 다시 분석/)
+  assert.match(workspace, /selectedStudy\?\.modality\.toUpperCase\(\) === 'CT'/)
 })
 
 test('DICOM binary download accepts DRF negotiation while retaining staff authorization', async () => {
