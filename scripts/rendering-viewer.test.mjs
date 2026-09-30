@@ -43,6 +43,8 @@ test('CCTA demo playback requires a completed patient anatomy GLB', () => {
   const panel = readFileSync(new URL('../src/components/CTAIAnalysisPanel.tsx', import.meta.url), 'utf8')
   assert.match(panel, /if \(AI_DEMO_PLAYBACK\)[\s\S]*if \(hasCompleteAnatomyRendering\) setPrecomputedAnalysis\(latest\)/)
   assert.match(panel, /precomputedAnalysis && hasCompleteAnatomyRendering/)
+  assert.match(panel, /실제 재분석/)
+  assert.match(panel, /run\(true\)/)
   assert.match(workspace, /item\.renderingType === 'VESSEL_CALCIFICATION'/)
   assert.match(workspace, /isAnatomyGlbFormat\(item\.fileFormat\)/)
 })

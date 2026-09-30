@@ -114,10 +114,10 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
     refreshedAnalysisId.current = analysis.analysis.id
     onRefresh()
   }, [analysis?.analysis.id, analysis?.analysis.status, onRefresh])
-  async function run() {
+  async function run(forceLive = false) {
     if (!study.examinationId || !seriesId || busy) return
 
-    if (AI_DEMO_PLAYBACK && precomputedAnalysis && hasCompleteAnatomyRendering) {
+    if (!forceLive && AI_DEMO_PLAYBACK && precomputedAnalysis && hasCompleteAnatomyRendering) {
       setBusy(true)
       setError('')
       setDemoProgress(0)
@@ -242,18 +242,29 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
       {status === 'SUCCEEDED' && <button type="button" onClick={() => { onRefresh(); onClose() }}>렌더링 결과 확인</button>}
       {status === 'FAILED' && <button type="button" disabled={busy} onClick={() => { setAnalysis(null); setError(''); setNotice('') }}>다시 시도</button>}
     </> : (
-      <button
-        type="button"
-        onClick={run}
-        disabled={
-          !analysisReady ||
-          !study.examinationId ||
-          !seriesId ||
-          busy
-        }
-      >
-        {busy && demoStage ? 'AI 분석 중…' : 'AI 분석 시작'}
-      </button>
+      <>
+        <button
+          type="button"
+          onClick={() => run(false)}
+          disabled={
+            !analysisReady ||
+            !study.examinationId ||
+            !seriesId ||
+            busy
+          }
+        >
+          {busy && demoStage ? 'AI 분석 중…' : 'AI 분석 시작'}
+        </button>
+        {AI_DEMO_PLAYBACK && precomputedAnalysis && hasCompleteAnatomyRendering && (
+          <button
+            type="button"
+            onClick={() => run(true)}
+            disabled={!ready || !study.examinationId || !seriesId || busy}
+          >
+            실제 재분석
+          </button>
+        )}
+      </>
     )}</footer>
   </section></div>
 }
