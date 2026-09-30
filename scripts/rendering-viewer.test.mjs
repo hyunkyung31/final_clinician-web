@@ -57,6 +57,15 @@ test('CCTA completion hydrates its result and automatically reveals report creat
   assert.match(panel, /<CCTAReportDraft/)
 })
 
+test('AI analysis panels use clinician-facing wording instead of demo implementation copy', () => {
+  const xcaPanel = readFileSync(new URL('../src/components/XCAAnalysisPanel.tsx', import.meta.url), 'utf8')
+  const cctaPanel = readFileSync(new URL('../src/components/CTAIAnalysisPanel.tsx', import.meta.url), 'utf8')
+  assert.match(xcaPanel, /AI 분석 결과는 의료진 검토를 위한 보조 정보입니다/)
+  assert.doesNotMatch(xcaPanel, /GPU PC에서 사용하는 데모 분석입니다/)
+  assert.match(cctaPanel, /저장된 분석 및 3D 결과가 없어 AI 분석을 시작합니다/)
+  assert.doesNotMatch(cctaPanel, /준비된 분석·전체 3D 결과가 없어 실제 AI 분석을 실행합니다/)
+})
+
 test('patient anatomy GLB opens in the frontal patient-coordinate view', () => {
   const viewer = readFileSync(new URL('../src/components/MedicalModelViewer.tsx', import.meta.url), 'utf8')
   assert.match(viewer, /new THREE\.Vector3\(0, -1, 0\)/)

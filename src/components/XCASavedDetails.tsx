@@ -40,7 +40,7 @@ export function XCASavedDetails({
   if (!revealed) {
     return (
       <section className="xca-saved">
-        {!loading && !error && details.length > 0 && <p>시연용 사전 분석 결과가 준비되었습니다.</p>}
+        {!loading && !error && details.length > 0 && <p>저장된 분석 결과를 불러왔습니다.</p>}
         {loading && <p role="status">저장된 분석 결과 확인 중…</p>}
         {!loading && !error && details.length === 0 && <p className="api-inline-error">이 검사에 준비된 XCA 분석 결과가 없습니다.</p>}
         {error && <p className="api-inline-error" role="alert">{error}</p>}

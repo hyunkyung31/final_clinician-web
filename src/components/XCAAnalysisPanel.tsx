@@ -186,8 +186,8 @@ export function XCAAnalysisPanel({ open, patient, examinationId, sequences, onCl
         <div className="xca-connection">
           <span>
             {precomputedResult
-            ? '시연용 사전 분석 결과 준비 완료'
-            : '시연용 사전 분석 결과 확인 중'
+            ? '저장된 분석 결과 확인 완료'
+            : '저장된 분석 결과 확인 중'
             }
           </span>
         </div>
@@ -202,7 +202,7 @@ export function XCAAnalysisPanel({ open, patient, examinationId, sequences, onCl
                 ? 'GPU 모델(8002) 확인필요'
                 : health.busy
                   ? '연결 서버에서 분석 실행 중'
-                  : '로컬 GPU 모델 연결됨'
+                  : 'AI 분석 서버 연결됨'
             }
           </span>
           <button
@@ -215,7 +215,7 @@ export function XCAAnalysisPanel({ open, patient, examinationId, sequences, onCl
           </button>
         </div>
       )}
-      <p className="xca-disclaimer">GPU PC에서 사용하는 데모 분석입니다. AI score는 협착률·보정된 신뢰도가 아니며 결과는 의료진 검토가 필요합니다.</p>
+      <p className="xca-disclaimer">AI 분석 결과는 의료진 검토를 위한 보조 정보입니다. AI score는 협착률 또는 보정된 신뢰도를 의미하지 않으며, 최종 판독은 의료진이 수행합니다.</p>
       {error?.key === key && <p className="api-inline-error" role="alert">{error.message}</p>}
       {AI_DEMO_PLAYBACK && busy && demoStage && (
         <div className="ct-ai-progress" role="status">
@@ -237,7 +237,7 @@ export function XCAAnalysisPanel({ open, patient, examinationId, sequences, onCl
           </div>
 
           <p className="ct-ai-progress-description">
-            저장된 XCA 분석 결과를 확인하고 있습니다.
+            이전 분석 결과를 불러오고 있습니다.
           </p>
         </div>
       )}
@@ -247,8 +247,8 @@ export function XCAAnalysisPanel({ open, patient, examinationId, sequences, onCl
           <LoaderCircle className="spin" size={20} />
 
           <div>
-            <strong>실제 분석 요청 처리 중…</strong>
-            <span>영상 다운로드 → GPU 추론 → VM 저장·재조회</span>
+            <strong>AI 분석 처리 중…</strong>
+            <span>영상 준비 → AI 분석 → 결과 저장·조회</span>
             <small>
               창을 닫거나 환자·검사를 바꿔도 시작된 처리는 계속됩니다.
               자동 재시도하지 않습니다.

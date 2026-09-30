@@ -223,7 +223,7 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
 
     {AI_DEMO_PLAYBACK && !busy && !precomputedAnalysis && ready && (
       <p className="ct-ai-connection">
-        준비된 분석·전체 3D 결과가 없어 실제 AI 분석을 실행합니다.
+        저장된 분석 및 3D 결과가 없어 AI 분석을 시작합니다.
       </p>
     )}
 
@@ -251,7 +251,7 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
         </div>
 
         <p className="ct-ai-progress-description">
-          저장된 AI 분석 결과를 확인하고 있습니다.
+          분석 결과를 불러오고 있습니다.
         </p>
       </div>
     )}
