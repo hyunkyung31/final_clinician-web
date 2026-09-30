@@ -1479,7 +1479,7 @@ export function ExaminationImagingWorkspace({
             )}
 
             {selectedAsset?.kind === 'SEQUENCE' && <p className="api-inline-notice">이 Angio 시퀀스의 주석은 화면에서만 편집됩니다. 서버 저장에는 해당 Study·Series 연결이 필요합니다.</p>}
-            {viewerMode === '3D' && active3DPane === 'RENDERED' && selectedStudy && <div className="rendering-action-bar"><button type="button" disabled={renderingSaving} onClick={() => setRenderingRevision((value) => value + 1)}>목록 새로고침</button><button type="button" disabled={renderingSaving || !selectedSeriesId} onClick={() => setCreateRenderingOpen(true)}>고급 생성 설정</button></div>}
+            {viewerMode === '3D' && active3DPane === 'RENDERED' && selectedStudy && <div className="rendering-action-bar"><button type="button" disabled={renderingSaving} onClick={() => setRenderingRevision((value) => value + 1)}>목록 새로고침</button>{selectedStudy.modality.toUpperCase() === 'CT' ? <button type="button" disabled={!selectedSeriesId} onClick={() => setCtAiOpen(true)}>CCTA AI 분석</button> : <button type="button" disabled={renderingSaving || !selectedSeriesId} onClick={() => setCreateRenderingOpen(true)}>고급 생성 설정</button>}</div>}
 
             <div className={`clinical-image-stage viewer-${viewerMode.toLowerCase()} tool-${tool.toLowerCase()}`}>
               {viewerMode === '2D' && selectedAsset?.kind === 'SEQUENCE' && currentFrame && <img key={currentFrame.url} src={currentFrame.url} alt={`${currentFrame.filename} 혈관조영 영상`} draggable={false} onLoad={() => setImageLoadError('')} onError={() => setImageLoadError('2D 프레임 URL에 브라우저가 접근하지 못했습니다.')} />}
@@ -1574,8 +1574,8 @@ export function ExaminationImagingWorkspace({
                             <BoxIcon size={32} />
                             <strong>{renderingError ? '3D 결과를 불러오지 못했습니다' : selectedRendering?.status === 'FAILED' ? '3D 렌더링 생성에 실패했습니다' : `${renderingLabel(renderingType)} 결과가 아직 생성되지 않았습니다.`}</strong>
                             <span>{renderingError || (selectedRendering?.status === 'FAILED' ? '기존 원본 데이터로 다시 생성할 수 있습니다.' : 'AI 분할 및 3D 파일 생성 파이프라인이 완료되면 표시됩니다.')}</span>
-                            {selectedRendering?.status === 'FAILED' && <button type="button" disabled={renderingSaving} onClick={() => requestRendering(true)}>3D 재생성</button>}
-                            {!selectedRendering && !renderingLoading && !renderingError && <button type="button" disabled={renderingSaving || !selectedStudy || !selectedSeriesId} onClick={() => requestRendering(false, renderingType, renderingType === 'CALCIFICATION_ONLY' ? 'STL' : 'GLB')}>{renderingSaving ? '요청 중…' : `${renderingLabel(renderingType)} 생성 요청`}</button>}
+                            {selectedRendering?.status === 'FAILED' && (selectedStudy?.modality.toUpperCase() === 'CT' ? <button type="button" disabled={!selectedSeriesId} onClick={() => setCtAiOpen(true)}>CCTA AI 다시 분석</button> : <button type="button" disabled={renderingSaving} onClick={() => requestRendering(true)}>3D 재생성</button>)}
+                            {!selectedRendering && !renderingLoading && !renderingError && (selectedStudy?.modality.toUpperCase() === 'CT' ? <button type="button" disabled={!selectedSeriesId} onClick={() => setCtAiOpen(true)}>CCTA AI 분석 시작</button> : <button type="button" disabled={renderingSaving || !selectedStudy || !selectedSeriesId} onClick={() => requestRendering(false, renderingType, renderingType === 'CALCIFICATION_ONLY' ? 'STL' : 'GLB')}>{renderingSaving ? '요청 중…' : `${renderingLabel(renderingType)} 생성 요청`}</button>)}
                             {!selectedRendering && renderingType !== 'CALCIFICATION_ONLY' && <span>현재 COCA U-Net 패키지는 석회화 분할을 지원합니다. 이 결과에는 별도 모델·서버 연결이 필요합니다.</span>}
                           </div>
                         )}
