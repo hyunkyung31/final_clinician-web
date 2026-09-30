@@ -37,10 +37,10 @@ export function XCAReportFinalize({ target, disabled, onBusyChange, onSigned }: 
     }
   }
 
-  return <section className="xca-report-draft">
+  return <section className="xca-report-draft xca-report-finalize">
     <h3>최종 PDF · 의료진 서명</h3>
     <p>새 검토용 초안의 본문·의견·선택 영상을 확인한 뒤, 로그인한 의료진의 등록 서명으로 최종 승인합니다.</p>
-    <label><input type="checkbox" checked={confirmed} disabled={busy || disabled || Boolean(downloadUrl)} onChange={event => setConfirmed(event.target.checked)} /> 이 버전의 본문·의견·선택 영상과 AI 연구 제한을 확인했고 최종 승인에 동의합니다.</label>
+    <label className="feature-check"><input type="checkbox" checked={confirmed} disabled={busy || disabled || Boolean(downloadUrl)} onChange={event => setConfirmed(event.target.checked)} /> 이 버전의 본문·의견·선택 영상과 AI 연구 제한을 확인했고 최종 승인에 동의합니다.</label>
     {!downloadUrl && <DoctorSignaturePreview resetKey={`${target.baseVersionId}:${confirmed}`} disabled={busy || disabled || !confirmed} onShownChange={setSignatureShown} />}
     {!downloadUrl && <button type="button" className="primary" disabled={busy || disabled || !confirmed || !signatureShown} onClick={() => void sign()}>{busy ? '최종 승인 중…' : '검토 승인 · 최종 서명 · PDF 생성'}</button>}
     {downloadUrl && <p className="xca-report-success">최종 승인과 서명 PDF 생성이 완료되었습니다. <a href={downloadUrl} target="_blank" rel="noopener noreferrer">서명된 PDF 열기·다운로드</a></p>}

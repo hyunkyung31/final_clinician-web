@@ -35,7 +35,7 @@ export function DoctorSignaturePreview({
       <button type="button" className="primary" disabled={disabled || shown || imageFailed} onClick={() => { setShown(true); onShownChange?.(true) }}>{actionLabel}</button>
       {shown && <div aria-live="polite">
         <p>{identity.name || identity.username} 의사 서명 확인</p>
-        {!imageFailed && <img src={signature} alt={`${identity.name || identity.username} 의사 서명`} onError={() => setImageFailed(true)} style={{ display: 'block', width: 180, height: 90, objectFit: 'contain', background: '#fff' }} />}
+        {!imageFailed && <img src={signature} alt={`${identity.name || identity.username} 의사 서명`} onError={() => setImageFailed(true)} style={{ display: 'block', width: 180, height: 90, objectFit: 'contain' }} />}
         {imageFailed && <p role="alert">서명 이미지를 불러오지 못했습니다.</p>}
         <button type="button" disabled={disabled} onClick={() => { setShown(false); setImageFailed(false); onShownChange?.(false) }}>서명 확인 취소</button>
       </div>}
