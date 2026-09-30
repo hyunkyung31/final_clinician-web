@@ -48,6 +48,15 @@ test('CCTA demo playback requires saved analysis and completed anatomy rendering
   assert.match(workspace, /isAnatomyGlbFormat\(item\.fileFormat\)/)
 })
 
+test('CCTA completion hydrates its result and automatically reveals report creation', () => {
+  const panel = readFileSync(new URL('../src/components/CTAIAnalysisPanel.tsx', import.meta.url), 'utf8')
+  assert.match(panel, /status !== 'SUCCEEDED' \|\| reportResult \|\| !analysis/)
+  assert.match(panel, /attempts < 8/)
+  assert.match(panel, /결과지 생성 정보를 준비하고 있습니다/)
+  assert.match(panel, /reportDraftRef\.current\?\.scrollIntoView/)
+  assert.match(panel, /<CCTAReportDraft/)
+})
+
 test('patient anatomy GLB opens in the frontal patient-coordinate view', () => {
   const viewer = readFileSync(new URL('../src/components/MedicalModelViewer.tsx', import.meta.url), 'utf8')
   assert.match(viewer, /new THREE\.Vector3\(0, -1, 0\)/)
