@@ -28,6 +28,9 @@ test('report workspace lists completed CCTA analyses before a medical report dra
 test('CCTA analysis completion automatically opens the report draft and conclusion editor', () => {
   assert.match(cctaDraft, /preparedResultId\.current === analysisResultId/)
   assert.match(cctaDraft, /prepare\(\)/)
+  assert.match(cctaDraft, /\[analysisResultId, analysisId\]/)
+  assert.match(cctaDraft, /for \(const candidateId of candidateIds\)/)
+  assert.match(cctaPanel, /analysisId=\{analysis\?\.analysis\.id\}/)
   assert.match(cctaDraft, /결과지와 의료진 최종 소견 입력 화면을 준비하고 있습니다/)
   assert.match(cctaDraft, /의료진 최종 소견/)
   assert.match(cctaDraft, /최종 소견을 보고서 초안에 저장/)

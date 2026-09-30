@@ -38,10 +38,11 @@ function CCTAReportImage({ fileId, label }: { fileId: number | null; label: stri
   </figure>
 }
 
-export function CCTAReportDraft({ patientId, examinationId, analysisResultId, disabled, onBusyChange, onReportChange, onNewAnalysis }: {
+export function CCTAReportDraft({ patientId, examinationId, analysisResultId, analysisId, disabled, onBusyChange, onReportChange, onNewAnalysis }: {
   patientId: number
   examinationId: number
   analysisResultId: number
+  analysisId?: number
   disabled: boolean
   onBusyChange: (busy: boolean) => void
   onReportChange?: () => void
@@ -80,10 +81,20 @@ export function CCTAReportDraft({ patientId, examinationId, analysisResultId, di
 
   function prepare() {
     void act(async () => {
-      const next = await createExaminationMedicalResult(examinationId, 'CCTA_3D', analysisResultId, patientId)
-      applyDetail(next)
-      setSaved(Boolean(next.conclusion.trim()))
-      setConfirmed(false); setSignatureShown(false); setDownloadUrl('')
+      const candidateIds = [...new Set([analysisResultId, analysisId].filter((value): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0))]
+      let lastFailure: unknown
+      for (const candidateId of candidateIds) {
+        try {
+          const next = await createExaminationMedicalResult(examinationId, 'CCTA_3D', candidateId, patientId)
+          applyDetail(next)
+          setSaved(Boolean(next.conclusion.trim()))
+          setConfirmed(false); setSignatureShown(false); setDownloadUrl('')
+          return
+        } catch (failure) {
+          lastFailure = failure
+        }
+      }
+      throw lastFailure instanceof Error ? lastFailure : new Error('완료된 CCTA AI 분석 결과를 찾을 수 없습니다.')
     })
   }
 
@@ -94,7 +105,7 @@ export function CCTAReportDraft({ patientId, examinationId, analysisResultId, di
     if (disabled || preparedResultId.current === analysisResultId) return
     preparedResultId.current = analysisResultId
     prepare()
-  }, [analysisResultId, disabled])
+  }, [analysisId, analysisResultId, disabled])
 
   function save() {
     if (!detail || !conclusion.trim()) return
