@@ -37,13 +37,14 @@ function CCTAReportImage({ fileId, label }: { fileId: number | null; label: stri
   </figure>
 }
 
-export function CCTAReportDraft({ patientId, examinationId, analysisResultId, disabled, onBusyChange, onReportChange }: {
+export function CCTAReportDraft({ patientId, examinationId, analysisResultId, disabled, onBusyChange, onReportChange, onNewAnalysis }: {
   patientId: number
   examinationId: number
   analysisResultId: number
   disabled: boolean
   onBusyChange: (busy: boolean) => void
   onReportChange?: () => void
+  onNewAnalysis?: () => void
 }) {
   const [detail, setDetail] = useState<MedicalResultDetail | null>(null)
   const [conclusion, setConclusion] = useState('')
@@ -154,5 +155,9 @@ export function CCTAReportDraft({ patientId, examinationId, analysisResultId, di
 
     {busy && <p role="status">보고서 처리 중… 자동으로 재전송하지 않습니다.</p>}
     {error && <p className="api-inline-error" role="alert">{error}</p>}
+    {onNewAnalysis && <footer className="ccta-report-footer">
+      <span>새 분석은 선택한 CT 원본을 사용합니다.</span>
+      <button className="primary" type="button" disabled={busy || disabled} onClick={onNewAnalysis}>새 분석 실행</button>
+    </footer>}
   </section>
 }
