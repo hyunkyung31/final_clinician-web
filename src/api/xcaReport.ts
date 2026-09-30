@@ -85,7 +85,7 @@ export function validateXCAReportSelection(detail: XCADetailResult, target: XCAR
 }
 export async function attachXCAReportDraft(base: string, token: string | null, detail: XCADetailResult, target: XCAReportTarget, frameIds: number[], reviewNote: string, reauthToken?: string): Promise<XCAReportSaved> {
   const note = validateXCAReportSelection(detail, target, frameIds, reviewNote)
-  const response = obj(await call(base, `/api/medical-results/${target.id}/xca-attachments/`, token, { detail_id: detail.id, frame_ids: frameIds, review_note: note, base_version_id: target.baseVersionId, ...(reauthToken ? { reauth_token: reauthToken } : {}) }))
+  const response = obj(await call(base, `/api/medical-results/${target.id}/xca-attachments/`, token, { detail_id: detail.id, frame_ids: frameIds, review_note: note, ...(target.baseVersionId ? { base_version_id: target.baseVersionId } : {}), ...(reauthToken ? { reauth_token: reauthToken } : {}) }))
   const version = obj(response.report_version), versionId = id(version.id), attachmentId = id(response.attachment_id)
   if (version.medical_result !== target.id || version.source_type !== 'DOCTOR_EDIT' || typeof version.content_text !== 'string' || typeof response.reused !== 'boolean') throw new Error('첨부 보고서 버전 확인 실패. 재전송 전 기존 기록을 확인하세요.')
   const content = obj(version.content_json), attachments = content.xca_attachments
