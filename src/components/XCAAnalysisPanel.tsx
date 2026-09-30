@@ -242,12 +242,12 @@ export function XCAAnalysisPanel({ open, patient, examinationId, sequences, onCl
         </div>
       )}
 
-      {!AI_DEMO_PLAYBACK && busy && (
+      {busy && !precomputedResult && (
         <div className="xca-running" role="status">
           <LoaderCircle className="spin" size={20} />
 
           <div>
-            <strong>분석 요청 처리 중…</strong>
+            <strong>실제 분석 요청 처리 중…</strong>
             <span>영상 다운로드 → GPU 추론 → VM 저장·재조회</span>
             <small>
               창을 닫거나 환자·검사를 바꿔도 시작된 처리는 계속됩니다.

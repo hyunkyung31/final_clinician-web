@@ -107,8 +107,8 @@ function patientQueryKey(input: {
   return JSON.stringify(input)
 }
 
-const DEFAULT_MINE_QUERY = patientQueryKey({
-  patientScope: "mine",
+const DEFAULT_ALL_QUERY = patientQueryKey({
+  patientScope: "all",
   page: 1,
   search: "",
   examDateFrom: "",
@@ -416,7 +416,7 @@ function App() {
   const [patientCount, setPatientCount] = useState(0);
   const [patientsHasNext, setPatientsHasNext] = useState(false);
   const [patientListError, setPatientListError] = useState("");
-  const [patientScope, setPatientScope] = useState<PatientScope>("mine");
+  const [patientScope, setPatientScope] = useState<PatientScope>("all");
   const [patientSearchResults, setPatientSearchResults] = useState<PatientSummary[] | null>(null);
   const [patientSearchLoading, setPatientSearchLoading] = useState(false);
   const [examDateFrom, setExamDateFrom] = useState("");
@@ -569,7 +569,7 @@ function App() {
 
   const workspaceLoadGeneration = useRef(0);
   const pinnedRecentRef = useRef<PatientSummary[]>([]);
-  const visiblePatientQueryRef = useRef(DEFAULT_MINE_QUERY);
+  const visiblePatientQueryRef = useRef(DEFAULT_ALL_QUERY);
   visiblePatientQueryRef.current = patientQueryKey({
     patientScope,
     page: patientPage,
@@ -601,16 +601,15 @@ function App() {
     setApiError("");
 
     try {
-      const mine = await getPatientsPage("", false, { patientScope: "ASSIGNED_TO_ME" });
+      const all = await getPatientsPage("", false, { patientScope: "ALL_ACCESSIBLE" });
       if (!stillCurrent()) return;
 
-      setMyPatientList(mine.results);
-      setPatientList((current) => mergePatients(current, mine.results));
-      setSelectedId((current) => current || mine.results[0]?.id || "");
-      if (visiblePatientQueryRef.current === DEFAULT_MINE_QUERY) {
-        setPatientSearchResults(mine.results);
-        setPatientCount(mine.count);
-        setPatientsHasNext(mine.hasNext);
+      setPatientList((current) => mergePatients(current, all.results));
+      setSelectedId((current) => current || all.results[0]?.id || "");
+      if (visiblePatientQueryRef.current === DEFAULT_ALL_QUERY) {
+        setPatientSearchResults(all.results);
+        setPatientCount(all.count);
+        setPatientsHasNext(all.hasNext);
         setPatientSearchLoading(false);
       }
     } catch (error) {
@@ -631,9 +630,9 @@ function App() {
     if (!stillCurrent()) return;
     setApiLoading(false);
 
-    const [allResult, consultationResult, recentResult, summaryResult, aiStatusResult] =
+    const [mineResult, consultationResult, recentResult, summaryResult, aiStatusResult] =
       await Promise.allSettled([
-        getPatientsPage("", false, { patientScope: "ALL_ACCESSIBLE" }),
+        getPatientsPage("", false, { patientScope: "ASSIGNED_TO_ME" }),
         getPatientsPage("", false, { patientScope: "CONSULTATION" }),
         getPatientsPage("", false, { patientScope: "RECENT" }),
         getDashboardSummary(),
@@ -641,16 +640,16 @@ function App() {
       ]);
     if (!stillCurrent()) return;
 
-    const unauthorized = [allResult, consultationResult, recentResult, summaryResult, aiStatusResult]
+    const unauthorized = [mineResult, consultationResult, recentResult, summaryResult, aiStatusResult]
       .find((result) => result.status === "rejected" && result.reason instanceof ApiError && result.reason.status === 401);
     if (unauthorized) {
       expireApiSession();
       return;
     }
 
-    if (allResult.status === "fulfilled") {
-      setPatientList((current) => mergePatients(current, allResult.value.results));
-      setSelectedId((current) => current || allResult.value.results[0]?.id || "");
+    if (mineResult.status === "fulfilled") {
+      setMyPatientList(mineResult.value.results);
+      setPatientList((current) => mergePatients(current, mineResult.value.results));
     }
     if (consultationResult.status === "fulfilled") {
       setConsultationPatientList(consultationResult.value.results);
@@ -674,9 +673,9 @@ function App() {
   useEffect(() => {
     if (mode !== 'api') return;
     const query = visiblePatientQueryRef.current;
-    const defaultMine = query === DEFAULT_MINE_QUERY;
-    if (defaultMine) {
-      // 다른 탭·검색에서 기본 "내 담당"으로 돌아왔을 때, 그 이전 조회가 아직
+    const defaultAll = query === DEFAULT_ALL_QUERY;
+    if (defaultAll) {
+      // 다른 탭·검색에서 기본 "전체"로 돌아왔을 때, 그 이전 조회가 아직
       // 응답하지 않은 상태라면 그 조회의 .finally()는 active=false라 로딩 상태를
       // 되돌리지 못한다. 여기서 명시적으로 꺼서 로딩 표시가 영구히 남지 않게 한다.
       setPatientSearchLoading(false);
