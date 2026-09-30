@@ -233,8 +233,9 @@ export function WorkstationHub({
   const xcaLines = xcaAssistBullets(detail?.aiSummaries.xca ?? null).slice(0, 3)
   const cctaLines = cctaAssistBullets(detail?.aiSummaries.ccta ?? null).slice(0, 2)
   const recommendLines = nextStepRecommendations(detail).slice(0, 3)
-  const doctorName = detail?.workflow.signedBy || detail?.encounter.doctorName || latestReport?.doctorName || staffDoctor?.name || staffIdentity?.name || '-'
-  const departmentName = detail?.workflow.signedDepartment || staffDoctor?.departmentName || staffIdentity?.departmentName || '-'
+  const doctorCandidates = [staffDoctor?.name, staffIdentity?.name, detail?.workflow.signedBy, detail?.encounter.doctorName, latestReport?.doctorName]
+  const doctorName = doctorCandidates.find((name) => name && !/^(테스트\s*의사|test\s*doctor)$/i.test(name.trim())) || '-'
+  const departmentName = staffDoctor?.departmentName || staffIdentity?.departmentName || detail?.workflow.signedDepartment || '-'
   const sexAge = `${patientDetail?.sex ?? patient.sex} / ${patientDetail?.age ?? patient.age}`
 
   const runReportAction = async (
