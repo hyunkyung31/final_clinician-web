@@ -69,7 +69,7 @@ test('latest CCTA lookup falls back to the linked source examination for demo pa
       return Response.json({ analysis: { id: 201, examination: 534, analysis_type: 'CCTA', status: 'SUCCEEDED' }, jobs: [], results: [] })
     }
     if (url === '/api/ai-analyses/202/') {
-      return Response.json({ analysis: { id: 202, examination: 534, analysis_type: 'CCTA', status: 'SUCCEEDED' }, jobs: [], results: [] })
+      return Response.json({ analysis: { id: 202, examination: 534, analysis_type: 'CCTA', status: 'SUCCEEDED' }, jobs: [], results: [{ id: 1, status: 'SUCCEEDED' }] })
     }
     throw new Error(`unexpected URL: ${url}`)
   }
@@ -80,7 +80,6 @@ test('latest CCTA lookup falls back to the linked source examination for demo pa
     '/api/ai-analyses/?patient_id=52&type=CCTA&status=SUCCEEDED',
     '/api/ai-analyses/?examination_id=534&type=CCTA&status=SUCCEEDED',
     '/api/ai-analyses/202/',
-    '/api/ai-analyses/201/',
   ])
 })
 
@@ -95,6 +94,20 @@ test('latest CCTA lookup never reuses another examination for demo playback', as
   }
   assert.equal(await loadLatestCTAIAnalysis(52, 534), null)
   assert.equal(calls.some((url) => url.includes('/api/ai-analyses/30')), false)
+})
+
+test('a completed CCTA row without a persisted result is not replayed as a demo', async () => {
+  const { loadLatestCTAIAnalysis } = await loadApiTestModule()
+  globalThis.fetch = async (url) => {
+    if (url.includes('patient_id=52') || url.includes('examination_id=534')) {
+      return Response.json([{ id: 401, examination: 534, analysis_type: 'CCTA', status: 'SUCCEEDED' }])
+    }
+    if (url === '/api/ai-analyses/401/') {
+      return Response.json({ analysis: { id: 401, examination: 534, analysis_type: 'CCTA', status: 'SUCCEEDED' }, jobs: [], results: [] })
+    }
+    throw new Error(`unexpected URL: ${url}`)
+  }
+  assert.equal(await loadLatestCTAIAnalysis(52, 534), null)
 })
 
 test('an invalid source cannot send an analysis request', async () => {

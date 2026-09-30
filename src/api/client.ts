@@ -4342,13 +4342,14 @@ export async function loadLatestCTAIAnalysis(patientId: number, examinationId: n
       return rightTime - leftTime
     })
 
-  let latest: CTAIAnalysis | null = null
   for (const item of candidates) {
     const candidate = await getCTAIAnalysis(item.id)
-    latest ??= candidate
     if (candidate.results?.some((result) => result.status !== 'INVALID')) return candidate
   }
-  return latest
+  // A SUCCEEDED job without a persisted result cannot render a 3D result or
+  // create a report.  Treat it as unavailable so the current examination runs
+  // the real analysis instead of replaying an empty prior row.
+  return null
 }
 
 export interface ClinicalShapFeature {
