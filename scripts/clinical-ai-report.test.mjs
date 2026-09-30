@@ -38,6 +38,7 @@ test('CCTA analysis completion automatically opens the report draft and conclusi
   assert.match(cctaDraft, /분석 다시 보기/)
   assert.match(cctaDraft, /<BrainCircuit size=\{16\} \/>/)
   assert.match(cctaPanel, /onNewAnalysis=\{\(\) => \{ setShowReport\(false\); setAnalysis\(null\)/)
+  assert.doesNotMatch(cctaPanel, /분석 결과를 불러오고 있습니다/)
 })
 
 test('report workspace preserves the signed 2D and 3D integrated approval workflow', () => {
