@@ -8,7 +8,7 @@ import {
 import './rendering-shortcuts.css'
 
 export function AnatomyGlbLocalTest() {
-  const [viewMode, setViewMode] = useState<AnatomyViewMode>('VESSEL_CALCIFICATION')
+  const [viewMode, setViewMode] = useState<AnatomyViewMode>('FULL_ANATOMY')
   const [status, setStatus] = useState('대기')
   const [error, setError] = useState('')
 

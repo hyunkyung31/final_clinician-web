@@ -1,6 +1,6 @@
 import type { Rendering3DSummary } from '../types'
 
-export type AnatomyViewMode = 'VESSEL' | 'CALCIFICATION' | 'VESSEL_CALCIFICATION'
+export type AnatomyViewMode = 'FULL_ANATOMY' | 'CORONARY_CALCIFICATION' | 'CALCIFICATION_ONLY'
 
 export const RENDERING_KINDS = [
   { value: 'VESSEL_ONLY', label: '혈관' },
@@ -10,9 +10,9 @@ export const RENDERING_KINDS = [
 ] as const
 
 export const ANATOMY_VIEW_MODES: Array<{ value: AnatomyViewMode; label: string }> = [
-  { value: 'VESSEL', label: '혈관' },
-  { value: 'CALCIFICATION', label: '석회화' },
-  { value: 'VESSEL_CALCIFICATION', label: '혈관 + 석회화' },
+  { value: 'FULL_ANATOMY', label: '전체 구조' },
+  { value: 'CORONARY_CALCIFICATION', label: '관상동맥 + 석회화' },
+  { value: 'CALCIFICATION_ONLY', label: '석회화만' },
 ]
 
 export const LOCAL_ANATOMY_GLB_URL = '/test/anatomy.glb?v=yup'

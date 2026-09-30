@@ -40,7 +40,7 @@ function ctaStageFor(progress: number) {
   return stage
 }
 
-export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnatomyRendering, onClose, onRefresh }: { patientId: number | null; study: ImagingStudySummary; seriesId: number | null; hasCompleteAnatomyRendering: boolean; onClose: () => void; onRefresh: () => void }) {
+export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefresh }: { patientId: number | null; study: ImagingStudySummary; seriesId: number | null; onClose: () => void; onRefresh: () => void }) {
   const [analysis, setAnalysis] = useState<CTAIAnalysis | null>(null)
   const [precomputedAnalysis, setPrecomputedAnalysis] = useState<CTAIAnalysis | null>(null)
   const [demoProgress, setDemoProgress] = useState(0)
@@ -72,7 +72,7 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
         if (!live || !latest) return
 
         if (AI_DEMO_PLAYBACK) {
-          if (hasCompleteAnatomyRendering) setPrecomputedAnalysis(latest)
+          setPrecomputedAnalysis(latest)
         } else {
           setAnalysis(latest)
         }
@@ -93,7 +93,7 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
     return () => {
       live = false
     }
-  }, [patientId, study.examinationId, hasCompleteAnatomyRendering])
+  }, [patientId, study.examinationId])
   useEffect(() => {
     if (!analysis || !['QUEUED', 'RUNNING'].includes(analysis.analysis.status)) return
     const started = Date.now()
@@ -114,10 +114,10 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
     refreshedAnalysisId.current = analysis.analysis.id
     onRefresh()
   }, [analysis?.analysis.id, analysis?.analysis.status, onRefresh])
-  async function run(forceLive = false) {
+  async function run() {
     if (!study.examinationId || !seriesId || busy) return
 
-    if (!forceLive && AI_DEMO_PLAYBACK && precomputedAnalysis && hasCompleteAnatomyRendering) {
+    if (AI_DEMO_PLAYBACK && precomputedAnalysis) {
       setBusy(true)
       setError('')
       setDemoProgress(0)
@@ -182,9 +182,9 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
       </p>
     )}
 
-    {AI_DEMO_PLAYBACK && !busy && !precomputedAnalysis && ready && !hasCompleteAnatomyRendering && (
+    {AI_DEMO_PLAYBACK && !busy && !precomputedAnalysis && ready && (
       <p className="ct-ai-connection">
-        환자별 전체 해부학 3D 결과가 없어 실제 AI 분석을 실행합니다.
+        준비된 CCTA 분석 결과가 없어 실제 AI 분석을 실행합니다.
       </p>
     )}
 
@@ -242,10 +242,9 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
       {status === 'SUCCEEDED' && <button type="button" onClick={() => { onRefresh(); onClose() }}>렌더링 결과 확인</button>}
       {status === 'FAILED' && <button type="button" disabled={busy} onClick={() => { setAnalysis(null); setError(''); setNotice('') }}>다시 시도</button>}
     </> : (
-      <>
-        <button
+      <button
           type="button"
-          onClick={() => run(false)}
+          onClick={run}
           disabled={
             !analysisReady ||
             !study.examinationId ||
@@ -255,16 +254,6 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, hasCompleteAnato
         >
           {busy && demoStage ? 'AI 분석 중…' : 'AI 분석 시작'}
         </button>
-        {AI_DEMO_PLAYBACK && precomputedAnalysis && hasCompleteAnatomyRendering && (
-          <button
-            type="button"
-            onClick={() => run(true)}
-            disabled={!ready || !study.examinationId || !seriesId || busy}
-          >
-            실제 재분석
-          </button>
-        )}
-      </>
     )}</footer>
   </section></div>
 }

@@ -39,20 +39,25 @@ test('CCTA empty and failed states start AI analysis instead of posting renderin
   assert.match(workspace, /selectedStudy\?\.modality\.toUpperCase\(\) === 'CT'/)
 })
 
-test('CCTA demo playback requires a completed patient anatomy GLB', () => {
+test('CCTA demo playback uses a saved analysis and keeps one analysis button', () => {
   const panel = readFileSync(new URL('../src/components/CTAIAnalysisPanel.tsx', import.meta.url), 'utf8')
-  assert.match(panel, /if \(AI_DEMO_PLAYBACK\)[\s\S]*if \(hasCompleteAnatomyRendering\) setPrecomputedAnalysis\(latest\)/)
-  assert.match(panel, /precomputedAnalysis && hasCompleteAnatomyRendering/)
-  assert.match(panel, /실제 재분석/)
-  assert.match(panel, /run\(true\)/)
-  assert.match(workspace, /item\.renderingType === 'VESSEL_CALCIFICATION'/)
-  assert.match(workspace, /isAnatomyGlbFormat\(item\.fileFormat\)/)
+  assert.match(panel, /if \(AI_DEMO_PLAYBACK\) \{\s*setPrecomputedAnalysis\(latest\)/)
+  assert.match(panel, /AI_DEMO_PLAYBACK && precomputedAnalysis/)
+  assert.doesNotMatch(panel, /실제 재분석/)
 })
 
 test('patient anatomy GLB opens in the frontal patient-coordinate view', () => {
   const viewer = readFileSync(new URL('../src/components/MedicalModelViewer.tsx', import.meta.url), 'utf8')
   assert.match(viewer, /new THREE\.Vector3\(0, -1, 0\)/)
   assert.match(viewer, /new THREE\.Vector3\(0, 0, 1\)/)
+})
+
+test('patient anatomy modes and legend expose the requested clinical structure groups', () => {
+  const selection = readFileSync(new URL('../src/api/renderingSelection.ts', import.meta.url), 'utf8')
+  assert.match(selection, /전체 구조/)
+  assert.match(selection, /관상동맥 \+ 석회화/)
+  assert.match(selection, /석회화만/)
+  assert.match(workspace, /3D 해부학 구조 색상 범례/)
 })
 
 test('DICOM binary download accepts DRF negotiation while retaining staff authorization', async () => {
