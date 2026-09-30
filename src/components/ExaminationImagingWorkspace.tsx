@@ -752,8 +752,10 @@ export function ExaminationImagingWorkspace({
   ) ?? null
   const hasCompleteAnatomyRendering = renderings3D.some(
     (item) => item.status === 'COMPLETED'
-      && item.renderingType === 'VESSEL_CALCIFICATION'
-      && isAnatomyGlbFormat(item.fileFormat),
+      // The backend's historic CCTA records can still be labelled
+      // CALCIFICATION_ONLY even when their GLB contains the full anatomy.
+      // The GLB capability is the reliable contract for demo/report playback.
+      && hasAnatomyGlbCapability({ rendering: item }),
   )
   const renderingKinds = useMemo(
     () => visibleRenderingKinds({
