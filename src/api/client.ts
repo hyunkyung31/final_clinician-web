@@ -4307,29 +4307,37 @@ export async function getPatientCCTAAnalyses(patientId: number): Promise<CCTAAna
 }
 
 export async function loadLatestCTAIAnalysis(patientId: number, examinationId: number): Promise<CTAIAnalysis | null> {
-  const matches = (await getPatientCCTAAnalyses(patientId))
-    .filter((item) => item.examination === examinationId)
-  if (matches[0]) return getCTAIAnalysis(matches[0].id)
-
-  // CT_3D_SOURCE 데모 연결은 현재 환자와 원본 검사의 소유 환자가 다를 수 있다.
-  // 환자별 목록에서 찾지 못한 경우, 백엔드가 현재 사용자에게 노출한 검사에 한해
-  // 검사 ID로 완료된 CCTA 결과를 다시 조회한다.
-  const examinationMatches = await request<CCTAAnalysisListItem[]>(
-    `/api/ai-analyses/?examination_id=${examinationId}&type=CCTA&status=SUCCEEDED`,
-  )
-  const latest = (Array.isArray(examinationMatches) ? examinationMatches : [])
+  // A successful analysis row can be created before its result row.  Do not
+  // select that empty latest row over an older completed analysis that can
+  // actually open the CCTA report editor.
+  const [patientMatches, examinationMatches] = await Promise.all([
+    request<CCTAAnalysisListItem[]>(
+      `/api/ai-analyses/?patient_id=${patientId}&type=CCTA&status=SUCCEEDED`,
+    ),
+    request<CCTAAnalysisListItem[]>(
+      `/api/ai-analyses/?examination_id=${examinationId}&type=CCTA&status=SUCCEEDED`,
+    ),
+  ])
+  const candidates = [...(Array.isArray(patientMatches) ? patientMatches : []), ...(Array.isArray(examinationMatches) ? examinationMatches : [])]
     .filter((item) => (
       item.examination === examinationId
       && item.analysis_type === 'CCTA'
       && item.status === 'SUCCEEDED'
     ))
+    .filter((item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index)
     .sort((left, right) => {
       const leftTime = Date.parse(left.completed_at || left.requested_at || '') || left.id
       const rightTime = Date.parse(right.completed_at || right.requested_at || '') || right.id
       return rightTime - leftTime
-    })[0]
+    })
 
-  return latest ? getCTAIAnalysis(latest.id) : null
+  let latest: CTAIAnalysis | null = null
+  for (const item of candidates) {
+    const candidate = await getCTAIAnalysis(item.id)
+    latest ??= candidate
+    if (candidate.results?.some((result) => result.status !== 'INVALID')) return candidate
+  }
+  return latest
 }
 
 export interface ClinicalShapFeature {
