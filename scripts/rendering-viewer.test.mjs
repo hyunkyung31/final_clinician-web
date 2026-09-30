@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { compileTestModule, loadApiTestModule } from './load-api-test-module.mjs'
 
-const { preferredRendering, visibleRenderingKinds, SHOW_ANATOMY_GLB_ON_CCTA_3D } = await import(compileTestModule(readFileSync(new URL('../src/api/renderingSelection.ts', import.meta.url), 'utf8')))
+const { preferredRendering, preferredInitialRendering, visibleRenderingKinds, SHOW_ANATOMY_GLB_ON_CCTA_3D } = await import(compileTestModule(readFileSync(new URL('../src/api/renderingSelection.ts', import.meta.url), 'utf8')))
 
 test('shared anatomy fixture is disabled in the normal CCTA workspace', () => {
   assert.equal(SHOW_ANATOMY_GLB_ON_CCTA_3D, false)
@@ -21,6 +21,15 @@ test('kind shortcut never displays another kind and prefers latest completed res
   assert.equal(preferredRendering(items, 'CENTERLINE'), undefined)
   assert.deepEqual(items.map((item) => item.id), [1, 2, 3, 4])
   assert.equal(preferredRendering(items.filter((item) => item.status !== 'COMPLETED'), 'CALCIFICATION_ONLY').id, 4)
+})
+
+test('patient-specific full anatomy GLB is the initial rendering when available', () => {
+  const items = [
+    { id: 10, renderingType: 'CALCIFICATION_ONLY', version: 3, status: 'COMPLETED' },
+    { id: 11, renderingType: 'VESSEL_CALCIFICATION', version: 1, status: 'COMPLETED' },
+  ]
+  assert.equal(preferredInitialRendering(items, 'CALCIFICATION_ONLY').id, 11)
+  assert.equal(preferredInitialRendering(items.slice(0, 1), 'CALCIFICATION_ONLY').id, 10)
 })
 
 test('DICOM binary download accepts DRF negotiation while retaining staff authorization', async () => {
