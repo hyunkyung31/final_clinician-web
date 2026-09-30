@@ -13033,7 +13033,7 @@ html[data-theme='dark'] .login-form input {
 .ccta-report-draft button.primary:disabled { opacity:.5; }
 .xca-report-finalize .feature-check { display:flex; align-items:center; gap:8px; margin:14px 0; }
 .xca-report-finalize .feature-check input { flex:0 0 15px; width:15px; min-width:15px; height:15px; min-height:15px; margin:0; }
-.xca-report-finalize .doctor-signature-preview,.ccta-report-finalize .doctor-signature-preview { display:grid; justify-items:end; gap:8px; margin:14px 0; text-align:right; }
+.xca-report-finalize .doctor-signature-preview,.ccta-report-finalize .doctor-signature-preview { display:grid; width:min(100%, 540px); justify-items:end; gap:8px; margin:14px 0 14px auto; text-align:right; }
 .xca-report-finalize .doctor-signature-preview > :is(p,strong),.ccta-report-finalize .doctor-signature-preview > :is(p,strong) { margin:0; }
 .xca-report-finalize .doctor-signature-preview > button,.ccta-report-finalize .doctor-signature-preview > button { justify-self:end; }
 .xca-report-finalize .doctor-signature-preview > .doctor-signature-shown,.ccta-report-finalize .doctor-signature-preview > .doctor-signature-shown { display:grid; justify-items:end; gap:8px; }

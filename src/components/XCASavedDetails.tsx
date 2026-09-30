@@ -38,9 +38,9 @@ export function XCASavedDetails({
   }, [patientId, examinationId, refreshKey, revision, onSummary])
   const detail = details.find(item => item.id === id)
   if (!revealed) {
+    if (!loading && !error && details.length > 0) return null
     return (
       <section className="xca-saved">
-        {!loading && !error && details.length > 0 && <p>저장된 분석 결과를 불러왔습니다.</p>}
         {loading && <p role="status">저장된 분석 결과 확인 중…</p>}
         {!loading && !error && details.length === 0 && <p className="api-inline-error">이 검사에 준비된 XCA 분석 결과가 없습니다.</p>}
         {error && <p className="api-inline-error" role="alert">{error}</p>}
