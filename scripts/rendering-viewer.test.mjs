@@ -44,8 +44,7 @@ test('CCTA demo playback requires saved analysis and completed anatomy rendering
   assert.match(panel, /if \(AI_DEMO_PLAYBACK\) \{\s*if \(hasCompleteAnatomyRendering\) setPrecomputedAnalysis\(latest\)/)
   assert.match(panel, /AI_DEMO_PLAYBACK && precomputedAnalysis && hasCompleteAnatomyRendering/)
   assert.doesNotMatch(panel, /실제 재분석/)
-  assert.match(workspace, /item\.renderingType === 'VESSEL_CALCIFICATION'/)
-  assert.match(workspace, /isAnatomyGlbFormat\(item\.fileFormat\)/)
+  assert.match(workspace, /hasAnatomyGlbCapability\(\{ rendering: item \}\)/)
 })
 
 test('CCTA completion hydrates its result and automatically reveals report creation', () => {
