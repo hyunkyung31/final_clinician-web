@@ -87,6 +87,16 @@ test('Home recent patient click resolves through patientSelection then Workstati
   assert.equal(HOME_RECENT_LIMIT, 5)
 })
 
+test('initial workspace loads all accessible patients before optional assigned scopes', () => {
+  assert.match(app, /useState<PatientScope>\("all"\)/)
+  const loaderStart = app.indexOf('const loadApiWorkspace')
+  const loader = app.slice(loaderStart, app.indexOf('useEffect(() => {\n    if (mode === "api")', loaderStart))
+  const allRequest = loader.indexOf('patientScope: "ALL_ACCESSIBLE"')
+  const assignedRequest = loader.indexOf('patientScope: "ASSIGNED_TO_ME"')
+  assert.ok(allRequest >= 0, 'initial loader must request all accessible patients')
+  assert.ok(assignedRequest > allRequest, 'assigned-patient enrichment must not block the initial patient list')
+})
+
 test('Home layout contract keeps KPI, ops row, notices, and compact status', () => {
   assert.deepEqual([...HOME_KPI_DESTINATIONS], [
     '일정',
