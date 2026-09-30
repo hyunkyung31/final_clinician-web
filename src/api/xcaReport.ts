@@ -1,7 +1,7 @@
 /** Explicit staff actions only. Never refresh credentials/replay a report POST. */
 import type { XCADetailResult } from './xcaDetails'
 export interface XCAReportTarget { id: number; patientId: number; encounterId: number; status: string; baseVersionId: number | null; versionNo: number; content: Record<string, unknown>; text: string }
-export interface XCAReportSaved { medicalResultId: number; versionId: number; versionNo: number; attachmentId: number; reused: boolean; reviewNote: string; frameIds: number[]; text: string }
+export interface XCAReportSaved { medicalResultId: number; versionId: number | null; versionNo: number | null; attachmentId: number | null; attachmentsStored: boolean; reused: boolean; reviewNote: string; frameIds: number[]; text: string }
 export interface XCAPDFPreview { blob: Blob; digest: string; state: 'DRAFT' | 'SIGNED'; versionId: number }
 export interface XCAFinalReceipt { versionId: number; signoffId: number; reportId: number; digest: string; pdfDigest: string; reused: boolean }
 export async function fetchXCAPDF(base: string, token: string | null, target: XCAReportTarget): Promise<XCAPDFPreview> {
@@ -102,5 +102,5 @@ export async function attachXCAReportDraft(base: string, token: string | null, d
   if (persisted.id !== versionId || persisted.medical_result !== target.id || stable(persisted.content_json) !== stable(content) || persisted.content_text !== version.content_text) throw new Error('첨부 후 보고서 재조회 실패. 저장됐을 수 있으니 재전송 전 확인하세요.')
   const latest = obj(await call(base, `/api/medical-results/${target.id}/`, token)), medical = obj(latest.medical_result)
   if (medical.patient !== target.patientId || medical.encounter !== target.encounterId || medical.status !== 'DRAFT') throw new Error('보고서 초안 상태 확인 실패. 재전송 대신 현재 기록을 확인하세요.')
-  return { medicalResultId: target.id, versionId, versionNo: id(version.version_no), attachmentId, reused: response.reused, reviewNote: note, frameIds: [...frameIds], text: String(version.content_text) }
+  return { medicalResultId: target.id, versionId, versionNo: id(version.version_no), attachmentId, attachmentsStored: true, reused: response.reused, reviewNote: note, frameIds: [...frameIds], text: String(version.content_text) }
 }
