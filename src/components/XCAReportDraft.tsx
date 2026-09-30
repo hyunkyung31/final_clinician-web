@@ -41,6 +41,22 @@ export function XCAReportDraft({ detail, selected, onBusyChange, disabled }: { d
     await act(async () => {
       let reauth: string | undefined
       if (password) { reauth = await reauthenticateStaff(password); if (mounted.current) setPassword('') }
+      const saveGenericDraft = async () => {
+        const updated = await saveMedicalResultConclusion(capturedTarget.id, capturedNote.trim())
+        const latest = await reloadXCAReport(capturedTarget)
+        if (mounted.current) {
+          setSaved({ medicalResultId: capturedTarget.id, versionId: latest.baseVersionId, versionNo: latest.baseVersionId ? latest.versionNo : null, attachmentId: null, attachmentsStored: false, reused: false, reviewNote: capturedNote.trim(), frameIds: [], text: latest.text || updated.conclusion || capturedNote.trim() })
+          setTarget(latest)
+        }
+      }
+
+      // 첫 초안에는 보고서 버전이 없다. 이 경우 일부 백엔드는 프레임 전용
+      // endpoint에서 500을 반환하므로, 범용 의료 결과 초안으로 바로 저장한다.
+      if (!capturedTarget.baseVersionId) {
+        await saveGenericDraft()
+        return
+      }
+
       try {
         const value = await saveXCAReportDraft(detail, capturedTarget, frames, capturedNote, reauth)
         await saveMedicalResultConclusion(capturedTarget.id, capturedNote.trim())
@@ -50,15 +66,7 @@ export function XCAReportDraft({ detail, selected, onBusyChange, disabled }: { d
         const message = failure instanceof Error ? failure.message : ''
         if (!message.includes('보고서 요청 실패 (500)')) throw failure
 
-        // 일부 배포 환경은 선택 프레임 전용 endpoint가 아직 준비되지 않았다.
-        // 의료 결과의 AI 분석 참조와 최종 소견은 범용 보고서 API로 저장해
-        // 의료진 검토·서명 흐름이 중단되지 않도록 한다.
-        const updated = await saveMedicalResultConclusion(capturedTarget.id, capturedNote.trim())
-        const latest = await reloadXCAReport(capturedTarget)
-        if (mounted.current) {
-          setSaved({ medicalResultId: capturedTarget.id, versionId: latest.baseVersionId, versionNo: latest.baseVersionId ? latest.versionNo : null, attachmentId: null, attachmentsStored: false, reused: false, reviewNote: capturedNote.trim(), frameIds: [], text: latest.text || updated.conclusion || capturedNote.trim() })
-          setTarget(latest)
-        }
+        await saveGenericDraft()
       }
     })
   }
