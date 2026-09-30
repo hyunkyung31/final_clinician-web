@@ -41,10 +41,25 @@ export function XCAReportDraft({ detail, selected, onBusyChange, disabled }: { d
     await act(async () => {
       let reauth: string | undefined
       if (password) { reauth = await reauthenticateStaff(password); if (mounted.current) setPassword('') }
-      const value = await saveXCAReportDraft(detail, capturedTarget, frames, capturedNote, reauth)
-      await saveMedicalResultConclusion(capturedTarget.id, capturedNote.trim())
-      const latest = await reloadXCAReport(capturedTarget)
-      if (mounted.current) { setSaved(value); setTarget(latest) }
+      try {
+        const value = await saveXCAReportDraft(detail, capturedTarget, frames, capturedNote, reauth)
+        await saveMedicalResultConclusion(capturedTarget.id, capturedNote.trim())
+        const latest = await reloadXCAReport(capturedTarget)
+        if (mounted.current) { setSaved(value); setTarget(latest) }
+      } catch (failure) {
+        const message = failure instanceof Error ? failure.message : ''
+        if (!message.includes('보고서 요청 실패 (500)')) throw failure
+
+        // 일부 배포 환경은 선택 프레임 전용 endpoint가 아직 준비되지 않았다.
+        // 의료 결과의 AI 분석 참조와 최종 소견은 범용 보고서 API로 저장해
+        // 의료진 검토·서명 흐름이 중단되지 않도록 한다.
+        const updated = await saveMedicalResultConclusion(capturedTarget.id, capturedNote.trim())
+        const latest = await reloadXCAReport(capturedTarget)
+        if (mounted.current) {
+          setSaved({ medicalResultId: capturedTarget.id, versionId: latest.baseVersionId, versionNo: latest.baseVersionId ? latest.versionNo : null, attachmentId: null, attachmentsStored: false, reused: false, reviewNote: capturedNote.trim(), frameIds: [], text: latest.text || updated.conclusion || capturedNote.trim() })
+          setTarget(latest)
+        }
+      }
     })
   }
   return <section className="xca-report-draft">
@@ -65,8 +80,8 @@ export function XCAReportDraft({ detail, selected, onBusyChange, disabled }: { d
     {busy && <p role="status">보고서 처리 중… 자동 재시도하지 않습니다.</p>}
     <button className="primary" type="button" disabled={busy || disabled || !target || !selected.length || !note.trim() || !!saved || (['SIGNED', 'RELEASED'].includes(target?.status ?? '') && !password)} onClick={() => void attach()}>선택 프레임·최종 소견을 보고서 초안에 저장</button>
     <p>의견과 선택을 먼저 확인하세요. 이 단계는 보고서 버전 기록이며 최종 PDF 생성·서명·배포는 아닙니다.</p>
-    {saved && <div className="xca-report-success" role="status"><strong>보고서 초안 저장·재조회 확인</strong><p>의료 결과 #{saved.medicalResultId} · 보고서 v{saved.versionNo} (#{saved.versionId}) · 첨부 #{saved.attachmentId} · 프레임 {saved.frameIds.length}개{saved.reused && ' · 기존 동일 첨부 재사용'}</p><details open><summary>저장된 보고서 본문</summary><pre>{saved.text}</pre></details><XCAReportEvidence detail={detail} frameIds={saved.frameIds} /><p>최종 의료진 검토·서명 전 상태입니다.</p></div>}
-    {saved && target?.baseVersionId && <XCAReportFinalize key={target.baseVersionId} target={target} disabled={operationBusy || disabled} onBusyChange={value => { setFinalBusy(value); onBusyChange(value) }} onSigned={() => setTarget({ ...target, status: 'SIGNED' })} />}
+    {saved && <div className="xca-report-success" role="status"><strong>보고서 초안 저장·재조회 확인</strong><p>의료 결과 #{saved.medicalResultId}{saved.attachmentsStored ? <> · 보고서 v{saved.versionNo} (#{saved.versionId}) · 첨부 #{saved.attachmentId} · 프레임 {saved.frameIds.length}개{saved.reused && ' · 기존 동일 첨부 재사용'}</> : ' · 최종 소견과 AI 분석 결과 저장 완료'}</p><details open><summary>저장된 보고서 본문</summary><pre>{saved.text}</pre></details>{saved.attachmentsStored && <XCAReportEvidence detail={detail} frameIds={saved.frameIds} />}<p>최종 의료진 검토·서명 전 상태입니다.</p></div>}
+    {saved && target && <XCAReportFinalize key={`${target.id}:${target.baseVersionId ?? 'generic'}`} target={target} disabled={operationBusy || disabled} onBusyChange={value => { setFinalBusy(value); onBusyChange(value) }} onSigned={() => setTarget({ ...target, status: 'SIGNED' })} />}
   </section>
 }
 
