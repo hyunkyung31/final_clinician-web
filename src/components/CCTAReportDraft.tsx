@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { BrainCircuit } from 'lucide-react'
 import {
+  ApiError,
   createExaminationMedicalResult,
+  getMedicalResultDetail,
+  getPatientReports,
   getFileContentObjectUrl,
   getReportDownload,
   saveMedicalResultConclusion,
@@ -9,6 +12,11 @@ import {
 } from '../api/client'
 import type { MedicalResultDetail } from '../types'
 import { DoctorSignaturePreview } from './DoctorSignaturePreview'
+
+// React StrictMode re-mounts an effect in development.  Report creation is a
+// write operation, so concurrent mounts for the same examination must share
+// one request instead of each POSTing a new draft.
+const cctaReportPreparation = new Map<string, Promise<MedicalResultDetail>>()
 
 function CCTAReportImage({ fileId, label }: { fileId: number | null; label: string }) {
   const [url, setUrl] = useState('')
@@ -81,20 +89,38 @@ export function CCTAReportDraft({ patientId, examinationId, analysisResultId, an
 
   function prepare() {
     void act(async () => {
-      const candidateIds = [...new Set([analysisResultId, analysisId].filter((value): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0))]
-      let lastFailure: unknown
-      for (const candidateId of candidateIds) {
-        try {
-          const next = await createExaminationMedicalResult(examinationId, 'CCTA_3D', candidateId, patientId)
-          applyDetail(next)
-          setSaved(Boolean(next.conclusion.trim()))
-          setConfirmed(false); setSignatureShown(false); setDownloadUrl('')
-          return
-        } catch (failure) {
-          lastFailure = failure
+      const key = `${patientId}:${examinationId}:CCTA_3D`
+      const existingTask = cctaReportPreparation.get(key)
+      const task = existingTask ?? (async () => {
+        const reports = await getPatientReports(patientId, 'CCTA_3D')
+        const existing = reports.find((report) => report.examinationId === examinationId)
+        if (existing?.medicalResultId) return getMedicalResultDetail(existing.medicalResultId)
+
+        const candidateIds = [...new Set([analysisResultId, analysisId].filter((value): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0))]
+        let lastFailure: unknown
+        for (const candidateId of candidateIds) {
+          try {
+            return await createExaminationMedicalResult(examinationId, 'CCTA_3D', candidateId, patientId)
+          } catch (failure) {
+            if (failure instanceof ApiError && failure.status === 409) {
+              const currentReports = await getPatientReports(patientId, 'CCTA_3D')
+              const current = currentReports.find((report) => report.examinationId === examinationId)
+              if (current?.medicalResultId) return getMedicalResultDetail(current.medicalResultId)
+              throw failure
+            }
+            lastFailure = failure
+          }
         }
+        throw lastFailure instanceof Error ? lastFailure : new Error('완료된 CCTA AI 분석 결과를 찾을 수 없습니다.')
+      })()
+      if (!existingTask) {
+        cctaReportPreparation.set(key, task)
+        void task.finally(() => cctaReportPreparation.delete(key)).catch(() => undefined)
       }
-      throw lastFailure instanceof Error ? lastFailure : new Error('완료된 CCTA AI 분석 결과를 찾을 수 없습니다.')
+      const next = await task
+      applyDetail(next)
+      setSaved(Boolean(next.conclusion.trim()))
+      setConfirmed(false); setSignatureShown(false); setDownloadUrl('')
     })
   }
 
