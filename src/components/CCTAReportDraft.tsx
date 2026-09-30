@@ -92,10 +92,6 @@ export function CCTAReportDraft({ patientId, examinationId, analysisResultId, an
       const key = `${patientId}:${examinationId}:CCTA_3D`
       const existingTask = cctaReportPreparation.get(key)
       const task = existingTask ?? (async () => {
-        const reports = await getPatientReports(patientId, 'CCTA_3D')
-        const existing = reports.find((report) => report.examinationId === examinationId)
-        if (existing?.medicalResultId) return getMedicalResultDetail(existing.medicalResultId)
-
         const candidateIds = [...new Set([analysisResultId, analysisId].filter((value): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0))]
         let lastFailure: unknown
         for (const candidateId of candidateIds) {
@@ -103,6 +99,8 @@ export function CCTAReportDraft({ patientId, examinationId, analysisResultId, an
             return await createExaminationMedicalResult(examinationId, 'CCTA_3D', candidateId, patientId)
           } catch (failure) {
             if (failure instanceof ApiError && failure.status === 409) {
+              // A conflicting draft is exceptional.  Do not make the first
+              // report wait on this list request before its initial POST.
               const currentReports = await getPatientReports(patientId, 'CCTA_3D')
               const current = currentReports.find((report) => report.examinationId === examinationId)
               if (current?.medicalResultId) return getMedicalResultDetail(current.medicalResultId)
