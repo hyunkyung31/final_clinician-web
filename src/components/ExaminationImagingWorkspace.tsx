@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Eraser,
+  FileText,
   FlaskConical,
   Images,
   Loader2,
@@ -402,6 +403,7 @@ export function ExaminationImagingWorkspace({
   const [renderingSaving, setRenderingSaving] = useState(false)
   const [createRenderingOpen, setCreateRenderingOpen] = useState(false)
   const [ctAiOpen, setCtAiOpen] = useState(false)
+  const [ctAiReportRequested, setCtAiReportRequested] = useState(false)
   const [renderingType, setRenderingType] = useState('CALCIFICATION_ONLY')
   const renderingTypeRef = useRef(renderingType)
   renderingTypeRef.current = renderingType
@@ -435,6 +437,7 @@ export function ExaminationImagingWorkspace({
     setClinicalAiAutoRunExaminationId(null)
     setXcaAiOpen(false)
     setCtAiOpen(false)
+    setCtAiReportRequested(false)
     setCreateRenderingOpen(false)
     setSelectedLabExaminationId(null)
     setFollowUpRecords(null)
@@ -1404,7 +1407,7 @@ export function ExaminationImagingWorkspace({
                 <small>{viewerMode === '3D' ? (active3DPane === 'ORIGINAL' ? '원본 CT · 슬라이스 조회' : selectedRendering ? `${renderingLabel(selectedRendering.renderingType)} · v${selectedRendering.version}` : '3D 렌더링 결과 조회') : (currentFrame ? `${currentFrame.filename} · ${frameIndex + 1}/${viewerFrameCount}` : selectedStudy ? `Series ${studySeries.length}개 · Instance ${viewerFrameCount}개` : '검사를 선택해주세요.')}</small>
               </div>
               <div className="image-viewer-actions">
-                {viewerMode === '3D' && <button className="ct-ai-launch" type="button" disabled={!selectedStudy || selectedStudy.modality.toUpperCase() !== 'CT' || !selectedSeriesId} onClick={() => setCtAiOpen(true)}><BrainCircuit size={15} />석회화 AI 분석</button>}
+                {viewerMode === '3D' && <button className="ct-ai-launch" type="button" disabled={!selectedStudy || selectedStudy.modality.toUpperCase() !== 'CT' || !selectedSeriesId} onClick={() => { setCtAiReportRequested(false); setCtAiOpen(true) }}><BrainCircuit size={15} />석회화 AI 분석</button>}
                 {viewerMode === '2D' && selectedAsset?.kind === 'SEQUENCE' && (
                   <>
                     <button className="xca-launch" type="button"
@@ -1461,6 +1464,7 @@ export function ExaminationImagingWorkspace({
             {viewerMode === '3D' && <nav className="ct-view-tabs" role="tablist" aria-label="CT 영상 보기">
               <button id="ct-original-tab" type="button" role="tab" aria-controls="ct-original-panel" aria-selected={active3DPane === 'ORIGINAL'} className={active3DPane === 'ORIGINAL' ? 'active' : ''} onClick={() => setActive3DPane('ORIGINAL')}><Images size={18} />원본 CT</button>
               <button id="ct-rendered-tab" type="button" role="tab" aria-controls="ct-rendered-panel" aria-selected={active3DPane === 'RENDERED'} className={active3DPane === 'RENDERED' ? 'active' : ''} onClick={() => setActive3DPane('RENDERED')}><Rotate3D size={18} />3D 렌더링</button>
+              {active3DPane === 'RENDERED' && selectedRendering && <><button className="ct-report-launch" type="button" onClick={() => { setCtAiReportRequested(true); setCtAiOpen(true) }}><FileText size={15} />결과지 작성</button><button type="button" disabled={renderingSaving} onClick={() => setRenderingRevision((value) => value + 1)}>목록 새로고침</button></>}
             </nav>}
 
             {viewerMode === '2D' && selectedAsset?.kind === 'STUDY' && (
@@ -1478,7 +1482,7 @@ export function ExaminationImagingWorkspace({
             )}
 
             {selectedAsset?.kind === 'SEQUENCE' && <p className="api-inline-notice">이 Angio 시퀀스의 주석은 화면에서만 편집됩니다. 서버 저장에는 해당 Study·Series 연결이 필요합니다.</p>}
-            {viewerMode === '3D' && active3DPane === 'RENDERED' && selectedStudy && <div className="rendering-action-bar"><button type="button" disabled={renderingSaving} onClick={() => setRenderingRevision((value) => value + 1)}>목록 새로고침</button>{selectedStudy.modality.toUpperCase() === 'CT' ? <button type="button" disabled={!selectedSeriesId} onClick={() => setCtAiOpen(true)}>CCTA AI 분석</button> : <button type="button" disabled={renderingSaving || !selectedSeriesId} onClick={() => setCreateRenderingOpen(true)}>고급 생성 설정</button>}</div>}
+            {viewerMode === '3D' && active3DPane === 'RENDERED' && selectedStudy && selectedStudy.modality.toUpperCase() !== 'CT' && <div className="rendering-action-bar"><button type="button" disabled={renderingSaving || !selectedSeriesId} onClick={() => setCreateRenderingOpen(true)}>고급 생성 설정</button></div>}
 
             <div className={`clinical-image-stage viewer-${viewerMode.toLowerCase()} tool-${tool.toLowerCase()}`}>
               {viewerMode === '2D' && selectedAsset?.kind === 'SEQUENCE' && currentFrame && <img key={currentFrame.url} src={currentFrame.url} alt={`${currentFrame.filename} 혈관조영 영상`} draggable={false} onLoad={() => setImageLoadError('')} onError={() => setImageLoadError('2D 프레임 URL에 브라우저가 접근하지 못했습니다.')} />}
@@ -1731,7 +1735,7 @@ export function ExaminationImagingWorkspace({
           </section>
         </div>
       )}
-      {ctAiOpen && selectedStudy && <CTAIAnalysisPanel key={`${patient?.backendId ?? 'none'}-${selectedStudy.id}-${selectedSeriesId}`} patientId={patient?.backendId ?? null} study={selectedStudy} seriesId={selectedSeriesId} onClose={() => setCtAiOpen(false)} onRefresh={() => { setRenderingType('VESSEL_CALCIFICATION'); setSelectedRenderingId(null); setActive3DPane('RENDERED'); setRenderingRevision((value) => value + 1) }} />}
+      {ctAiOpen && selectedStudy && <CTAIAnalysisPanel key={`${patient?.backendId ?? 'none'}-${selectedStudy.id}-${selectedSeriesId}`} patientId={patient?.backendId ?? null} study={selectedStudy} seriesId={selectedSeriesId} openReportOnReady={ctAiReportRequested} onClose={() => { setCtAiOpen(false); setCtAiReportRequested(false) }} onRefresh={() => { setRenderingType('VESSEL_CALCIFICATION'); setSelectedRenderingId(null); setActive3DPane('RENDERED'); setRenderingRevision((value) => value + 1) }} />}
       {createRenderingOpen && selectedStudy && <div className="feature-modal-backdrop"><form className="feature-modal" onSubmit={(event) => { event.preventDefault(); void requestRendering() }}><header><h2>3D 렌더링 생성</h2><button type="button" disabled={renderingSaving} onClick={() => setCreateRenderingOpen(false)}><X size={18} /></button></header><p>선택된 Series의 원본 데이터를 사용합니다. 실제 생성에는 모델·렌더링 처리 파이프라인 연결이 필요합니다.</p><label>렌더링 종류<select value={renderingType} onChange={(e) => selectRenderingKind(e.target.value)}>{renderingKinds.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}</select></label><label>파일 형식<select value={requestedFormat} onChange={(e) => setRequestedFormat(e.target.value)}><option>GLB</option><option>STL</option><option>VTK</option></select></label>{renderingError && <p className="api-inline-error">{renderingError}</p>}<footer><button type="submit" disabled={renderingSaving || !selectedSeriesId}>생성 요청</button></footer></form></div>}
       <XCAAnalysisPanel open={xcaAiOpen} patient={patient} examinationId={xcaExaminationId} sequences={xcaSequences}
         onClose={closeXcaAi} onBusyChange={setXcaAiBusy} />
