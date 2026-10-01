@@ -41,33 +41,13 @@ export function XCAReportDraft({ detail, selected, onBusyChange, disabled }: { d
     await act(async () => {
       let reauth: string | undefined
       if (password) { reauth = await reauthenticateStaff(password); if (mounted.current) setPassword('') }
-      const saveGenericDraft = async () => {
-        const updated = await saveMedicalResultConclusion(capturedTarget.id, capturedNote.trim())
-        const latest = await reloadXCAReport(capturedTarget)
-        if (mounted.current) {
-          setSaved({ medicalResultId: capturedTarget.id, versionId: latest.baseVersionId, versionNo: latest.baseVersionId ? latest.versionNo : null, attachmentId: null, attachmentsStored: false, reused: false, reviewNote: capturedNote.trim(), frameIds: [], text: latest.text || updated.conclusion || capturedNote.trim() })
-          setTarget(latest)
-        }
-      }
-
-      // 첫 초안에는 보고서 버전이 없다. 이 경우 일부 백엔드는 프레임 전용
-      // endpoint에서 500을 반환하므로, 범용 의료 결과 초안으로 바로 저장한다.
-      if (!capturedTarget.baseVersionId) {
-        await saveGenericDraft()
-        return
-      }
-
-      try {
-        const value = await saveXCAReportDraft(detail, capturedTarget, frames, capturedNote, reauth)
-        await saveMedicalResultConclusion(capturedTarget.id, capturedNote.trim())
-        const latest = await reloadXCAReport(capturedTarget)
-        if (mounted.current) { setSaved(value); setTarget(latest) }
-      } catch (failure) {
-        const message = failure instanceof Error ? failure.message : ''
-        if (!message.includes('보고서 요청 실패 (500)')) throw failure
-
-        await saveGenericDraft()
-      }
+      // 첫 보고서도 선택 프레임의 원본·오버레이 자산을 반드시 첨부한다.
+      // 첨부 실패를 소견만 저장하는 경로로 우회하면 PDF에서 2D 증거 영상이
+      // 누락되므로, 서버 오류는 사용자에게 그대로 알리고 재시도하게 한다.
+      const value = await saveXCAReportDraft(detail, capturedTarget, frames, capturedNote, reauth)
+      await saveMedicalResultConclusion(capturedTarget.id, capturedNote.trim())
+      const latest = await reloadXCAReport(capturedTarget)
+      if (mounted.current) { setSaved(value); setTarget(latest) }
     })
   }
   return <section className="xca-report-draft">
