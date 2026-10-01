@@ -40,9 +40,10 @@ function ctaStageFor(progress: number) {
   return stage
 }
 
-export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefresh }: { patientId: number | null; study: ImagingStudySummary; seriesId: number | null; onClose: () => void; onRefresh: () => void }) {
+export function CTAIAnalysisPanel({ patientId, study, seriesId, openReportOnReady = false, onClose, onRefresh }: { patientId: number | null; study: ImagingStudySummary; seriesId: number | null; openReportOnReady?: boolean; onClose: () => void; onRefresh: () => void }) {
   const [analysis, setAnalysis] = useState<CTAIAnalysis | null>(null)
   const [precomputedAnalysis, setPrecomputedAnalysis] = useState<CTAIAnalysis | null>(null)
+  const [existingAnalysis, setExistingAnalysis] = useState<CTAIAnalysis | null>(null)
   const [demoProgress, setDemoProgress] = useState(0)
   const [demoStage, setDemoStage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -53,11 +54,12 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
   const active = useRef(true)
   const refreshedAnalysisId = useRef<number | null>(null)
   const ready = CT_AI_READY && Number.isSafeInteger(CT_AI_VERSION_ID) && CT_AI_VERSION_ID > 0
-  const analysisReady = Boolean(precomputedAnalysis) || ready
+  const analysisReady = Boolean(precomputedAnalysis || existingAnalysis) || ready
   useEffect(() => { active.current = true; return () => { active.current = false } }, [])
   useEffect(() => {
     setAnalysis(null)
     setPrecomputedAnalysis(null)
+    setExistingAnalysis(null)
     setDemoProgress(0)
     setDemoStage('')
     setShowReport(false)
@@ -73,10 +75,15 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
       .then((latest) => {
         if (!live || !latest) return
 
-        if (AI_DEMO_PLAYBACK) {
+        if (openReportOnReady) {
+          // 렌더링 뷰어의 결과지 작성 버튼에서는 완료 결과를 바로 연다.
+          setAnalysis(latest)
+        } else if (AI_DEMO_PLAYBACK) {
+          // 시연 모드에서는 시작 버튼을 누른 뒤 재생할 결과만 미리 준비한다.
           setPrecomputedAnalysis(latest)
         } else {
-          setAnalysis(latest)
+          // 기존 결과도 시작 버튼을 누른 뒤에만 결과 화면에 적용한다.
+          setExistingAnalysis(latest)
         }
       })
       .catch((caught) => {
@@ -95,7 +102,7 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
     return () => {
       live = false
     }
-  }, [patientId, study.examinationId])
+  }, [openReportOnReady, patientId, study.examinationId])
   useEffect(() => {
     if (!analysis || !['QUEUED', 'RUNNING'].includes(analysis.analysis.status)) return
     const started = Date.now()
@@ -156,10 +163,10 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
     }
   }, [analysis?.analysis.id, patientId, reportResult, status, study.examinationId])
   useEffect(() => {
-    if (status === 'SUCCEEDED' && reportResult && patientId && study.examinationId) {
+    if (openReportOnReady && status === 'SUCCEEDED' && reportResult && patientId && study.examinationId) {
       setShowReport(true)
     }
-  }, [patientId, reportResult?.id, status, study.examinationId])
+  }, [openReportOnReady, patientId, reportResult?.id, status, study.examinationId])
   async function run() {
     if (!study.examinationId || !seriesId || busy) return
 
@@ -183,6 +190,27 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
         if (active.current) setBusy(false)
       }
 
+      return
+    }
+
+    // 같은 검사의 완료 결과가 있으면 새 분석을 만들지 않고, 시작 버튼을
+    // 누른 시점에 해당 결과를 재사용한다.
+    if (existingAnalysis) {
+      setBusy(true)
+      setError('')
+      setNotice('')
+      setDemoProgress(0)
+      setDemoStage('기존 분석 결과 준비 중')
+      try {
+        await playDemoAnalysisProgress((progress, label) => {
+          if (!active.current) return
+          setDemoProgress(progress)
+          setDemoStage(label)
+        })
+        if (active.current) setAnalysis(existingAnalysis)
+      } finally {
+        if (active.current) setBusy(false)
+      }
       return
     }
 
@@ -217,7 +245,7 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
     finally { if (active.current) setBusy(false) }
   }
   if (showReport && patientId && reportResult && study.examinationId) {
-    return <div className="feature-modal-backdrop"><section className="feature-modal ct-ai-modal" role="dialog" aria-modal="true" aria-label="3D CCTA 결과지 작성">
+    return <div className="feature-modal-backdrop"><section className="feature-modal ct-ai-modal ct-ai-report-modal" role="dialog" aria-modal="true" aria-label="3D CCTA 결과지 작성">
       <header><h2><BrainCircuit size={20} />3D CCTA 결과지 작성</h2><button type="button" onClick={onClose} aria-label="닫기" disabled={reportBusy}><X size={20} /></button></header>
       <CCTAReportDraft patientId={patientId} examinationId={study.examinationId} analysisResultId={reportResult.id} analysisId={analysis?.analysis.id} disabled={false} onBusyChange={setReportBusy} onNewAnalysis={() => { setShowReport(false); setAnalysis(null); setError(''); setNotice(''); void run() }} />
     </section></div>
@@ -241,7 +269,7 @@ export function CTAIAnalysisPanel({ patientId, study, seriesId, onClose, onRefre
     {analysisReady && !study.examinationId && (
       <p>원본 영상에 검사 정보가 연결되어야 분석할 수 있습니다.</p>
     )}
-    {AI_DEMO_PLAYBACK && busy && demoStage && (
+    {busy && demoStage && (
       <div className="ct-ai-progress" role="status">
         <div className="ct-ai-progress-label">
           <strong>{demoStage}</strong>

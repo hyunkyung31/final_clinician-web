@@ -61,6 +61,7 @@
   outline-offset: 2px;
 }
 .ct-view-tabs { display: flex; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #2e435a; background: #101e2d; }
+.ct-view-tabs .ct-report-launch { margin-left: auto; color: #fff; border-color: #7baaff; background: #2d68d4; }
 .rendering-kind-buttons { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #253a51; background: #101e2e; }
 .clinical-image-viewer .rendering-action-bar {
   display: flex;
@@ -102,6 +103,8 @@ html[data-theme='dark'] .clinical-image-viewer .rendering-action-bar button {
 .cornerstone-dicom-viewer .dicom-fit-button { position: absolute; top: 12px; right: 12px; z-index: 5; padding: 8px 12px; border: 1px solid #526d8b; border-radius: 7px; background: #152a40e6; color: #e5efff; cursor: pointer; font-size: 12px; }
 .cornerstone-dicom-state.error { pointer-events: auto; }
 .ct-ai-modal { width: min(620px, 90vw); }
+.ct-ai-report-modal { width: min(980px, 94vw); max-height: 92vh; overflow: auto; }
+.ct-report-launch { background: #244f9c; }
 .ct-ai-modal h2 { display: flex; align-items: center; gap: 8px; }
 .ct-ai-source { display: grid; gap: 8px; padding: 16px; border: 1px solid #cfdaec; border-radius: 9px; background: #f5f8fd; }
 .ct-ai-source span { font-size: 12px; color: #64748b; }
